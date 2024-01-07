@@ -301,7 +301,7 @@ const int = struct {
             arr[0] = header;
             const v: u32 = @bitCast(val);
 
-            std.mem.writeInt(u32, arr[1..], v, .big);
+            std.mem.writeInt(u32, arr[1..5], v, .big);
             return arr;
         }
 
@@ -314,7 +314,7 @@ const int = struct {
                 return IntegerParseFail.I32IntTypeError;
             }
 
-            const v = std.mem.readInt(u32, arr[1..], .big);
+            const v = std.mem.readInt(u32, arr[1..5], .big);
             const val: i32 = @bitCast(v);
 
             return val;
@@ -329,7 +329,7 @@ const int = struct {
             arr[0] = header;
             const v: u64 = @bitCast(val);
 
-            std.mem.writeInt(u64, arr[1..], v, .big);
+            std.mem.writeInt(u64, arr[1..9], v, .big);
             return arr;
         }
 
@@ -342,13 +342,15 @@ const int = struct {
                 return IntegerParseFail.I64IntTypeError;
             }
 
-            const v = std.mem.readInt(u64, arr[1..], .big);
+            const v = std.mem.readInt(u64, arr[1..9], .big);
             const val: i64 = @bitCast(v);
 
             return val;
         }
     };
 };
+
+// TODO: add integer test
 
 const float = struct {
     const FloatParseFail = error{
@@ -366,7 +368,7 @@ const float = struct {
             arr[0] = header;
             const v: u32 = @bitCast(val);
 
-            std.mem.writeInt(u32, arr[1..], v, .big);
+            std.mem.writeInt(u32, arr[1..5], v, .big);
             return arr;
         }
 
@@ -379,7 +381,7 @@ const float = struct {
                 return FloatParseFail.F32TypeError;
             }
 
-            const v = std.mem.readInt(u32, arr[1..], .big);
+            const v = std.mem.readInt(u32, arr[1..5], .big);
             const val: f32 = @bitCast(v);
 
             return val;
@@ -394,7 +396,7 @@ const float = struct {
             arr[0] = header;
             const v: u64 = @bitCast(val);
 
-            std.mem.writeInt(u64, arr[1..], v, .big);
+            std.mem.writeInt(u64, arr[1..9], v, .big);
             return arr;
         }
 
@@ -407,10 +409,30 @@ const float = struct {
                 return FloatParseFail.F64TypeError;
             }
 
-            const v = std.mem.readInt(u64, arr[1..], .big);
+            const v = std.mem.readInt(u64, arr[1..9], .big);
             const val: f64 = @bitCast(v);
 
             return val;
         }
     };
 };
+
+test "float serialize and unserialize" {
+    const test_allocator = std.testing.allocator;
+
+    const float_32: f32 = 3.14;
+    const f32_arr = try float.single_precision_float.serialize(test_allocator, float_32);
+    defer test_allocator.free(f32_arr);
+
+    try expect(f32_arr.len == 5);
+    try expect(f32_arr[0] == 0xca);
+    try expect((try float.single_precision_float.unserialize(f32_arr)) == float_32);
+
+    const float_64: f64 = 3.141592653589793;
+    const f64_arr = try float.double_precision_float.serialize(test_allocator, float_64);
+    defer test_allocator.free(f64_arr);
+
+    try expect(f64_arr.len == 9);
+    try expect(f64_arr[0] == 0xcb);
+    try expect((try float.double_precision_float.unserialize(f64_arr)) == float_64);
+}
