@@ -53,7 +53,7 @@ const boolean = struct {
     }
 };
 
-test "bool serialize and unserialize" {
+test "bool true serialize and unserialize" {
     const test_allocator = std.testing.allocator;
 
     const true_arr = try boolean.serialize(test_allocator, true);
@@ -62,7 +62,10 @@ test "bool serialize and unserialize" {
     try expect(true_arr.len == 1);
     try expect(true_arr[0] == 0xc3);
     try expect((try boolean.unserialize(true_arr)) == true);
+}
 
+test "bool false serialize and unserialize" {
+    const test_allocator = std.testing.allocator;
     const false_arr = try boolean.serialize(test_allocator, false);
     defer test_allocator.free(false_arr);
 
@@ -131,19 +134,23 @@ const int = struct {
                 return IntegerParseFail.NFixIntArrLenOut;
             }
 
-            const value: u8 = 0 - val;
+            const value: u8 = @intCast(0 - val);
             var arr = try allocator.alloc(u8, 1);
-            arr[0] = header | value;
+            arr[0] = header + value;
             return arr;
         }
 
         fn unserialize(arr: []const u8) !i8 {
             if (arr.len > 1) {
-                return IntegerParseFail.NFixIntOutOfBound;
+                return IntegerParseFail.NFixIntArrLenOut;
             }
-            const value = arr[0] - header;
+            const value: i8 = @intCast(arr[0] - header);
+            const val: i8 = 0 - value;
+            if (val > 0 or val <= -32) {
+                return IntegerParseFail.NFixIntArrLenOut;
+            }
 
-            return 0 - value;
+            return val;
         }
     };
 
@@ -197,7 +204,7 @@ const int = struct {
         const header = 0xce;
 
         fn serialize(allocator: Allocator, val: u32) ![]const u8 {
-            var arr = try allocator.alloc(u32, 5);
+            var arr = try allocator.alloc(u8, 5);
             arr[0] = header;
             std.mem.writeInt(u32, arr[1..5], val, .big);
             return arr;
@@ -236,7 +243,7 @@ const int = struct {
                 return IntegerParseFail.U64IntTypeError;
             }
 
-            const val = std.mem.readInt(u64, arr[0..9], .big);
+            const val = std.mem.readInt(u64, arr[1..9], .big);
             return val;
         }
     };
@@ -260,7 +267,7 @@ const int = struct {
                 return IntegerParseFail.I8IntTypeError;
             }
 
-            const val: i8 = @intCast(arr[1]);
+            const val: i8 = @bitCast(arr[1]);
             return val;
         }
     };
@@ -351,6 +358,125 @@ const int = struct {
 };
 
 // TODO: add integer test
+test "positive fix integer" {
+    const test_allocator = std.testing.allocator;
+
+    const n: u8 = 8;
+    const arr = try int.positive_fix_int.serialize(test_allocator, n);
+    defer test_allocator.free(arr);
+
+    try expect(arr.len == 1);
+    try expect(0x0 < arr[0] and arr[0] < 0x7f);
+    try expect((try int.positive_fix_int.unserialize(arr)) == n);
+}
+
+test "negative fix integer" {
+    const test_allocator = std.testing.allocator;
+
+    const n: i8 = -10;
+    const arr = try int.negative_fix_int.serialize(test_allocator, n);
+    defer test_allocator.free(arr);
+
+    try expect(arr.len == 1);
+    try expect(0xe0 < arr[0] and arr[0] < 0xff);
+    try expect((try int.negative_fix_int.unserialize(arr)) == n);
+}
+
+test "unsigned 8 int" {
+    const test_allocator = std.testing.allocator;
+
+    const n: u8 = 42;
+    const arr = try int.unsigned_8_int.serialize(test_allocator, n);
+    defer test_allocator.free(arr);
+
+    try expect(arr.len == 2);
+    try expect(arr[0] == 0xcc);
+    try expect((try int.unsigned_8_int.unserialize(arr)) == n);
+}
+
+test "unsigned 16 int" {
+    const test_allocator = std.testing.allocator;
+
+    const n: u16 = 666;
+    const arr = try int.unsigned_16_int.serialize(test_allocator, n);
+    defer test_allocator.free(arr);
+
+    try expect(arr.len == 3);
+    try expect(arr[0] == 0xcd);
+    try expect((try int.unsigned_16_int.unserialize(arr)) == n);
+}
+
+test "unsigned 32 int" {
+    const test_allocator = std.testing.allocator;
+
+    const n: u32 = 65536;
+    const arr = try int.unsigned_32_int.serialize(test_allocator, n);
+    defer test_allocator.free(arr);
+
+    try expect(arr.len == 5);
+    try expect(arr[0] == 0xce);
+    try expect((try int.unsigned_32_int.unserialize(arr)) == n);
+}
+
+test "unsigned 64 int" {
+    const test_allocator = std.testing.allocator;
+
+    const n: u64 = 4294967296;
+    const arr = try int.unsigned_64_int.serialize(test_allocator, n);
+    defer test_allocator.free(arr);
+
+    try expect(arr.len == 9);
+    try expect(arr[0] == 0xcf);
+    try expect((try int.unsigned_64_int.unserialize(arr)) == n);
+}
+
+test "signed 8 int" {
+    const test_allocator = std.testing.allocator;
+
+    const n: i8 = -10;
+    const arr = try int.signed_8_int.serialize(test_allocator, n);
+    defer test_allocator.free(arr);
+
+    try expect(arr.len == 2);
+    try expect(arr[0] == 0xd0);
+    try expect((try int.signed_8_int.unserialize(arr)) == n);
+}
+
+test "signed 16 int" {
+    const test_allocator = std.testing.allocator;
+
+    const n: i16 = -666;
+    const arr = try int.signed_16_int.serialize(test_allocator, n);
+    defer test_allocator.free(arr);
+
+    try expect(arr.len == 3);
+    try expect(arr[0] == 0xd1);
+    try expect((try int.signed_16_int.unserialize(arr)) == n);
+}
+
+test "signed 32 int" {
+    const test_allocator = std.testing.allocator;
+
+    const n: i32 = -65536;
+    const arr = try int.signed_32_int.serialize(test_allocator, n);
+    defer test_allocator.free(arr);
+
+    try expect(arr.len == 5);
+    try expect(arr[0] == 0xd2);
+    try expect((try int.signed_32_int.unserialize(arr)) == n);
+}
+
+test "signed 64 int" {
+    const test_allocator = std.testing.allocator;
+
+    const n: i64 = -4294967296;
+    const arr = try int.signed_64_int.serialize(test_allocator, n);
+    defer test_allocator.free(arr);
+
+    try expect(arr.len == 9);
+    try expect(arr[0] == 0xd3);
+    try expect((try int.signed_64_int.unserialize(arr)) == n);
+}
 
 const float = struct {
     const FloatParseFail = error{
@@ -417,7 +543,7 @@ const float = struct {
     };
 };
 
-test "float serialize and unserialize" {
+test "float 32 serialize and unserialize" {
     const test_allocator = std.testing.allocator;
 
     const float_32: f32 = 3.14;
@@ -427,6 +553,10 @@ test "float serialize and unserialize" {
     try expect(f32_arr.len == 5);
     try expect(f32_arr[0] == 0xca);
     try expect((try float.single_precision_float.unserialize(f32_arr)) == float_32);
+}
+
+test "float 64 serialize and unserialiaze" {
+    const test_allocator = std.testing.allocator;
 
     const float_64: f64 = 3.141592653589793;
     const f64_arr = try float.double_precision_float.serialize(test_allocator, float_64);
