@@ -590,17 +590,13 @@ const string = struct {
         const header = 0xa0;
 
         fn serialize(allocator: Allocator, val: []const u8) ![]const u8 {
-            if (val.len >= 32) {
+            if (val.len > std.math.maxInt(u5)) {
                 return StrParseFail.FStrLenOut;
             }
             var arr = try allocator.alloc(u8, val.len + 1);
             arr[0] = @intCast(header + val.len);
 
             @memcpy(arr[1..], val);
-
-            if (native_endian != .big) {
-                std.mem.reverse(u8, arr[1..]);
-            }
 
             return arr;
         }
@@ -628,10 +624,6 @@ const string = struct {
 
             @memcpy(str, arr[1..]);
 
-            if (native_endian != .big) {
-                std.mem.reverse(u8, str);
-            }
-
             return str;
         }
     };
@@ -640,7 +632,7 @@ const string = struct {
         const header = 0xd9;
 
         fn serialize(allocator: Allocator, val: []const u8) ![]const u8 {
-            if (val.len > std.math.maxInt(u6)) {
+            if (val.len <= std.math.maxInt(u5) or val.len > std.math.maxInt(u8)) {
                 return StrParseFail.U8StrLenOut;
             }
             var arr = try allocator.alloc(u8, val.len + 2);
@@ -648,9 +640,6 @@ const string = struct {
             arr[1] = @intCast(val.len);
 
             @memcpy(arr[2..], val);
-            if (native_endian != .big) {
-                std.mem.reverse(u8, arr[2..]);
-            }
 
             return arr;
         }
@@ -678,9 +667,93 @@ const string = struct {
 
             @memcpy(str, arr[2..]);
 
-            if (native_endian != .big) {
-                std.mem.reverse(u8, str);
+            return str;
+        }
+    };
+
+    const u16_str = struct {
+        const header = 0xda;
+
+        fn serialize(allocator: Allocator, val: []const u8) ![]const u8 {
+            if (val.len <= std.math.maxInt(u8) or val.len > std.math.maxInt(u16)) {
+                return StrParseFail.U16StrLenOut;
             }
+            var arr = try allocator.alloc(u8, val.len + 3);
+
+            arr[0] = header;
+            std.mem.writeInt(u16, arr[1..3], @intCast(val.len), .big);
+
+            @memcpy(arr[3..], val);
+
+            return arr;
+        }
+
+        fn len(arr: []const u8) !u16 {
+            if (arr.len >= 3) {
+                return std.mem.readInt(u16, arr[1..3], .big);
+            }
+            return StrParseFail.U16StrLenLess;
+        }
+
+        fn unserialize(allocator: Allocator, arr: []const u8) ![]const u8 {
+            const str_len = try len(arr);
+            const arr_len = arr.len;
+
+            if (arr[0] != header) {
+                return StrParseFail.U16StrTypeError;
+            }
+
+            if (str_len != arr_len - 3) {
+                return StrParseFail.U16StrLenOut;
+            }
+
+            const str = try allocator.alloc(u8, str_len);
+
+            @memcpy(str, arr[3..]);
+
+            return str;
+        }
+    };
+
+    const u32_str = struct {
+        const header = 0xdb;
+
+        fn serialize(allocator: Allocator, val: []const u8) ![]const u8 {
+            if (val.len <= std.math.maxInt(u16) or val.len > std.math.maxInt(u32)) {
+                return StrParseFail.U32StrLenOut;
+            }
+            var arr = try allocator.alloc(u8, val.len + 5);
+
+            arr[0] = header;
+            std.mem.writeInt(u32, arr[1..5], @intCast(val.len), .big);
+
+            @memcpy(arr[5..], val);
+
+            return arr;
+        }
+
+        fn len(arr: []const u8) !u32 {
+            if (arr.len >= 5) {
+                return std.mem.readInt(u32, arr[1..5], .big);
+            }
+            return StrParseFail.U32StrLenLess;
+        }
+
+        fn unserialize(allocator: Allocator, arr: []const u8) ![]const u8 {
+            const str_len = try len(arr);
+            const arr_len = arr.len;
+
+            if (arr[0] != header) {
+                return StrParseFail.U32StrTypeError;
+            }
+
+            if (str_len != arr_len - 5) {
+                return StrParseFail.U32StrLenOut;
+            }
+
+            const str = try allocator.alloc(u8, str_len);
+
+            @memcpy(str, arr[5..]);
 
             return str;
         }
@@ -712,6 +785,38 @@ test "u8 str serialize and unserialize" {
     try expect(u8_str[0] == 0xd9);
 
     const new_str = try string.u8_str.unserialize(test_allocator, u8_str);
+    defer test_allocator.free(new_str);
+    try expect(std.mem.eql(u8, new_str, str));
+}
+
+test "u16 str serialize and unserialize" {
+    const test_allocator = std.testing.allocator;
+
+    const str = "When the zig test tool is building a test runner, only resolved test declarations are included in the build. Initially, only the given Zig source file's top-level declarations are resolved. Unless nested containers are referenced from a top-level test declaration, nested container tests will not be resolved.";
+    const u16_str = try string.u16_str.serialize(test_allocator, str);
+    defer test_allocator.free(u16_str);
+
+    try expect(try string.u16_str.len(u16_str) == str.len);
+    try expect(u16_str[0] == 0xda);
+
+    const new_str = try string.u16_str.unserialize(test_allocator, u16_str);
+    defer test_allocator.free(new_str);
+    try expect(std.mem.eql(u8, new_str, str));
+}
+
+test "u32 str serialize and unserialize" {
+    const test_allocator = std.testing.allocator;
+
+    const default_str = "When the zig test tool is building a test runner, only resolved test declarations are included in the build. Initially, only the given Zig source file's top-level declarations are resolved. Unless nested containers are referenced from a top-level test declaration, nested container tests will not be resolved.";
+    const strr = @as([309:0]u8, default_str.*) ** 255;
+    const str = &strr;
+    const u32_str = try string.u32_str.serialize(test_allocator, str);
+    defer test_allocator.free(u32_str);
+
+    try expect(try string.u32_str.len(u32_str) == str.len);
+    try expect(u32_str[0] == 0xdb);
+
+    const new_str = try string.u32_str.unserialize(test_allocator, u32_str);
     defer test_allocator.free(new_str);
     try expect(std.mem.eql(u8, new_str, str));
 }
