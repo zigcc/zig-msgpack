@@ -573,7 +573,17 @@ test "float 64 serialize and unserialiaze" {
 const string = struct {
     const StrParseFail = error{
         FStrLenOut,
+        FStrLenLess,
         FStrTypeError,
+        U8StrLenOut,
+        U8StrLenLess,
+        U8StrTypeError,
+        U16StrLenOut,
+        U16StrLenLess,
+        U16StrTypeError,
+        U32StrLenOut,
+        U32StrLenLess,
+        U32StrTypeError,
     };
 
     const fix_str = struct {
@@ -595,17 +605,17 @@ const string = struct {
             return arr;
         }
 
-        fn len(arr: []const u8) u8 {
+        fn len(arr: []const u8) !u8 {
+            if (arr.len == 0) {
+                return StrParseFail.FStrLenLess;
+            }
             const str_len = arr[0] - header;
             return str_len;
         }
 
         fn unserialize(allocator: Allocator, arr: []const u8) ![]const u8 {
-            if (arr.len < 1) {
-                return StrParseFail.FStrLenOut;
-            }
+            const str_len = try len(arr);
             const arr_len = arr.len;
-            const str_len = arr[0] - header;
 
             if (str_len >= header) {
                 return StrParseFail.FStrTypeError;
@@ -625,6 +635,56 @@ const string = struct {
             return str;
         }
     };
+
+    const u8_str = struct {
+        const header = 0xd9;
+
+        fn serialize(allocator: Allocator, val: []const u8) ![]const u8 {
+            if (val.len > std.math.maxInt(u6)) {
+                return StrParseFail.U8StrLenOut;
+            }
+            var arr = try allocator.alloc(u8, val.len + 2);
+            arr[0] = header;
+            arr[1] = @intCast(val.len);
+
+            @memcpy(arr[2..], val);
+            if (native_endian != .big) {
+                std.mem.reverse(u8, arr[2..]);
+            }
+
+            return arr;
+        }
+
+        fn len(arr: []const u8) !u8 {
+            if (arr.len >= 2) {
+                return arr[1];
+            }
+            return StrParseFail.U8StrLenLess;
+        }
+
+        fn unserialize(allocator: Allocator, arr: []const u8) ![]const u8 {
+            const str_len = try len(arr);
+            const arr_len = arr.len;
+
+            if (arr[0] != header) {
+                return StrParseFail.U8StrTypeError;
+            }
+
+            if (str_len != arr_len - 2) {
+                return StrParseFail.U8StrLenOut;
+            }
+
+            const str = try allocator.alloc(u8, str_len);
+
+            @memcpy(str, arr[2..]);
+
+            if (native_endian != .big) {
+                std.mem.reverse(u8, str);
+            }
+
+            return str;
+        }
+    };
 };
 
 test "fix str serialize and unserialize" {
@@ -634,9 +694,24 @@ test "fix str serialize and unserialize" {
     const fix_str = try string.fix_str.serialize(test_allocator, str);
     defer test_allocator.free(fix_str);
 
-    try expect(string.fix_str.len(fix_str) == str.len);
-    try expect(fix_str[0] - string.fix_str.len(fix_str) == 0xa0);
+    try expect(try string.fix_str.len(fix_str) == str.len);
+    try expect(fix_str[0] - try string.fix_str.len(fix_str) == 0xa0);
     const new_str = try string.fix_str.unserialize(test_allocator, fix_str);
+    defer test_allocator.free(new_str);
+    try expect(std.mem.eql(u8, new_str, str));
+}
+
+test "u8 str serialize and unserialize" {
+    const test_allocator = std.testing.allocator;
+
+    const str = "This is a string that is more than 32 bytes long.";
+    const u8_str = try string.u8_str.serialize(test_allocator, str);
+    defer test_allocator.free(u8_str);
+
+    try expect(try string.u8_str.len(u8_str) == str.len);
+    try expect(u8_str[0] == 0xd9);
+
+    const new_str = try string.u8_str.unserialize(test_allocator, u8_str);
     defer test_allocator.free(new_str);
     try expect(std.mem.eql(u8, new_str, str));
 }
