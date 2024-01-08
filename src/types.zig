@@ -1,6 +1,9 @@
 const std = @import("std");
+const builtin = @import("builtin");
+
 const Allocator = std.mem.Allocator;
 const expect = std.testing.expect;
+const native_endian = builtin.cpu.arch.endian();
 
 const nil = struct {
     const header = 0xc0;
@@ -565,4 +568,75 @@ test "float 64 serialize and unserialiaze" {
     try expect(f64_arr.len == 9);
     try expect(f64_arr[0] == 0xcb);
     try expect((try float.double_precision_float.unserialize(f64_arr)) == float_64);
+}
+
+const string = struct {
+    const StrParseFail = error{
+        FStrLenOut,
+        FStrTypeError,
+    };
+
+    const fix_str = struct {
+        const header = 0xa0;
+
+        fn serialize(allocator: Allocator, val: []const u8) ![]const u8 {
+            if (val.len >= 32) {
+                return StrParseFail.FStrLenOut;
+            }
+            var arr = try allocator.alloc(u8, val.len + 1);
+            arr[0] = @intCast(header + val.len);
+
+            @memcpy(arr[1..], val);
+
+            if (native_endian != .big) {
+                std.mem.reverse(u8, arr[1..]);
+            }
+
+            return arr;
+        }
+
+        fn len(arr: []const u8) u8 {
+            const str_len = arr[0] - header;
+            return str_len;
+        }
+
+        fn unserialize(allocator: Allocator, arr: []const u8) ![]const u8 {
+            if (arr.len < 1) {
+                return StrParseFail.FStrLenOut;
+            }
+            const arr_len = arr.len;
+            const str_len = arr[0] - header;
+
+            if (str_len >= header) {
+                return StrParseFail.FStrTypeError;
+            }
+            if (str_len != arr_len - 1) {
+                return StrParseFail.FStrLenOut;
+            }
+
+            const str = try allocator.alloc(u8, str_len);
+
+            @memcpy(str, arr[1..]);
+
+            if (native_endian != .big) {
+                std.mem.reverse(u8, str);
+            }
+
+            return str;
+        }
+    };
+};
+
+test "fix str serialize and unserialize" {
+    const test_allocator = std.testing.allocator;
+
+    const str = "Hello, world!";
+    const fix_str = try string.fix_str.serialize(test_allocator, str);
+    defer test_allocator.free(fix_str);
+
+    try expect(string.fix_str.len(fix_str) == str.len);
+    try expect(fix_str[0] - string.fix_str.len(fix_str) == 0xa0);
+    const new_str = try string.fix_str.unserialize(test_allocator, fix_str);
+    defer test_allocator.free(new_str);
+    try expect(std.mem.eql(u8, new_str, str));
 }
