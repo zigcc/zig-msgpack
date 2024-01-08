@@ -820,3 +820,147 @@ test "u32 str serialize and unserialize" {
     defer test_allocator.free(new_str);
     try expect(std.mem.eql(u8, new_str, str));
 }
+
+const bin = struct {
+    const BinParseFail = error{
+        U8BinLenOut,
+        U8BinLenLess,
+        U8BinTypeError,
+        U16BinLenOut,
+        U16BinLenLess,
+        U16BinTypeError,
+        U32BinLenOut,
+        U32BinLenLess,
+        U32BinTypeError,
+    };
+    const u8_bin = struct {
+        const header = 0xc4;
+
+        fn serialize(allocator: Allocator, val: []const u8) ![]const u8 {
+            if (val.len <= std.math.maxInt(u5) or val.len > std.math.maxInt(u8)) {
+                return BinParseFail.U8BinLenOut;
+            }
+            var arr = try allocator.alloc(u8, val.len + 2);
+            arr[0] = header;
+            arr[1] = @intCast(val.len);
+
+            @memcpy(arr[2..], val);
+
+            return arr;
+        }
+
+        fn len(arr: []const u8) !u8 {
+            if (arr.len >= 2) {
+                return arr[1];
+            }
+            return BinParseFail.U8BinLenLess;
+        }
+
+        fn unserialize(allocator: Allocator, arr: []const u8) ![]const u8 {
+            const str_len = try len(arr);
+            const arr_len = arr.len;
+
+            if (arr[0] != header) {
+                return BinParseFail.U8BinTypeError;
+            }
+
+            if (str_len != arr_len - 2) {
+                return BinParseFail.U8BinLenOut;
+            }
+
+            const str = try allocator.alloc(u8, str_len);
+
+            @memcpy(str, arr[2..]);
+
+            return str;
+        }
+    };
+
+    const u16_bin = struct {
+        const header = 0xda;
+
+        fn serialize(allocator: Allocator, val: []const u8) ![]const u8 {
+            if (val.len <= std.math.maxInt(u8) or val.len > std.math.maxInt(u16)) {
+                return BinParseFail.U16BinLenOut;
+            }
+            var arr = try allocator.alloc(u8, val.len + 3);
+
+            arr[0] = header;
+            std.mem.writeInt(u16, arr[1..3], @intCast(val.len), .big);
+
+            @memcpy(arr[3..], val);
+
+            return arr;
+        }
+
+        fn len(arr: []const u8) !u16 {
+            if (arr.len >= 3) {
+                return std.mem.readInt(u16, arr[1..3], .big);
+            }
+            return BinParseFail.U16BinLenLess;
+        }
+
+        fn unserialize(allocator: Allocator, arr: []const u8) ![]const u8 {
+            const str_len = try len(arr);
+            const arr_len = arr.len;
+
+            if (arr[0] != header) {
+                return BinParseFail.U16BinTypeError;
+            }
+
+            if (str_len != arr_len - 3) {
+                return BinParseFail.U16BinLenOut;
+            }
+
+            const str = try allocator.alloc(u8, str_len);
+
+            @memcpy(str, arr[3..]);
+
+            return str;
+        }
+    };
+
+    const u32_bin = struct {
+        const header = 0xdb;
+
+        fn serialize(allocator: Allocator, val: []const u8) ![]const u8 {
+            if (val.len <= std.math.maxInt(u16) or val.len > std.math.maxInt(u32)) {
+                return BinParseFail.U32BinLenOut;
+            }
+            var arr = try allocator.alloc(u8, val.len + 5);
+
+            arr[0] = header;
+            std.mem.writeInt(u32, arr[1..5], @intCast(val.len), .big);
+
+            @memcpy(arr[5..], val);
+
+            return arr;
+        }
+
+        fn len(arr: []const u8) !u32 {
+            if (arr.len >= 5) {
+                return std.mem.readInt(u32, arr[1..5], .big);
+            }
+            return BinParseFail.U32BinLenLess;
+        }
+
+        fn unserialize(allocator: Allocator, arr: []const u8) ![]const u8 {
+            const str_len = try len(arr);
+            const arr_len = arr.len;
+
+            if (arr[0] != header) {
+                return BinParseFail.U32BinTypeError;
+            }
+
+            if (str_len != arr_len - 5) {
+                return BinParseFail.U32BinLenOut;
+            }
+
+            const str = try allocator.alloc(u8, str_len);
+
+            @memcpy(str, arr[5..]);
+
+            return str;
+        }
+    };
+};
