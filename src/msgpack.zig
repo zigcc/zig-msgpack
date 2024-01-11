@@ -1,5 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const Allocator = std.mem.Allocator;
 const native_endian = builtin.cpu.arch.endian();
 
 const Markers = enum(u8) {
@@ -254,6 +255,102 @@ pub fn MsgPack(
             const len = try self.write_fn(&arr);
             if (len != 8) {
                 return MsGPackError.LENGTH_WRITING;
+            }
+        }
+
+        fn write_fix_str(self: Self, str: []const u8) !void {
+            const len = str.len;
+            if (len > 0x1f) {
+                return MsGPackError.STR_DATA_LENGTH_TOO_LONG;
+            }
+            const header: u8 = @intFromEnum(Markers.FIXSTR) + len;
+            try self.write_byte(header);
+
+            const write_len = try self.write_fn(str);
+            if (write_len != len) {
+                return MsGPackError.LENGTH_WRITING;
+            }
+        }
+
+        fn write_str8(self: Self, str: []const u8) !void {
+            const len = str.len;
+            if (len > 0xff) {
+                return MsGPackError.STR_DATA_LENGTH_TOO_LONG;
+            }
+
+            try self.write_type_marker(.STR8);
+
+            const str_len: u8 = @intCast(len);
+            var arr: [1]u8 = std.mem.zeroes([1]u8);
+            std.mem.writeInt(u8, &arr, str_len, .big);
+
+            const write_len_len = try self.write_fn(&arr);
+            if (write_len_len != arr.len) {
+                return MsGPackError.LENGTH_WRITING;
+            }
+
+            const write_len = try self.write_fn(str);
+            if (write_len != len) {
+                return MsGPackError.LENGTH_WRITING;
+            }
+        }
+
+        fn write_str16(self: Self, str: []const u8) !void {
+            const len = str.len;
+            if (len > 0xffff) {
+                return MsGPackError.STR_DATA_LENGTH_TOO_LONG;
+            }
+
+            try self.write_type_marker(.STR16);
+
+            const str_len: u16 = @intCast(len);
+            var arr: [2]u8 = std.mem.zeroes([2]u8);
+            std.mem.writeInt(u16, &arr, str_len, .big);
+
+            const write_len_len = try self.write_fn(&arr);
+            if (write_len_len != arr.len) {
+                return MsGPackError.LENGTH_WRITING;
+            }
+
+            const write_len = try self.write_fn(str);
+            if (write_len != len) {
+                return MsGPackError.LENGTH_WRITING;
+            }
+        }
+
+        fn write_str32(self: Self, str: []const u8) !void {
+            const len = str.len;
+            if (len > 0xffff_ffff) {
+                return MsGPackError.STR_DATA_LENGTH_TOO_LONG;
+            }
+
+            try self.write_type_marker(.STR32);
+
+            const str_len: u32 = @intCast(len);
+            var arr: [4]u8 = std.mem.zeroes([4]u8);
+            std.mem.writeInt(u32, &arr, str_len, .big);
+
+            const write_len_len = try self.write_fn(&arr);
+            if (write_len_len != arr.len) {
+                return MsGPackError.LENGTH_WRITING;
+            }
+
+            const write_len = try self.write_fn(str);
+            if (write_len != len) {
+                return MsGPackError.LENGTH_WRITING;
+            }
+        }
+
+        pub fn write_str(self: Self, str: []const u8) !void {
+            const len = str.len;
+            if (len <= 0x1f) {
+                try self.write_fix_str(str);
+            } else if (len <= 0xff) {
+                try self.write_str8(str);
+            } else if (len <= 0xffff) {
+                try self.write_str16(str);
+            } else {
+                try self.write_str32(str);
             }
         }
 
@@ -769,6 +866,83 @@ pub fn MsgPack(
                     return val;
                 },
                 else => return MsGPackError.TYPE_MARKER_READING,
+            }
+        }
+
+        pub fn read_str(self: Self, allocator: Allocator) ![]const u8 {
+            const marker_u8 = try self.read_type_marker_u8();
+            const marker = try self.marker_u8_to(marker_u8);
+
+            switch (marker) {
+                .FIXSTR => {
+                    const len: u8 = marker_u8 - @intFromEnum(Markers.FIXSTR);
+
+                    const str = try allocator.alloc(u8, len);
+                    const str_len = try self.read_fn(str);
+
+                    if (str_len != len) {
+                        return MsGPackError.LENGTH_READING;
+                    }
+
+                    return str;
+                },
+                .STR8 => {
+                    var arr: [1]u8 = std.mem.zeroes([1]u8);
+                    const str_len_len = try self.read_fn(&arr);
+
+                    if (str_len_len != arr.len) {
+                        return MsGPackError.LENGTH_READING;
+                    }
+
+                    const len = std.mem.readInt(u8, &arr, .big);
+
+                    const str = try allocator.alloc(u8, len);
+                    const str_len = try self.read_fn(str);
+
+                    if (str_len != len) {
+                        return MsGPackError.LENGTH_READING;
+                    }
+
+                    return str;
+                },
+                .STR16 => {
+                    var arr: [2]u8 = std.mem.zeroes([2]u8);
+                    const str_len_len = try self.read_fn(&arr);
+
+                    if (str_len_len != arr.len) {
+                        return MsGPackError.LENGTH_READING;
+                    }
+
+                    const len = std.mem.readInt(u16, &arr, .big);
+
+                    const str = try allocator.alloc(u8, len);
+                    const str_len = try self.read_fn(str);
+
+                    if (str_len != len) {
+                        return MsGPackError.LENGTH_READING;
+                    }
+
+                    return str;
+                },
+                .STR32 => {
+                    var arr: [4]u8 = std.mem.zeroes([4]u8);
+                    const str_len_len = try self.read_fn(&arr);
+
+                    if (str_len_len != arr.len) {
+                        return MsGPackError.LENGTH_READING;
+                    }
+
+                    const len = std.mem.readInt(u32, &arr, .big);
+
+                    const str = try allocator.alloc(u8, len);
+                    const str_len = try self.read_fn(str);
+
+                    if (str_len != len) {
+                        return MsGPackError.LENGTH_READING;
+                    }
+
+                    return str;
+                },
             }
         }
     };
