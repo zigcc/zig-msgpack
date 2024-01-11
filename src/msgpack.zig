@@ -354,6 +354,86 @@ pub fn MsgPack(
             }
         }
 
+        fn write_bin8(self: Self, bin: []const u8) !void {
+            const len = bin.len;
+            if (len > 0xff) {
+                return MsGPackError.BIN_DATA_LENGTH_TOO_LONG;
+            }
+
+            try self.write_type_marker(.BIN8);
+
+            const bin_len: u8 = @intCast(len);
+            var arr: [1]u8 = std.mem.zeroes([1]u8);
+            std.mem.writeInt(u8, &arr, bin_len, .big);
+
+            const write_len_len = try self.write_fn(&arr);
+            if (write_len_len != arr.len) {
+                return MsGPackError.LENGTH_WRITING;
+            }
+
+            const write_len = try self.write_fn(bin);
+            if (write_len != len) {
+                return MsGPackError.LENGTH_WRITING;
+            }
+        }
+
+        fn write_bin16(self: Self, bin: []const u8) !void {
+            const len = bin.len;
+            if (len > 0xffff) {
+                return MsGPackError.BIN_DATA_LENGTH_TOO_LONG;
+            }
+
+            try self.write_type_marker(.Bin16);
+
+            const bin_len: u16 = @intCast(len);
+            var arr: [2]u8 = std.mem.zeroes([2]u8);
+            std.mem.writeInt(u16, &arr, bin_len, .big);
+
+            const write_len_len = try self.write_fn(&arr);
+            if (write_len_len != arr.len) {
+                return MsGPackError.LENGTH_WRITING;
+            }
+
+            const write_len = try self.write_fn(bin);
+            if (write_len != len) {
+                return MsGPackError.LENGTH_WRITING;
+            }
+        }
+
+        fn write_bin32(self: Self, bin: []const u8) !void {
+            const len = bin.len;
+            if (len > 0xffff_ffff) {
+                return MsGPackError.BIN_DATA_LENGTH_TOO_LONG;
+            }
+
+            try self.write_type_marker(.Bin32);
+
+            const bin_len: u32 = @intCast(len);
+            var arr: [4]u8 = std.mem.zeroes([4]u8);
+            std.mem.writeInt(u32, &arr, bin_len, .big);
+
+            const write_len_len = try self.write_fn(&arr);
+            if (write_len_len != arr.len) {
+                return MsGPackError.LENGTH_WRITING;
+            }
+
+            const write_len = try self.write_fn(bin);
+            if (write_len != len) {
+                return MsGPackError.LENGTH_WRITING;
+            }
+        }
+
+        pub fn write_bin(self: Self, bin: []const u8) !void {
+            const len = bin.len;
+            if (len <= 0xff) {
+                try self.write_bin8(bin);
+            } else if (len <= 0xffff) {
+                try self.write_bin16(bin);
+            } else {
+                try self.write_bin32(bin);
+            }
+        }
+
         // read
 
         fn read_fn(self: Self, bytes: []u8) ErrorSet!usize {
@@ -943,6 +1023,71 @@ pub fn MsgPack(
 
                     return str;
                 },
+                else => return MsGPackError.TYPE_MARKER_READING,
+            }
+        }
+        pub fn read_bin(self: Self, allocator: Allocator) ![]const u8 {
+            const marker = try self.read_type_marker();
+
+            switch (marker) {
+                .BIN8 => {
+                    var arr: [1]u8 = std.mem.zeroes([1]u8);
+                    const bin_len_len = try self.read_fn(&arr);
+
+                    if (bin_len_len != arr.len) {
+                        return MsGPackError.LENGTH_READING;
+                    }
+
+                    const len = std.mem.readInt(u8, &arr, .big);
+
+                    const bin = try allocator.alloc(u8, len);
+                    const bin_len = try self.read_fn(bin);
+
+                    if (bin_len != len) {
+                        return MsGPackError.LENGTH_READING;
+                    }
+
+                    return bin;
+                },
+                .BIN16 => {
+                    var arr: [2]u8 = std.mem.zeroes([2]u8);
+                    const bin_len_len = try self.read_fn(&arr);
+
+                    if (bin_len_len != arr.len) {
+                        return MsGPackError.LENGTH_READING;
+                    }
+
+                    const len = std.mem.readInt(u16, &arr, .big);
+
+                    const bin = try allocator.alloc(u8, len);
+                    const bin_len = try self.read_fn(bin);
+
+                    if (bin_len != len) {
+                        return MsGPackError.LENGTH_READING;
+                    }
+
+                    return bin;
+                },
+                .BIN32 => {
+                    var arr: [4]u8 = std.mem.zeroes([4]u8);
+                    const bin_len_len = try self.read_fn(&arr);
+
+                    if (bin_len_len != arr.len) {
+                        return MsGPackError.LENGTH_READING;
+                    }
+
+                    const len = std.mem.readInt(u32, &arr, .big);
+
+                    const bin = try allocator.alloc(u8, len);
+                    const bin_len = try self.read_fn(bin);
+
+                    if (bin_len != len) {
+                        return MsGPackError.LENGTH_READING;
+                    }
+
+                    return bin;
+                },
+                else => return MsGPackError.TYPE_MARKER_READING,
             }
         }
     };
