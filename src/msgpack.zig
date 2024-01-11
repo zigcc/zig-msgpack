@@ -74,6 +74,12 @@ pub fn MsgPack(
 
         pub const Error = ErrorSet;
 
+        pub fn init(context: Context) Self {
+            return Self{
+                .context = context,
+            };
+        }
+
         fn write_fn(self: Self, bytes: []const u8) ErrorSet!usize {
             return writeFn(self.context, bytes);
         }
@@ -208,8 +214,9 @@ pub fn MsgPack(
                 try self.write_u16(@intCast(val));
             } else if (val <= 0xffffffff) {
                 try self.write_u32(@intCast(val));
+            } else {
+                try self.write_u64(val);
             }
-            try self.write_u64(val);
         }
 
         pub fn write_int(self: Self, val: i64) !void {
@@ -223,9 +230,9 @@ pub fn MsgPack(
                 try self.write_i16(@intCast(val));
             } else if (val >= -2147483648) {
                 try self.write_i32(@intCast(val));
+            } else {
+                try self.write_i64(val);
             }
-
-            try self.write_i64(val);
         }
 
         pub fn write_f32(self: Self, val: f32) !void {
@@ -252,7 +259,7 @@ pub fn MsgPack(
 
         // read
 
-        fn read_fn(self: Self, bytes: []const u8) ErrorSet!usize {
+        fn read_fn(self: Self, bytes: []u8) ErrorSet!usize {
             return readFn(self.context, bytes);
         }
 
