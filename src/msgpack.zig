@@ -228,6 +228,28 @@ pub fn MsgPack(
             try self.write_i64(val);
         }
 
+        pub fn write_f32(self: Self, val: f32) !void {
+            try self.write_type_marker(.FLOAT32);
+            const int: u32 = @bitCast(val);
+            var arr: [4]u8 = std.mem.zeroes([4]u8);
+            std.mem.writeInt(u32, &arr, int, .big);
+            const len = try self.write_fn(&arr);
+            if (len != 4) {
+                return MsGPackError.LENGTH_WRITING;
+            }
+        }
+
+        pub fn write_f64(self: Self, val: f64) !void {
+            try self.write_type_marker(.FLOAT64);
+            const int: u64 = @bitCast(val);
+            var arr: [8]u8 = std.mem.zeroes([8]u8);
+            std.mem.writeInt(u64, &arr, int, .big);
+            const len = try self.write_fn(&arr);
+            if (len != 8) {
+                return MsGPackError.LENGTH_WRITING;
+            }
+        }
+
         // read
 
         fn read_fn(self: Self, bytes: []const u8) ErrorSet!usize {
@@ -549,7 +571,7 @@ pub fn MsgPack(
             }
         }
 
-        pub fn read_32(self: Self) !u32 {
+        pub fn read_u32(self: Self) !u32 {
             const marker_u8 = try self.read_type_marker_u8();
             const marker = try self.marker_u8_to(marker_u8);
             switch (marker) {
@@ -695,6 +717,49 @@ pub fn MsgPack(
                         return @intCast(val);
                     }
                     return MsGPackError.INVALID_TYPE;
+                },
+                else => return MsGPackError.TYPE_MARKER_READING,
+            }
+        }
+
+        pub fn read_f32(self: Self) !f32 {
+            const marker = try self.read_type_marker();
+            switch (marker) {
+                .FLOAT32 => {
+                    var buffer: [4]u8 = std.mem.zeroes([4]u8);
+                    const len = try self.read_fn(&buffer);
+                    if (len != 4) {
+                        return MsGPackError.LENGTH_READING;
+                    }
+                    const val_int = std.mem.readInt(u32, &buffer, .big);
+                    const val: f32 = @bitCast(val_int);
+                    return val;
+                },
+                else => return MsGPackError.TYPE_MARKER_READING,
+            }
+        }
+        pub fn read_f64(self: Self) !f64 {
+            const marker = try self.read_type_marker();
+            switch (marker) {
+                .FLOAT32 => {
+                    var buffer: [4]u8 = std.mem.zeroes([4]u8);
+                    const len = try self.read_fn(&buffer);
+                    if (len != 4) {
+                        return MsGPackError.LENGTH_READING;
+                    }
+                    const val_int = std.mem.readInt(u32, &buffer, .big);
+                    const val: f32 = @bitCast(val_int);
+                    return val;
+                },
+                .FLOAT64 => {
+                    var buffer: [8]u8 = std.mem.zeroes([4]u8);
+                    const len = try self.read_fn(&buffer);
+                    if (len != 8) {
+                        return MsGPackError.LENGTH_READING;
+                    }
+                    const val_int = std.mem.readInt(u64, &buffer, .big);
+                    const val: f64 = @bitCast(val_int);
+                    return val;
                 },
                 else => return MsGPackError.TYPE_MARKER_READING,
             }
