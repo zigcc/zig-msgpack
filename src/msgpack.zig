@@ -81,10 +81,12 @@ pub fn MsgPack(
             };
         }
 
+        // wrap for writeFn
         fn write_fn(self: Self, bytes: []const u8) ErrorSet!usize {
             return writeFn(self.context, bytes);
         }
 
+        // write one byte
         fn write_byte(self: Self, byte: u8) !void {
             const bytes = [_]u8{byte};
             const len = try self.write_fn(&bytes);
@@ -93,6 +95,7 @@ pub fn MsgPack(
             }
         }
 
+        // write type marker
         fn write_type_marker(self: Self, comptime marker: Markers) !void {
             switch (marker) {
                 .POSITIVE_FIXINT, .FIXMAP, .FixArray, .FIXSTR, .NEGATIVE_FIXINT => {
@@ -103,25 +106,31 @@ pub fn MsgPack(
             try self.write_byte(@intFromEnum(marker));
         }
 
+        // write nil
         pub fn write_nil(self: Self) !void {
             try self.write_type_marker(Markers.NIL);
         }
 
+        // write true
         fn write_true(self: Self) !void {
             try self.write_type_marker(Markers.TRUE);
         }
 
+        // write false
         fn write_false(self: Self) !void {
             try self.write_type_marker(Markers.FALSE);
         }
 
+        // write bool
         pub fn write_bool(self: Self, val: bool) !void {
             if (val) {
                 try self.write_true();
+            } else {
+                try self.write_false();
             }
-            try self.write_false();
         }
 
+        // write positive fix int
         fn write_pfix_int(self: Self, val: u8) !void {
             if (val <= 0x7f) {
                 try self.write_byte(val);
@@ -129,11 +138,13 @@ pub fn MsgPack(
             return MsGPackError.INPUT_VALUE_TOO_LARGE;
         }
 
+        // write u8 int
         fn write_u8(self: Self, val: u8) !void {
             try self.write_type_marker(.UINT8);
             try self.write_byte(val);
         }
 
+        // write u16 int
         fn write_u16(self: Self, val: u16) !void {
             try self.write_type_marker(.UINT16);
             var arr: [2]u8 = std.mem.zeroes([2]u8);
@@ -145,6 +156,7 @@ pub fn MsgPack(
             }
         }
 
+        // write u32 int
         fn write_u32(self: Self, val: u32) !void {
             try self.write_type_marker(.UINT32);
             var arr: [4]u8 = std.mem.zeroes([4]u8);
@@ -156,6 +168,7 @@ pub fn MsgPack(
             }
         }
 
+        // write u64 int
         fn write_u64(self: Self, val: u64) !void {
             try self.write_type_marker(.UINT64);
             var arr: [8]u8 = std.mem.zeroes([8]u8);
@@ -167,6 +180,7 @@ pub fn MsgPack(
             }
         }
 
+        // write negative fix int
         fn write_nfix_int(self: Self, val: i8) !void {
             if (val >= -32 and val <= -1) {
                 try self.write_byte(@bitCast(val));
@@ -174,11 +188,13 @@ pub fn MsgPack(
             return MsGPackError.INPUT_VALUE_TOO_LARGE;
         }
 
+        // write i8 int
         fn write_i8(self: Self, val: i8) !void {
             try self.write_type_marker(.INT8);
             try self.write_byte(@bitCast(val));
         }
 
+        // write i16 int
         fn write_i16(self: Self, val: i16) !void {
             try self.write_type_marker(.INT16);
             var arr: [2]u8 = std.mem.zeroes([2]u8);
@@ -190,6 +206,7 @@ pub fn MsgPack(
             }
         }
 
+        // write i32 int
         fn write_i32(self: Self, val: i32) !void {
             try self.write_type_marker(.INT32);
             var arr: [4]u8 = std.mem.zeroes([4]u8);
@@ -201,6 +218,7 @@ pub fn MsgPack(
             }
         }
 
+        // write i64 int
         fn write_i64(self: Self, val: i64) !void {
             try self.write_type_marker(.INT64);
             var arr: [8]u8 = std.mem.zeroes([8]u8);
@@ -212,6 +230,7 @@ pub fn MsgPack(
             }
         }
 
+        // write uint
         pub fn write_uint(self: Self, val: u64) !void {
             if (val <= 0x7f) {
                 try self.write_pfix_int(@intCast(val));
@@ -226,6 +245,7 @@ pub fn MsgPack(
             }
         }
 
+        // write int
         pub fn write_int(self: Self, val: i64) !void {
             if (val >= 0) {
                 try self.write_uint(@intCast(val));
@@ -242,6 +262,7 @@ pub fn MsgPack(
             }
         }
 
+        // write f32
         pub fn write_f32(self: Self, val: f32) !void {
             try self.write_type_marker(.FLOAT32);
             const int: u32 = @bitCast(val);
@@ -253,6 +274,7 @@ pub fn MsgPack(
             }
         }
 
+        // write f64
         pub fn write_f64(self: Self, val: f64) !void {
             try self.write_type_marker(.FLOAT64);
             const int: u64 = @bitCast(val);
@@ -264,6 +286,7 @@ pub fn MsgPack(
             }
         }
 
+        // write fix str
         fn write_fix_str(self: Self, str: []const u8) !void {
             const len = str.len;
             if (len > 0x1f) {
@@ -278,6 +301,7 @@ pub fn MsgPack(
             }
         }
 
+        // write str8
         fn write_str8(self: Self, str: []const u8) !void {
             const len = str.len;
             if (len > 0xff) {
@@ -495,6 +519,7 @@ pub fn MsgPack(
                     @compileError("type is not supported!");
                 },
                 // TODO: other type
+                // arrary optional pointer
             }
         }
 
@@ -510,6 +535,7 @@ pub fn MsgPack(
             const header: u8 = @intFromEnum(Markers.FixArray) + @as(u8, @intCast(arr_len));
             try self.write_byte(header);
 
+            // try to write arr value
             try self.write_arr_value(T, val);
         }
 
@@ -532,6 +558,7 @@ pub fn MsgPack(
                 return MsGPackError.LENGTH_WRITING;
             }
 
+            // try to write arr value
             try self.write_arr_value(T, val);
         }
 
@@ -543,6 +570,7 @@ pub fn MsgPack(
                 return MsGPackError.ARRAY_LENGTH_TOO_LONG;
             }
 
+            // try to write marker
             try self.write_type_marker(.ARRAY32);
 
             // try to write len
@@ -554,6 +582,7 @@ pub fn MsgPack(
                 return MsGPackError.LENGTH_WRITING;
             }
 
+            // try to write arr value
             try self.write_arr_value(T, val);
         }
 
@@ -628,6 +657,7 @@ pub fn MsgPack(
                         @compileError("type is not supported!");
                     },
                     // TODO: other type
+                    // arrary optional pointer
                 }
             }
         }
