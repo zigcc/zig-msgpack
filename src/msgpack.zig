@@ -3,6 +3,17 @@ const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 const native_endian = builtin.cpu.arch.endian();
 
+pub const strWrap = struct {
+    str: []const u8,
+};
+
+// this is for encode str in struct
+pub fn wrapStr(str: []const u8) strWrap {
+    return strWrap{
+        .str = str,
+    };
+}
+
 const Markers = enum(u8) {
     POSITIVE_FIXINT = 0x00,
     FIXMAP = 0x80,
@@ -19,7 +30,6 @@ const Markers = enum(u8) {
     EXT32 = 0xc9,
     FLOAT32 = 0xca,
     FLOAT64 = 0xcb,
-    DOUBLE = 0xcb,
     UINT8 = 0xcc,
     UINT16 = 0xcd,
     UINT32 = 0xce,
@@ -43,7 +53,7 @@ const Markers = enum(u8) {
     NEGATIVE_FIXINT = 0xe0,
 };
 
-const MsGPackError = error{
+pub const MsGPackError = error{
     STR_DATA_LENGTH_TOO_LONG,
     BIN_DATA_LENGTH_TOO_LONG,
     ARRAY_LENGTH_TOO_LONG,
@@ -65,11 +75,11 @@ const MsGPackError = error{
 pub fn MsgPack(
     comptime Context: type,
     comptime ErrorSet: type,
-    comptime writeFn: fn (context: Context, bytes: []const u8) ErrorSet!usize,
-    comptime readFn: fn (context: Context, bytes: []u8) ErrorSet!usize,
+    comptime writeFn: fn (context: *Context, bytes: []const u8) ErrorSet!usize,
+    comptime readFn: fn (context: *Context, arr: []u8) ErrorSet!usize,
 ) type {
     return struct {
-        context: Context,
+        context: *Context,
 
         const Self = @This();
 
@@ -134,8 +144,9 @@ pub fn MsgPack(
         fn write_pfix_int(self: Self, val: u8) !void {
             if (val <= 0x7f) {
                 try self.write_byte(val);
+            } else {
+                return MsGPackError.INPUT_VALUE_TOO_LARGE;
             }
-            return MsGPackError.INPUT_VALUE_TOO_LARGE;
         }
 
         // write u8 int
@@ -184,8 +195,9 @@ pub fn MsgPack(
         fn write_nfix_int(self: Self, val: i8) !void {
             if (val >= -32 and val <= -1) {
                 try self.write_byte(@bitCast(val));
+            } else {
+                return MsGPackError.INPUT_VALUE_TOO_LARGE;
             }
-            return MsGPackError.INPUT_VALUE_TOO_LARGE;
         }
 
         // write i8 int
@@ -292,7 +304,7 @@ pub fn MsgPack(
             if (len > 0x1f) {
                 return MsGPackError.STR_DATA_LENGTH_TOO_LONG;
             }
-            const header: u8 = @intFromEnum(Markers.FIXSTR) + len;
+            const header: u8 = @intFromEnum(Markers.FIXSTR) + @as(u8, @intCast(len));
             try self.write_byte(header);
 
             const write_len = try self.write_fn(str);
@@ -784,7 +796,13 @@ pub fn MsgPack(
 
         fn read_byte(self: Self) !u8 {
             var res = [1]u8{0};
-            try readFn(self.context, &res);
+            const len = try readFn(self.context, &res);
+
+            if (len != 1) {
+                return MsGPackError.LENGTH_READING;
+            }
+
+            return res[0];
         }
 
         fn read_type_marker_u8(self: Self) !u8 {
@@ -831,7 +849,7 @@ pub fn MsgPack(
             }
         }
 
-        pub fn read_i8(self: Self) !i8 {
+        fn read_i8(self: Self) !i8 {
             const marker_u8 = try self.read_type_marker_u8();
             const marker = try self.marker_u8_to(marker_u8);
             switch (marker) {
@@ -853,7 +871,7 @@ pub fn MsgPack(
             }
         }
 
-        pub fn read_i16(self: Self) !i16 {
+        fn read_i16(self: Self) !i16 {
             const marker_u8 = try self.read_type_marker_u8();
             const marker = try self.marker_u8_to(marker_u8);
             switch (marker) {
@@ -894,7 +912,7 @@ pub fn MsgPack(
             }
         }
 
-        pub fn read_i32(self: Self) !i32 {
+        fn read_i32(self: Self) !i32 {
             const marker_u8 = try self.read_type_marker_u8();
             const marker = try self.marker_u8_to(marker_u8);
             switch (marker) {
@@ -953,11 +971,11 @@ pub fn MsgPack(
             }
         }
 
-        pub fn read_i64(self: Self) !i64 {
+        fn read_i64(self: Self) !i64 {
             const marker_u8 = try self.read_type_marker_u8();
             const marker = try self.marker_u8_to(marker_u8);
             switch (marker) {
-                .INT8, .NEGATIVE_FIXINT, .POSITIVE_FIXINT => {
+                .NEGATIVE_FIXINT, .POSITIVE_FIXINT => {
                     const val: i8 = @bitCast(marker_u8);
                     return val;
                 },
@@ -987,7 +1005,7 @@ pub fn MsgPack(
                     const val = std.mem.readInt(u16, &buffer, .big);
                     return val;
                 },
-                .Int32 => {
+                .INT32 => {
                     var buffer: [4]u8 = std.mem.zeroes([4]u8);
                     const len = try self.read_fn(&buffer);
                     if (len != 4) {
@@ -1005,7 +1023,7 @@ pub fn MsgPack(
                     const val = std.mem.readInt(u32, &buffer, .big);
                     return val;
                 },
-                .Int64 => {
+                .INT64 => {
                     var buffer: [8]u8 = std.mem.zeroes([8]u8);
                     const len = try self.read_fn(&buffer);
                     if (len != 8) {
@@ -1030,7 +1048,7 @@ pub fn MsgPack(
             }
         }
 
-        pub fn read_u8(self: Self) !u8 {
+        fn read_u8(self: Self) !u8 {
             const marker_u8 = try self.read_type_marker_u8();
             const marker = try self.marker_u8_to(marker_u8);
             switch (marker) {
@@ -1053,7 +1071,7 @@ pub fn MsgPack(
             }
         }
 
-        pub fn read_u16(self: Self) !u16 {
+        fn read_u16(self: Self) !u16 {
             const marker_u8 = try self.read_type_marker_u8();
             const marker = try self.marker_u8_to(marker_u8);
             switch (marker) {
@@ -1097,7 +1115,7 @@ pub fn MsgPack(
             }
         }
 
-        pub fn read_u32(self: Self) !u32 {
+        fn read_u32(self: Self) !u32 {
             const marker_u8 = try self.read_type_marker_u8();
             const marker = try self.marker_u8_to(marker_u8);
             switch (marker) {
@@ -1162,7 +1180,7 @@ pub fn MsgPack(
             }
         }
 
-        pub fn read_u64(self: Self) !u64 {
+        fn read_u64(self: Self) !u64 {
             const marker_u8 = try self.read_type_marker_u8();
             const marker = try self.marker_u8_to(marker_u8);
             switch (marker) {
@@ -1248,7 +1266,15 @@ pub fn MsgPack(
             }
         }
 
-        pub fn read_f32(self: Self) !f32 {
+        pub fn read_int(self: Self) !i64 {
+            return self.read_i64();
+        }
+
+        pub fn read_uint(self: Self) !u64 {
+            return self.read_u64();
+        }
+
+        fn read_f32(self: Self) !f32 {
             const marker = try self.read_type_marker();
             switch (marker) {
                 .FLOAT32 => {
@@ -1264,7 +1290,8 @@ pub fn MsgPack(
                 else => return MsGPackError.TYPE_MARKER_READING,
             }
         }
-        pub fn read_f64(self: Self) !f64 {
+
+        fn read_f64(self: Self) !f64 {
             const marker = try self.read_type_marker();
             switch (marker) {
                 .FLOAT32 => {
@@ -1289,6 +1316,10 @@ pub fn MsgPack(
                 },
                 else => return MsGPackError.TYPE_MARKER_READING,
             }
+        }
+
+        pub fn read_float(self:Self) !f64 {
+            return self.read_f64();
         }
 
         pub fn read_str(self: Self, allocator: Allocator) ![]const u8 {
@@ -1483,10 +1514,10 @@ pub fn MsgPack(
                             @compileError("not support bits larger than 64");
                         }
                         if (is_signed) {
-                            const val = try self.read_i64();
+                            const val = try self.read_int();
                             arr[i] = @intCast(val);
                         } else {
-                            const val = try self.read_u64();
+                            const val = try self.read_uint();
                             arr[i] = @intCast(val);
                         }
                     },
@@ -1496,7 +1527,7 @@ pub fn MsgPack(
                             @compileError("float larger than f64 is not supported!");
                         }
 
-                        const val = try self.read_f64();
+                        const val = try self.read_float();
                         arr[i] = @floatCast(val);
                     },
                     .Struct => {
@@ -1574,10 +1605,10 @@ pub fn MsgPack(
                             @compileError("not support bits larger than 64");
                         }
                         if (is_signed) {
-                            const val = try self.read_i64();
+                            const val = try self.read_int();
                             @field(res, field_name) = @intCast(val);
                         } else {
-                            const val = try self.read_u64();
+                            const val = try self.read_uint();
                             @field(res, field_name) = @intCast(val);
                         }
                     },
@@ -1587,7 +1618,7 @@ pub fn MsgPack(
                             @compileError("float larger than f64 is not supported!");
                         }
 
-                        const val = try self.read_f64();
+                        const val = try self.read_float();
                         @field(res, field_name) = @floatCast(val);
                     },
                     .Struct => |ss| {
@@ -1609,3 +1640,60 @@ pub fn MsgPack(
         // TODO: add read_ext and read_timestamp
     };
 }
+
+pub const Buffer = struct {
+    arr: []u8,
+    write_index: usize = 0,
+    read_index: usize = 0,
+
+    pub const ErrorSet = error{
+        WRITE_LEFT_LENGTH,
+        READ_LEFT_LENGTH,
+    };
+
+    pub fn write(self: *Buffer, bytes: []const u8) ErrorSet!usize {
+        const index = self.write_index;
+        const arr_len = self.arr.len;
+        const left_len = arr_len - index;
+        const bytes_len = bytes.len;
+
+        if (left_len < bytes_len) {
+            return ErrorSet.WRITE_LEFT_LENGTH;
+        }
+
+        @memcpy(self.arr[index .. index + bytes_len], bytes);
+        self.write_index += bytes_len;
+        return bytes_len;
+    }
+
+    pub fn set_write_index(self: *Buffer, index: usize) void {
+        self.write_index = index;
+    }
+
+    pub fn get_write_index(self: *Buffer) usize {
+        return self.write_index;
+    }
+
+    pub fn read(self: *Buffer, bytes: []u8) ErrorSet!usize {
+        const index = self.read_index;
+        const arr_len = self.arr.len;
+        const left_len = arr_len - index;
+        const bytes_len = bytes.len;
+
+        if (left_len < bytes_len) {
+            return ErrorSet.READ_LEFT_LENGTH;
+        }
+
+        @memcpy(bytes, self.arr[index .. index + bytes_len]);
+        self.read_index += bytes_len;
+        return bytes_len;
+    }
+
+    pub fn set_read_index(self: *Buffer, index: usize) void {
+        self.read_index = index;
+    }
+
+    pub fn get_read_index(self: *Buffer) usize {
+        return self.read_index;
+    }
+};
