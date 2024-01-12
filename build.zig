@@ -5,7 +5,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     _ = b.addModule("msgpack", .{
-        .source_file = .{
+        .root_source_file = .{
             .path = "src/msgpack.zig",
         },
     });

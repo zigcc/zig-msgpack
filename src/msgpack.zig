@@ -23,8 +23,8 @@ const Markers = enum(u8) {
     FALSE = 0xc2,
     TRUE = 0xc3,
     BIN8 = 0xc4,
-    Bin16 = 0xc5,
-    Bin32 = 0xc6,
+    BIN16 = 0xc5,
+    BIN32 = 0xc6,
     EXT8 = 0xc7,
     EXT16 = 0xc8,
     EXT32 = 0xc9,
@@ -437,7 +437,7 @@ pub fn MsgPack(
                 return MsGPackError.BIN_DATA_LENGTH_TOO_LONG;
             }
 
-            try self.write_type_marker(.Bin16);
+            try self.write_type_marker(.BIN16);
 
             const bin_len: u16 = @intCast(len);
             var arr: [2]u8 = std.mem.zeroes([2]u8);
@@ -460,7 +460,7 @@ pub fn MsgPack(
                 return MsGPackError.BIN_DATA_LENGTH_TOO_LONG;
             }
 
-            try self.write_type_marker(.Bin32);
+            try self.write_type_marker(.BIN32);
 
             const bin_len: u32 = @intCast(len);
             var arr: [4]u8 = std.mem.zeroes([4]u8);

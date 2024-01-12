@@ -230,3 +230,40 @@ test "u32 str write and read" {
     defer allocator.free(val);
     try expect(std.mem.eql(u8, &test_val, val));
 }
+
+test "bin8 write and read" {
+    var arr: [0xffff]u8 = std.mem.zeroes([0xffff]u8);
+    var buf = Buffer{ .arr = &arr };
+    var p = packType{ .context = &buf };
+
+    const test_val = "This is a string that is more than 32 bytes long.";
+    try p.write_bin(test_val);
+    const val = try p.read_bin(allocator);
+    defer allocator.free(val);
+    try expect(std.mem.eql(u8, test_val, val));
+}
+
+test "bin16 write and read" {
+    var arr: [0xffff]u8 = std.mem.zeroes([0xffff]u8);
+    var buf = Buffer{ .arr = &arr };
+    var p = packType{ .context = &buf };
+
+    const test_val = "When the zig test tool is building a test runner, only resolved test declarations are included in the build. Initially, only the given Zig source file's top-level declarations are resolved. Unless nested containers are referenced from a top-level test declaration, nested container tests will not be resolved.";
+    try p.write_bin(test_val);
+    const val = try p.read_bin(allocator);
+    defer allocator.free(val);
+    try expect(std.mem.eql(u8, test_val, val));
+}
+
+test "bin32 write and read" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var buf = Buffer{ .arr = &arr };
+    const p = packType{ .context = &buf };
+
+    const default_str = "0123456789564562";
+    const test_val = @as([16:0]u8, default_str.*) ** (0xfff * 2);
+    try p.write_bin(&test_val);
+    const val = try p.read_bin(allocator);
+    defer allocator.free(val);
+    try expect(std.mem.eql(u8, &test_val, val));
+}
