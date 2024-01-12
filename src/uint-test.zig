@@ -156,3 +156,27 @@ test "i64 int write and read" {
 
     try expect(val == test_val);
 }
+
+test "f32 write and read" {
+    var arr: [0xffff]u8 = std.mem.zeroes([0xffff]u8);
+    var buf = Buffer{ .arr = &arr };
+    var p = packType{ .context = &buf };
+
+    const test_val: f32 = 3.14;
+    try p.write_float(test_val);
+    const val = try p.read_float();
+
+    try expect(val == test_val);
+}
+
+test "f64 write and read" {
+    var arr: [0xffff]u8 = std.mem.zeroes([0xffff]u8);
+    var buf = Buffer{ .arr = &arr };
+    var p = packType{ .context = &buf };
+
+    const test_val: f64 = 3.5e+38;
+    try p.write_float(test_val);
+    const val = try p.read_float();
+
+    try expect(val == test_val);
+}

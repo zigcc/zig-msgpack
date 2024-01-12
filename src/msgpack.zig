@@ -275,7 +275,7 @@ pub fn MsgPack(
         }
 
         // write f32
-        pub fn write_f32(self: Self, val: f32) !void {
+        fn write_f32(self: Self, val: f32) !void {
             try self.write_type_marker(.FLOAT32);
             const int: u32 = @bitCast(val);
             var arr: [4]u8 = std.mem.zeroes([4]u8);
@@ -287,7 +287,7 @@ pub fn MsgPack(
         }
 
         // write f64
-        pub fn write_f64(self: Self, val: f64) !void {
+        fn write_f64(self: Self, val: f64) !void {
             try self.write_type_marker(.FLOAT64);
             const int: u64 = @bitCast(val);
             var arr: [8]u8 = std.mem.zeroes([8]u8);
@@ -295,6 +295,18 @@ pub fn MsgPack(
             const len = try self.write_fn(&arr);
             if (len != 8) {
                 return MsGPackError.LENGTH_WRITING;
+            }
+        }
+
+        pub fn write_float(self: Self, val: f64) !void {
+            const tmp_val = if (val < 0) 0 - val else val;
+            const min_f32 = std.math.floatMin(f32);
+            const max_f32 = std.math.floatMax(f32);
+
+            if (tmp_val >= min_f32 and tmp_val <= max_f32) {
+                try self.write_f32(@floatCast(val));
+            } else {
+                try self.write_f64(val);
             }
         }
 
@@ -1305,7 +1317,7 @@ pub fn MsgPack(
                     return val;
                 },
                 .FLOAT64 => {
-                    var buffer: [8]u8 = std.mem.zeroes([4]u8);
+                    var buffer: [8]u8 = std.mem.zeroes([8]u8);
                     const len = try self.read_fn(&buffer);
                     if (len != 8) {
                         return MsGPackError.LENGTH_READING;
@@ -1318,7 +1330,7 @@ pub fn MsgPack(
             }
         }
 
-        pub fn read_float(self:Self) !f64 {
+        pub fn read_float(self: Self) !f64 {
             return self.read_f64();
         }
 
