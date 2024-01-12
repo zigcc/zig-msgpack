@@ -440,9 +440,122 @@ pub fn MsgPack(
             }
         }
 
-        fn write_fix_arr(self: Self, T: type, val: []T) !void {}
-        fn write_arr16(self: Self, T: type, val: []T) !void {}
-        fn write_arr32(self: Self, T: type, val: []T) !void {}
+        fn write_arr_value(self: Self, T: type, val: []T) !void {
+            const type_info = @typeInfo(T);
+            switch (type_info) {
+                .Null => {
+                    for (val) |_| {
+                        try self.write_nil();
+                    }
+                },
+                .Bool => {
+                    for (val) |value| {
+                        try self.write_bool(value);
+                    }
+                },
+                .Int => |int| {
+                    const int_bits = int.bits;
+                    const is_signed = if (int.signedness == .signed) true else false;
+                    if (int_bits > 64) {
+                        @compileError("not support bits larger than 64");
+                    }
+
+                    if (is_signed) {
+                        for (val) |value| {
+                            try self.write_int(@intCast(value));
+                        }
+                    } else {
+                        for (val) |value| {
+                            try self.write_uint(@intCast(value));
+                        }
+                    }
+                },
+                .Float => |float| {
+                    const float_bits = float.bits;
+                    if (float_bits > 64) {
+                        @compileError("float larger than f64 is not supported!");
+                    }
+
+                    if (float_bits <= 32) {
+                        for (val) |value| {
+                            try self.write_f32(value);
+                        }
+                    } else if (float_bits <= 64) {
+                        for (val) |value| {
+                            try self.write_f64(value);
+                        }
+                    }
+                },
+                .Struct => {
+                    for (val) |value| {
+                        try self.write_map(T, value);
+                    }
+                },
+                else => {
+                    @compileError("type is not supported!");
+                },
+                // TODO: other type
+            }
+        }
+
+        fn write_fix_arr(self: Self, T: type, val: []T) !void {
+            const arr_len = val.len;
+            const max_len = 0xf;
+
+            if (arr_len > max_len) {
+                return MsGPackError.ARRAY_LENGTH_TOO_LONG;
+            }
+
+            // write marker
+            const header: u8 = @intFromEnum(Markers.FixArray) + @as(u8, @intCast(arr_len));
+            try self.write_byte(header);
+
+            try self.write_arr_value(T, val);
+        }
+
+        fn write_arr16(self: Self, T: type, val: []T) !void {
+            const arr_len = val.len;
+            const max_len = 0xffff;
+
+            if (arr_len > max_len) {
+                return MsGPackError.ARRAY_LENGTH_TOO_LONG;
+            }
+
+            try self.write_type_marker(.ARRAY16);
+
+            // try to write len
+            var arr: [2]u8 = std.mem.zeroes([2]u8);
+            std.mem.writeInt(u16, &arr, @intCast(arr_len), .big);
+
+            const write_len = try self.write_fn(&arr);
+            if (write_len != arr.len) {
+                return MsGPackError.LENGTH_WRITING;
+            }
+
+            try self.write_arr_value(T, val);
+        }
+
+        fn write_arr32(self: Self, T: type, val: []T) !void {
+            const arr_len = val.len;
+            const max_len = 0xffff_ffff;
+
+            if (arr_len > max_len) {
+                return MsGPackError.ARRAY_LENGTH_TOO_LONG;
+            }
+
+            try self.write_type_marker(.ARRAY32);
+
+            // try to write len
+            var arr: [4]u8 = std.mem.zeroes([4]u8);
+            std.mem.writeInt(u32, &arr, @intCast(arr_len), .big);
+
+            const write_len = try self.write_fn(&arr);
+            if (write_len != arr.len) {
+                return MsGPackError.LENGTH_WRITING;
+            }
+
+            try self.write_arr_value(T, val);
+        }
 
         pub fn write_arr(self: Self, T: type, val: []T) !void {
             const len = val.len;
@@ -455,20 +568,16 @@ pub fn MsgPack(
             }
         }
 
-        fn write_fixmap(self: Self, T: type, val: T) !void {
+        fn write_map_value(self: Self, T: type, val: T, len: usize) !void {
             const type_info = @typeInfo(T);
             if (type_info != .Struct or type_info.Struct.is_tuple) {
                 @compileError("now only support struct");
             }
 
             const fields_len = type_info.Struct.fields.len;
-            if (fields_len > 0xff) {
-                @compileError("too many keys for map");
+            if (fields_len > len) {
+                return MsGPackError.MAP_LENGTH_TOO_LONG;
             }
-
-            // write marker
-            const header: u8 = @intFromEnum(Markers.FIXMAP) + @as(u8, @intCast(fields_len));
-            try self.write_byte(header);
 
             inline for (type_info.Struct.fields) |field| {
                 const field_name = field.name;
@@ -522,23 +631,118 @@ pub fn MsgPack(
                 }
             }
         }
-        fn write_map16(self: Self, T: type, val: T) !void {}
 
-        fn write_map32(self: Self, T: type, val: T) !void {}
+        fn write_fixmap(self: Self, T: type, val: T) !void {
+            const type_info = @typeInfo(T);
+            if (type_info != .Struct or type_info.Struct.is_tuple) {
+                @compileError("now only support struct");
+            }
 
-        pub fn write_map(self: Self, T: type, val: T) !void {}
+            const max_len = 0xf;
 
-        fn write_fix_ext1(self: Self, type: u8, val: []const u8) !void {}
-        fn write_fix_ext2(self: Self, type: u8, val: []const u8) !void {}
-        fn write_fix_ext4(self: Self, type: u8, val: []const u8) !void {}
-        fn write_fix_ext8(self: Self, type: u8, val: []const u8) !void {}
-        fn write_fix_ext16(self: Self, type: u8, val: []const u8) !void {}
+            const fields_len = type_info.Struct.fields.len;
+            if (fields_len > max_len) {
+                return MsGPackError.MAP_LENGTH_TOO_LONG;
+            }
 
-        fn write_ext8(self: Self, type: u8, val: []const u8) !void {}
-        fn write_ext16(self: Self, type: u8, val: []const u8) !void {}
-        fn write_ext17(self: Self, type: u8, val: []const u8) !void {}
+            // write marker
+            const header: u8 = @intFromEnum(Markers.FIXMAP) + @as(u8, @intCast(fields_len));
+            try self.write_byte(header);
 
-        pub fn write_ext(self: Self, type: u8, val: []const u8) !void {}
+            // try to write map value
+            try self.write_map_value(T, val, max_len);
+        }
+
+        fn write_map16(self: Self, T: type, val: T) !void {
+            const type_info = @typeInfo(T);
+            if (type_info != .Struct or type_info.Struct.is_tuple) {
+                @compileError("now only support struct");
+            }
+
+            const max_len = 0xffff;
+
+            const fields_len = type_info.Struct.fields.len;
+            if (fields_len > max_len) {
+                return MsGPackError.MAP_LENGTH_TOO_LONG;
+            }
+
+            // try to write marker
+            try self.write_type_marker(.MAP16);
+
+            // try to write len
+            const map_len = fields_len * 2;
+            var arr: [2]u8 = std.mem.zeroes([2]u8);
+            std.mem.writeInt(u16, &arr, @intCast(map_len), .big);
+
+            const write_len = try self.write_fn(&arr);
+            if (write_len != arr.len) {
+                return MsGPackError.LENGTH_WRITING;
+            }
+
+            // try to write map value
+            try self.write_map_value(T, val, max_len);
+        }
+
+        fn write_map32(self: Self, T: type, val: T) !void {
+            const type_info = @typeInfo(T);
+            if (type_info != .Struct or type_info.Struct.is_tuple) {
+                @compileError("now only support struct");
+            }
+
+            const max_len = 0xffff_ffff;
+
+            const fields_len = type_info.Struct.fields.len;
+            if (fields_len > max_len) {
+                return MsGPackError.MAP_LENGTH_TOO_LONG;
+            }
+
+            // try to write marker
+            try self.write_type_marker(.MAP32);
+
+            // try to write len
+            const map_len = fields_len * 2;
+            var arr: [4]u8 = std.mem.zeroes([4]u8);
+            std.mem.writeInt(u32, &arr, @intCast(map_len), .big);
+
+            const write_len = try self.write_fn(&arr);
+            if (write_len != arr.len) {
+                return MsGPackError.LENGTH_WRITING;
+            }
+
+            // try to write map value
+            try self.write_map_value(T, val, max_len);
+        }
+
+        pub fn write_map(self: Self, T: type, val: T) !void {
+            const type_info = @typeInfo(T);
+            if (type_info != .Struct or type_info.Struct.is_tuple) {
+                @compileError("now only support struct");
+            }
+
+            const fields_len = type_info.Struct.fields.len;
+
+            if (fields_len <= 0xf) {
+                try self.write_fixmap(T, val);
+            } else if (fields_len <= 0xffff) {
+                try self.write_map16(T, val);
+            } else if (fields_len <= 0xffff_ffff) {
+                try self.write_map32(T, val);
+            } else {
+                @compileError("too many keys for map");
+            }
+        }
+
+        // fn write_fix_ext1(self: Self, type: u8, val: []const u8) !void {}
+        // fn write_fix_ext2(self: Self, type: u8, val: []const u8) !void {}
+        // fn write_fix_ext4(self: Self, type: u8, val: []const u8) !void {}
+        // fn write_fix_ext8(self: Self, type: u8, val: []const u8) !void {}
+        // fn write_fix_ext16(self: Self, type: u8, val: []const u8) !void {}
+        //
+        // fn write_ext8(self: Self, type: u8, val: []const u8) !void {}
+        // fn write_ext16(self: Self, type: u8, val: []const u8) !void {}
+        // fn write_ext17(self: Self, type: u8, val: []const u8) !void {}
+        //
+        // pub fn write_ext(self: Self, type: u8, val: []const u8) !void {}
 
         // TODO: add timestamp
 
@@ -1134,6 +1338,7 @@ pub fn MsgPack(
                 else => return MsGPackError.TYPE_MARKER_READING,
             }
         }
+
         pub fn read_bin(self: Self, allocator: Allocator) ![]const u8 {
             const marker = try self.read_type_marker();
 
@@ -1199,9 +1404,177 @@ pub fn MsgPack(
             }
         }
 
-        pub fn read_arr(self: Self, allocator: Allocator, T: type) ![]T {}
+        pub fn read_arr(self: Self, allocator: Allocator, T: type) ![]T {
+            const marker_u8 = try self.read_type_marker_u8();
+            const marker = try self.marker_u8_to(marker_u8);
+            var len: usize = 0;
+            switch (marker) {
+                .FIXMAP => {
+                    len = marker_u8 - 0x90;
+                },
+                .MAP16 => {
+                    var arr: [2]u8 = std.mem.zeroes([2]u8);
+                    const map_len_len = try self.read_fn(&arr);
 
-        pub fn read_map(self: Self, allocator: Allocator, T: type) !T {}
+                    if (map_len_len != arr.len) {
+                        return MsGPackError.LENGTH_READING;
+                    }
+
+                    len = std.mem.readInt(u16, &arr, .big);
+                },
+                .MAP32 => {
+                    var arr: [4]u8 = std.mem.zeroes([4]u8);
+                    const map_len_len = try self.read_fn(&arr);
+
+                    if (map_len_len != arr.len) {
+                        return MsGPackError.LENGTH_READING;
+                    }
+
+                    len = std.mem.readInt(u32, &arr, .big);
+                },
+                else => {
+                    return MsGPackError.INVALID_TYPE;
+                },
+            }
+
+            const arr = try allocator.alloc(T, len);
+            for (0..arr.len) |i| {
+                const type_info = @typeInfo(T);
+                switch (type_info) {
+                    .Bool => {
+                        arr[i] = try self.read_bool();
+                    },
+
+                    .Int => |int| {
+                        const int_bits = int.bits;
+                        const is_signed = if (int.signedness == .signed) true else false;
+
+                        if (int_bits > 64) {
+                            @compileError("not support bits larger than 64");
+                        }
+                        if (is_signed) {
+                            const val = try self.read_i64();
+                            arr[i] = @intCast(val);
+                        } else {
+                            const val = try self.read_u64();
+                            arr[i] = @intCast(val);
+                        }
+                    },
+                    .Float => |float| {
+                        const float_bits = float.bits;
+                        if (float_bits > 64) {
+                            @compileError("float larger than f64 is not supported!");
+                        }
+
+                        const val = try self.read_f64();
+                        arr[i] = @floatCast(val);
+                    },
+                    .Struct => {
+                        arr[i] = try self.read_map(T);
+                    },
+
+                    else => {
+                        @compileError("not support other type");
+                    },
+                }
+            }
+        }
+
+        pub fn read_map(self: Self, T: type) !T {
+            const marker_u8 = try self.read_type_marker_u8();
+            const marker = try self.marker_u8_to(marker_u8);
+            var len: usize = 0;
+            const type_info = @typeInfo(T);
+            if (type_info != .Struct) {
+                @compileError("read map not support other type");
+            }
+            const struct_info = type_info.Struct;
+
+            switch (marker) {
+                .FIXMAP => {
+                    len = marker_u8 - 0x80;
+                },
+                .MAP16 => {
+                    var arr: [2]u8 = std.mem.zeroes([2]u8);
+                    const map_len_len = try self.read_fn(&arr);
+
+                    if (map_len_len != arr.len) {
+                        return MsGPackError.LENGTH_READING;
+                    }
+
+                    len = std.mem.readInt(u16, &arr, .big);
+                },
+                .MAP32 => {
+                    var arr: [4]u8 = std.mem.zeroes([4]u8);
+                    const map_len_len = try self.read_fn(&arr);
+
+                    if (map_len_len != arr.len) {
+                        return MsGPackError.LENGTH_READING;
+                    }
+
+                    len = std.mem.readInt(u32, &arr, .big);
+                },
+                else => {
+                    return MsGPackError.INVALID_TYPE;
+                },
+            }
+
+            const map_len = len / 2;
+            if (map_len != struct_info.fields.len) {
+                return MsGPackError.LENGTH_READING;
+            }
+            var res: T = undefined;
+            for (struct_info.fields) |field| {
+                const field_type = field.type;
+                const field_type_info = @typeInfo(field_type);
+                const field_name = field.name;
+                switch (field_type_info) {
+                    .Null => {
+                        @field(res, field_name) = null;
+                    },
+                    .Bool => {
+                        const val = try self.read_bool();
+                        @field(res, field_name) = val;
+                    },
+                    .Int => |int| {
+                        const int_bits = int.bits;
+                        const is_signed = if (int.signedness == .signed) true else false;
+
+                        if (int_bits > 64) {
+                            @compileError("not support bits larger than 64");
+                        }
+                        if (is_signed) {
+                            const val = try self.read_i64();
+                            @field(res, field_name) = @intCast(val);
+                        } else {
+                            const val = try self.read_u64();
+                            @field(res, field_name) = @intCast(val);
+                        }
+                    },
+                    .Float => |float| {
+                        const float_bits = float.bits;
+                        if (float_bits > 64) {
+                            @compileError("float larger than f64 is not supported!");
+                        }
+
+                        const val = try self.read_f64();
+                        @field(res, field_name) = @floatCast(val);
+                    },
+                    .Struct => |ss| {
+                        if (ss.is_tuple) {
+                            @compileError("not support tuple");
+                        }
+                        const val = try self.read_map(field_type);
+                        @field(res, field_name) = val;
+                    },
+                    else => {
+                        @compileError("type is not supported!");
+                    },
+                }
+            }
+
+            return res;
+        }
 
         // TODO: add read_ext and read_timestamp
     };
