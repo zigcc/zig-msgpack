@@ -689,6 +689,8 @@ pub fn MsgPack(
                     .Struct => {
                         if (field_type == Str) {
                             try self.write_str(@as(Str, field_value).value());
+                        } else if (field_type == Bin) {
+                            try self.write_bin(@as(Bin, field_value).value());
                         } else {
                             try self.write_map(field_type, field_value);
                         }
@@ -1428,7 +1430,7 @@ pub fn MsgPack(
             }
         }
 
-        pub fn read_bin(self: Self, allocator: Allocator) ![]const u8 {
+        pub fn read_bin(self: Self, allocator: Allocator) ![]u8 {
             const marker = try self.read_type_marker();
 
             switch (marker) {
@@ -1660,6 +1662,9 @@ pub fn MsgPack(
                                 if (field_type == Str) {
                                     const str = try self.read_str(allocator);
                                     @field(res, field_name) = wrapStr(str);
+                                } else if (field_type == Bin) {
+                                    const bin = try self.read_bin(allocator);
+                                    @field(res, field_name) = wrapBin(bin);
                                 } else {
                                     const val = try self.read_map(field_type, allocator);
                                     @field(res, field_name) = val;

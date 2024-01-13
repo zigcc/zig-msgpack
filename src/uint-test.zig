@@ -275,18 +275,26 @@ test "map write and read" {
 
     const other_type = struct { kk: i8 };
 
-    const test_type = struct { id: u8, bo: bool, float: f32, str: msgpack.Str, ss: other_type };
+    const test_type = struct { id: u8, bo: bool, float: f32, str: msgpack.Str, bin: msgpack.Bin, ss: other_type };
     const str = "hello";
+    var bin = [5]u8{ 1, 2, 3, 4, 5 };
 
-    const test_val = test_type{ .id = 16, .bo = true, .float = 3.14, .str = .{
-        .str = str,
-    }, .ss = .{ .kk = -5 } };
+    const test_val = test_type{
+        .id = 16,
+        .bo = true,
+        .float = 3.14,
+        .str = msgpack.wrapStr(str),
+        .bin = msgpack.wrapBin(&bin),
+        .ss = .{ .kk = -5 },
+    };
 
     try p.write_map(test_type, test_val);
     const val = try p.read_map(test_type, allocator);
     defer allocator.free(val.str.value());
+    defer allocator.free(val.bin.value());
     try expect(std.meta.eql(val.ss, test_val.ss));
     try expect(std.mem.eql(u8, val.str.value(), test_val.str.value()));
+    try expect(std.mem.eql(u8, val.bin.value(), test_val.bin.value()));
     try expect(val.id == test_val.id);
     try expect(val.bo == test_val.bo);
     try expect(val.float == test_val.float);
