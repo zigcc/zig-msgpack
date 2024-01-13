@@ -621,7 +621,7 @@ pub fn MsgPack(
             }
         }
 
-        fn write_map_value(self: Self, T: type, val: T, len: usize) !void {
+        fn write_map_value(self: Self, comptime T: type, val: T, len: usize) !void {
             const type_info = @typeInfo(T);
             if (type_info != .Struct or type_info.Struct.is_tuple) {
                 @compileError("now only support struct");
@@ -686,7 +686,7 @@ pub fn MsgPack(
             }
         }
 
-        fn write_fixmap(self: Self, T: type, val: T) !void {
+        fn write_fixmap(self: Self, comptime T: type, val: T) !void {
             const type_info = @typeInfo(T);
             if (type_info != .Struct or type_info.Struct.is_tuple) {
                 @compileError("now only support struct");
@@ -707,7 +707,7 @@ pub fn MsgPack(
             try self.write_map_value(T, val, max_len);
         }
 
-        fn write_map16(self: Self, T: type, val: T) !void {
+        fn write_map16(self: Self, comptime T: type, val: T) !void {
             const type_info = @typeInfo(T);
             if (type_info != .Struct or type_info.Struct.is_tuple) {
                 @compileError("now only support struct");
@@ -737,7 +737,7 @@ pub fn MsgPack(
             try self.write_map_value(T, val, max_len);
         }
 
-        fn write_map32(self: Self, T: type, val: T) !void {
+        fn write_map32(self: Self, comptime T: type, val: T) !void {
             const type_info = @typeInfo(T);
             if (type_info != .Struct or type_info.Struct.is_tuple) {
                 @compileError("now only support struct");
@@ -767,7 +767,7 @@ pub fn MsgPack(
             try self.write_map_value(T, val, max_len);
         }
 
-        pub fn write_map(self: Self, T: type, val: T) !void {
+        pub fn write_map(self: Self, comptime T: type, val: T) !void {
             const type_info = @typeInfo(T);
             if (type_info != .Struct or type_info.Struct.is_tuple) {
                 @compileError("now only support struct");
@@ -1553,7 +1553,7 @@ pub fn MsgPack(
             }
         }
 
-        pub fn read_map(self: Self, T: type) !T {
+        pub fn read_map(self: Self, comptime T: type, allocator: Allocator) !T {
             const marker_u8 = try self.read_type_marker_u8();
             const marker = try self.marker_u8_to(marker_u8);
             var len: usize = 0;
@@ -1565,7 +1565,7 @@ pub fn MsgPack(
 
             switch (marker) {
                 .FIXMAP => {
-                    len = marker_u8 - 0x80;
+                    len = marker_u8 - @intFromEnum(Markers.FIXMAP);
                 },
                 .MAP16 => {
                     var arr: [2]u8 = std.mem.zeroes([2]u8);
@@ -1592,57 +1592,62 @@ pub fn MsgPack(
                 },
             }
 
-            const map_len = len / 2;
+            const map_len = len;
             if (map_len != struct_info.fields.len) {
                 return MsGPackError.LENGTH_READING;
             }
+
             var res: T = undefined;
-            for (struct_info.fields) |field| {
-                const field_type = field.type;
-                const field_type_info = @typeInfo(field_type);
-                const field_name = field.name;
-                switch (field_type_info) {
-                    .Null => {
-                        @field(res, field_name) = null;
-                    },
-                    .Bool => {
-                        const val = try self.read_bool();
-                        @field(res, field_name) = val;
-                    },
-                    .Int => |int| {
-                        const int_bits = int.bits;
-                        const is_signed = if (int.signedness == .signed) true else false;
 
-                        if (int_bits > 64) {
-                            @compileError("not support bits larger than 64");
-                        }
-                        if (is_signed) {
-                            const val = try self.read_int();
-                            @field(res, field_name) = @intCast(val);
-                        } else {
-                            const val = try self.read_uint();
-                            @field(res, field_name) = @intCast(val);
-                        }
-                    },
-                    .Float => |float| {
-                        const float_bits = float.bits;
-                        if (float_bits > 64) {
-                            @compileError("float larger than f64 is not supported!");
-                        }
+            for (0..map_len) |_| {
+                const key = try self.read_str(allocator);
+                defer allocator.free(key);
+                inline for (struct_info.fields) |field| {
+                    const field_name = field.name;
+                    if (field_name.len == key.len and std.mem.eql(u8, field_name, key)) {
+                        const field_type = field.type;
+                        const field_type_info = @typeInfo(field_type);
+                        switch (field_type_info) {
+                            .Bool => {
+                                const val = try self.read_bool();
+                                @field(res, field_name) = val;
+                            },
+                            .Int => |int| {
+                                const int_bits = int.bits;
+                                const is_signed = if (int.signedness == .signed) true else false;
 
-                        const val = try self.read_float();
-                        @field(res, field_name) = @floatCast(val);
-                    },
-                    .Struct => |ss| {
-                        if (ss.is_tuple) {
-                            @compileError("not support tuple");
+                                if (int_bits > 64) {
+                                    @compileError("not support bits larger than 64");
+                                }
+                                if (is_signed) {
+                                    const val = try self.read_int();
+                                    @field(res, field_name) = @intCast(val);
+                                } else {
+                                    const val = try self.read_uint();
+                                    @field(res, field_name) = @intCast(val);
+                                }
+                            },
+                            .Float => |float| {
+                                const float_bits = float.bits;
+                                if (float_bits > 64) {
+                                    @compileError("float larger than f64 is not supported!");
+                                }
+
+                                const val = try self.read_float();
+                                @field(res, field_name) = @floatCast(val);
+                            },
+                            .Struct => |ss| {
+                                if (ss.is_tuple) {
+                                    @compileError("not support tuple");
+                                }
+                                const val = try self.read_map(field_type, allocator);
+                                @field(res, field_name) = val;
+                            },
+                            else => {
+                                @compileError("type is not supported!");
+                            },
                         }
-                        const val = try self.read_map(field_type);
-                        @field(res, field_name) = val;
-                    },
-                    else => {
-                        @compileError("type is not supported!");
-                    },
+                    }
                 }
             }
 
