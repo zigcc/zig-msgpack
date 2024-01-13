@@ -272,6 +272,7 @@ test "map write and read" {
     var arr: [0xffff]u8 = std.mem.zeroes([0xffff]u8);
     var buf = Buffer{ .arr = &arr };
     var p = packType{ .context = &buf };
+
     const other_type = struct { kk: i8 };
 
     const test_type = struct { id: u8, bo: bool, float: f32, ss: other_type };
@@ -281,4 +282,17 @@ test "map write and read" {
     try p.write_map(test_type, test_val);
     const val = try p.read_map(test_type, allocator);
     try expect(std.meta.eql(val, test_val));
+}
+
+test "arrary write and read" {
+    var arr: [0xffff]u8 = std.mem.zeroes([0xffff]u8);
+    var buf = Buffer{ .arr = &arr };
+    var p = packType{ .context = &buf };
+
+    const test_val = [5]u8{ 1, 2, 3, 4, 5 };
+
+    try p.write_arr(u8, &test_val);
+    const val = try p.read_arr(allocator, u8);
+    defer allocator.free(val);
+    try expect(std.mem.eql(u8, &test_val, val));
 }

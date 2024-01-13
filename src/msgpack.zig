@@ -17,7 +17,7 @@ pub fn wrapStr(str: []const u8) strWrap {
 const Markers = enum(u8) {
     POSITIVE_FIXINT = 0x00,
     FIXMAP = 0x80,
-    FixArray = 0x90,
+    FIXARRAY = 0x90,
     FIXSTR = 0xa0,
     NIL = 0xc0,
     FALSE = 0xc2,
@@ -108,7 +108,7 @@ pub fn MsgPack(
         // write type marker
         fn write_type_marker(self: Self, comptime marker: Markers) !void {
             switch (marker) {
-                .POSITIVE_FIXINT, .FIXMAP, .FixArray, .FIXSTR, .NEGATIVE_FIXINT => {
+                .POSITIVE_FIXINT, .FIXMAP, .FIXARRAY, .FIXSTR, .NEGATIVE_FIXINT => {
                     @compileError("wrong marker was used");
                 },
                 else => {},
@@ -488,7 +488,7 @@ pub fn MsgPack(
             }
         }
 
-        fn write_arr_value(self: Self, T: type, val: []T) !void {
+        fn write_arr_value(self: Self, comptime T: type, val: []const T) !void {
             const type_info = @typeInfo(T);
             switch (type_info) {
                 .Null => {
@@ -547,7 +547,7 @@ pub fn MsgPack(
             }
         }
 
-        fn write_fix_arr(self: Self, T: type, val: []T) !void {
+        fn write_fix_arr(self: Self, comptime T: type, val: []const T) !void {
             const arr_len = val.len;
             const max_len = 0xf;
 
@@ -556,14 +556,14 @@ pub fn MsgPack(
             }
 
             // write marker
-            const header: u8 = @intFromEnum(Markers.FixArray) + @as(u8, @intCast(arr_len));
+            const header: u8 = @intFromEnum(Markers.FIXARRAY) + @as(u8, @intCast(arr_len));
             try self.write_byte(header);
 
             // try to write arr value
             try self.write_arr_value(T, val);
         }
 
-        fn write_arr16(self: Self, T: type, val: []T) !void {
+        fn write_arr16(self: Self, comptime T: type, val: []const T) !void {
             const arr_len = val.len;
             const max_len = 0xffff;
 
@@ -586,7 +586,7 @@ pub fn MsgPack(
             try self.write_arr_value(T, val);
         }
 
-        fn write_arr32(self: Self, T: type, val: []T) !void {
+        fn write_arr32(self: Self, comptime T: type, val: []const T) !void {
             const arr_len = val.len;
             const max_len = 0xffff_ffff;
 
@@ -610,7 +610,7 @@ pub fn MsgPack(
             try self.write_arr_value(T, val);
         }
 
-        pub fn write_arr(self: Self, T: type, val: []T) !void {
+        pub fn write_arr(self: Self, comptime T: type, val: []const T) !void {
             const len = val.len;
             if (len <= 0xf) {
                 try self.write_fix_arr(T, val);
@@ -1477,15 +1477,15 @@ pub fn MsgPack(
             }
         }
 
-        pub fn read_arr(self: Self, allocator: Allocator, T: type) ![]T {
+        pub fn read_arr(self: Self, allocator: Allocator, comptime T: type) ![]T {
             const marker_u8 = try self.read_type_marker_u8();
             const marker = try self.marker_u8_to(marker_u8);
             var len: usize = 0;
             switch (marker) {
-                .FIXMAP => {
+                .FIXARRAY => {
                     len = marker_u8 - 0x90;
                 },
-                .MAP16 => {
+                .ARRAY16 => {
                     var arr: [2]u8 = std.mem.zeroes([2]u8);
                     const map_len_len = try self.read_fn(&arr);
 
@@ -1495,7 +1495,7 @@ pub fn MsgPack(
 
                     len = std.mem.readInt(u16, &arr, .big);
                 },
-                .MAP32 => {
+                .ARRAY32 => {
                     var arr: [4]u8 = std.mem.zeroes([4]u8);
                     const map_len_len = try self.read_fn(&arr);
 
@@ -1551,6 +1551,7 @@ pub fn MsgPack(
                     },
                 }
             }
+            return arr;
         }
 
         pub fn read_map(self: Self, comptime T: type, allocator: Allocator) !T {
