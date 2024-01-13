@@ -3,15 +3,27 @@ const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 const native_endian = builtin.cpu.arch.endian();
 
-pub const strWrap = struct {
+pub const Str = struct {
     str: []const u8,
+    pub fn value(self: Str) []const u8 {
+        return self.str;
+    }
 };
 
 // this is for encode str in struct
-pub fn wrapStr(str: []const u8) strWrap {
-    return strWrap{
-        .str = str,
-    };
+pub fn wrapStr(str: []const u8) Str {
+    return Str{ .str = str };
+}
+
+pub const Bin = struct {
+    bin: []u8,
+    pub fn value(self: Bin) []u8 {
+        return self.bin;
+    }
+};
+
+pub fn wrapBin(bin: []u8) Bin {
+    return Bin{ .bin = bin };
 }
 
 const Markers = enum(u8) {
