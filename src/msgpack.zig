@@ -687,7 +687,11 @@ pub fn MsgPack(
                         }
                     },
                     .Struct => {
-                        try self.write_map(field_type, field_value);
+                        if (field_type == Str) {
+                            try self.write_str(@as(Str, field_value).value());
+                        } else {
+                            try self.write_map(field_type, field_value);
+                        }
                     },
                     else => {
                         @compileError("type is not supported!");
@@ -1653,8 +1657,13 @@ pub fn MsgPack(
                                 if (ss.is_tuple) {
                                     @compileError("not support tuple");
                                 }
-                                const val = try self.read_map(field_type, allocator);
-                                @field(res, field_name) = val;
+                                if (field_type == Str) {
+                                    const str = try self.read_str(allocator);
+                                    @field(res, field_name) = wrapStr(str);
+                                } else {
+                                    const val = try self.read_map(field_type, allocator);
+                                    @field(res, field_name) = val;
+                                }
                             },
                             else => {
                                 @compileError("type is not supported!");
