@@ -275,9 +275,10 @@ test "map write and read" {
 
     const other_type = struct { kk: i8 };
 
-    const test_type = struct { id: u8, bo: bool, float: f32, str: msgpack.Str, bin: msgpack.Bin, ss: other_type };
+    const test_type = struct { id: u8, bo: bool, float: f32, str: msgpack.Str, bin: msgpack.Bin, ss: other_type, arr: []u8 };
     const str = "hello";
     var bin = [5]u8{ 1, 2, 3, 4, 5 };
+    var kkk = [5]u8{ 1, 2, 3, 4, 5 };
 
     const test_val = test_type{
         .id = 16,
@@ -286,15 +287,18 @@ test "map write and read" {
         .str = msgpack.wrapStr(str),
         .bin = msgpack.wrapBin(&bin),
         .ss = .{ .kk = -5 },
+        .arr = &kkk,
     };
 
     try p.write_map(test_type, test_val);
     const val = try p.read_map(test_type, allocator);
     defer allocator.free(val.str.value());
     defer allocator.free(val.bin.value());
+    defer allocator.free(val.arr);
     try expect(std.meta.eql(val.ss, test_val.ss));
     try expect(std.mem.eql(u8, val.str.value(), test_val.str.value()));
     try expect(std.mem.eql(u8, val.bin.value(), test_val.bin.value()));
+    try expect(std.mem.eql(u8, val.arr, test_val.arr));
     try expect(val.id == test_val.id);
     try expect(val.bo == test_val.bo);
     try expect(val.float == test_val.float);
@@ -309,6 +313,19 @@ test "arrary write and read" {
 
     try p.write_arr(u8, &test_val);
     const val = try p.read_arr(allocator, u8);
+    defer allocator.free(val);
+    try expect(std.mem.eql(u8, &test_val, val));
+}
+
+test "write and read" {
+    var arr: [0xffff]u8 = std.mem.zeroes([0xffff]u8);
+    var buf = Buffer{ .arr = &arr };
+    var p = packType{ .context = &buf };
+
+    const test_val = [5]u8{ 1, 2, 3, 4, 5 };
+
+    try p.write(&test_val);
+    const val = try p.read([]u8, allocator);
     defer allocator.free(val);
     try expect(std.mem.eql(u8, &test_val, val));
 }

@@ -546,6 +546,24 @@ pub fn MsgPack(
                         }
                     }
                 },
+                .Pointer => |pointer| {
+                    // NOTE: whether we support other pointer ?
+                    if (pointer.size == .Slice) {
+                        const ele_type = pointer.child;
+                        try self.write_arr(ele_type, val);
+                    } else if (pointer.size == .One) {
+                        const child_type = pointer.child;
+                        const child_type_info = @typeInfo(child_type);
+                        if (child_type_info == .Array) {
+                            const child_ele_type = child_type_info.Array.child;
+                            try self.write_arr(child_ele_type, val);
+                        } else {
+                            @compileError("not support non-slice pointer!");
+                        }
+                    } else {
+                        @compileError("not support non-slice pointer!");
+                    }
+                },
                 .Struct => {
                     for (val) |value| {
                         try self.write_map(T, value);
@@ -686,6 +704,24 @@ pub fn MsgPack(
                             try self.write_f64(field_value);
                         }
                     },
+                    .Pointer => |pointer| {
+                        // NOTE: whether we support other pointer ?
+                        if (pointer.size == .Slice) {
+                            const ele_type = pointer.child;
+                            try self.write_arr(ele_type, field_value);
+                        } else if (pointer.size == .One) {
+                            const child_type = pointer.child;
+                            const child_type_info = @typeInfo(child_type);
+                            if (child_type_info == .Array) {
+                                const child_ele_type = child_type_info.Array.child;
+                                try self.write_arr(child_ele_type, val);
+                            } else {
+                                @compileError("not support non-slice pointer!");
+                            }
+                        } else {
+                            @compileError("not support non-slice pointer!");
+                        }
+                    },
                     .Struct => {
                         if (field_type == Str) {
                             try self.write_str(@as(Str, field_value).value());
@@ -699,7 +735,6 @@ pub fn MsgPack(
                         @compileError("type is not supported!");
                     },
                     // TODO: other type
-                    // arrary optional pointer
                 }
             }
         }
@@ -815,6 +850,57 @@ pub fn MsgPack(
         // fn write_ext17(self: Self, type: u8, val: []const u8) !void {}
         //
         // pub fn write_ext(self: Self, type: u8, val: []const u8) !void {}
+
+        pub fn write(self: Self, val: anytype) !void {
+            const val_type = @TypeOf(val);
+            const val_type_info = @typeInfo(val_type);
+            switch (val_type_info) {
+                .Null => {
+                    try self.write_nil();
+                },
+                .Bool => {
+                    try self.write_bool(val);
+                },
+                .Int => {
+                    if (val >= 0) {
+                        try self.write_uint(val);
+                    } else {
+                        try self.write_int(val);
+                    }
+                },
+                .Float => {
+                    try self.write_float(val);
+                },
+                .Array => |array| {
+                    const ele_type = array.child;
+                    try self.write_arr(ele_type, &val);
+                },
+                .Pointer => |pointer| {
+                    // NOTE: whether we support other pointer ?
+                    if (pointer.size == .Slice) {
+                        const ele_type = pointer.child;
+                        try self.write_arr(ele_type, val);
+                    } else if (pointer.size == .One) {
+                        const child_type = pointer.child;
+                        const child_type_info = @typeInfo(child_type);
+                        if (child_type_info == .Array) {
+                            const child_ele_type = child_type_info.Array.child;
+                            try self.write_arr(child_ele_type, val);
+                        } else {
+                            @compileError("not support non-slice pointer!");
+                        }
+                    } else {
+                        @compileError("not support non-slice pointer!");
+                    }
+                },
+                .Struct => {
+                    try self.write_map(val_type, val);
+                },
+                else => {
+                    @compileError("type is not supported!");
+                },
+            }
+        }
 
         // TODO: add timestamp
 
@@ -1655,6 +1741,16 @@ pub fn MsgPack(
                                 const val = try self.read_float();
                                 @field(res, field_name) = @floatCast(val);
                             },
+                            .Pointer => |pointer| {
+                                // NOTE: whether we support other pointer ?
+                                if (pointer.size == .Slice) {
+                                    const ele_type = pointer.child;
+                                    const arr = try self.read_arr(allocator, ele_type);
+                                    @field(res, field_name) = arr;
+                                } else {
+                                    @compileError("not support non-slice pointer!");
+                                }
+                            },
                             .Struct => |ss| {
                                 if (ss.is_tuple) {
                                     @compileError("not support tuple");
@@ -1682,6 +1778,52 @@ pub fn MsgPack(
         }
 
         // TODO: add read_ext and read_timestamp
+
+        pub fn read(self: Self, comptime T: type, allocator: Allocator) !(if (@typeInfo(T) == .Array) [](@typeInfo(T).Array.child) else T) {
+            const type_info = @typeInfo(T);
+            switch (type_info) {
+                .Bool => {
+                    return self.read_bool();
+                },
+                .Int => |int| {
+                    if (int.signedness) {
+                        return self.read_int();
+                    } else {
+                        return self.read_uint();
+                    }
+                },
+                .Float => {
+                    return self.read_float();
+                },
+                .Array => |array| {
+                    const ele_type = array.child;
+                    return self.read_arr(allocator, ele_type);
+                },
+                .Pointer => |pointer| {
+                    if (pointer.size == .Slice) {
+                        const ele_type = pointer.child;
+                        return self.read_arr(allocator, ele_type);
+                    } else if (pointer.size == .One) {
+                        const child_type = pointer.child;
+                        const child_type_info = @typeInfo(child_type);
+                        if (child_type_info == .Array) {
+                            const child_ele_type = child_type_info.Array.child;
+                            return self.read_arr(allocator, child_ele_type);
+                        } else {
+                            @compileError("not support non-slice pointer!");
+                        }
+                    } else {
+                        @compileError("not support non-slice pointer!");
+                    }
+                },
+                .Struct => {
+                    return self.read_map(T, allocator);
+                },
+                else => {
+                    @compileError("type is not supported!");
+                },
+            }
+        }
     };
 }
 
