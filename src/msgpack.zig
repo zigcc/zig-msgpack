@@ -103,13 +103,13 @@ pub fn MsgPack(
             };
         }
 
-        // wrap for writeFn
-        fn write_fn(self: Self, bytes: []const u8) ErrorSet!usize {
+        /// wrap for writeFn
+        pub fn write_fn(self: Self, bytes: []const u8) ErrorSet!usize {
             return writeFn(self.context, bytes);
         }
 
-        // write one byte
-        fn write_byte(self: Self, byte: u8) !void {
+        /// write one byte
+        pub fn write_byte(self: Self, byte: u8) !void {
             const bytes = [_]u8{byte};
             const len = try self.write_fn(&bytes);
             if (len != 1) {
@@ -117,8 +117,8 @@ pub fn MsgPack(
             }
         }
 
-        // write type marker
-        fn write_type_marker(self: Self, comptime marker: Markers) !void {
+        /// write type marker
+        pub fn write_type_marker(self: Self, comptime marker: Markers) !void {
             switch (marker) {
                 .POSITIVE_FIXINT, .FIXMAP, .FIXARRAY, .FIXSTR, .NEGATIVE_FIXINT => {
                     @compileError("wrong marker was used");
@@ -128,22 +128,22 @@ pub fn MsgPack(
             try self.write_byte(@intFromEnum(marker));
         }
 
-        // write nil
+        /// write nil
         pub fn write_nil(self: Self) !void {
             try self.write_type_marker(Markers.NIL);
         }
 
-        // write true
+        /// write true
         fn write_true(self: Self) !void {
             try self.write_type_marker(Markers.TRUE);
         }
 
-        // write false
+        /// write false
         fn write_false(self: Self) !void {
             try self.write_type_marker(Markers.FALSE);
         }
 
-        // write bool
+        /// write bool
         pub fn write_bool(self: Self, val: bool) !void {
             if (val) {
                 try self.write_true();
@@ -152,7 +152,7 @@ pub fn MsgPack(
             }
         }
 
-        // write positive fix int
+        /// write positive fix int
         fn write_pfix_int(self: Self, val: u8) !void {
             if (val <= 0x7f) {
                 try self.write_byte(val);
@@ -161,13 +161,13 @@ pub fn MsgPack(
             }
         }
 
-        // write u8 int
+        /// write u8 int
         fn write_u8(self: Self, val: u8) !void {
             try self.write_type_marker(.UINT8);
             try self.write_byte(val);
         }
 
-        // write u16 int
+        /// write u16 int
         fn write_u16(self: Self, val: u16) !void {
             try self.write_type_marker(.UINT16);
             var arr: [2]u8 = std.mem.zeroes([2]u8);
@@ -179,7 +179,7 @@ pub fn MsgPack(
             }
         }
 
-        // write u32 int
+        /// write u32 int
         fn write_u32(self: Self, val: u32) !void {
             try self.write_type_marker(.UINT32);
             var arr: [4]u8 = std.mem.zeroes([4]u8);
@@ -191,7 +191,7 @@ pub fn MsgPack(
             }
         }
 
-        // write u64 int
+        /// write u64 int
         fn write_u64(self: Self, val: u64) !void {
             try self.write_type_marker(.UINT64);
             var arr: [8]u8 = std.mem.zeroes([8]u8);
@@ -203,7 +203,7 @@ pub fn MsgPack(
             }
         }
 
-        // write negative fix int
+        /// write negative fix int
         fn write_nfix_int(self: Self, val: i8) !void {
             if (val >= -32 and val <= -1) {
                 try self.write_byte(@bitCast(val));
@@ -212,13 +212,13 @@ pub fn MsgPack(
             }
         }
 
-        // write i8 int
+        /// write i8 int
         fn write_i8(self: Self, val: i8) !void {
             try self.write_type_marker(.INT8);
             try self.write_byte(@bitCast(val));
         }
 
-        // write i16 int
+        /// write i16 int
         fn write_i16(self: Self, val: i16) !void {
             try self.write_type_marker(.INT16);
             var arr: [2]u8 = std.mem.zeroes([2]u8);
@@ -230,7 +230,7 @@ pub fn MsgPack(
             }
         }
 
-        // write i32 int
+        /// write i32 int
         fn write_i32(self: Self, val: i32) !void {
             try self.write_type_marker(.INT32);
             var arr: [4]u8 = std.mem.zeroes([4]u8);
@@ -242,7 +242,7 @@ pub fn MsgPack(
             }
         }
 
-        // write i64 int
+        /// write i64 int
         fn write_i64(self: Self, val: i64) !void {
             try self.write_type_marker(.INT64);
             var arr: [8]u8 = std.mem.zeroes([8]u8);
@@ -254,7 +254,7 @@ pub fn MsgPack(
             }
         }
 
-        // write uint
+        /// write uint
         pub fn write_uint(self: Self, val: u64) !void {
             if (val <= 0x7f) {
                 try self.write_pfix_int(@intCast(val));
@@ -269,7 +269,7 @@ pub fn MsgPack(
             }
         }
 
-        // write int
+        /// write int
         pub fn write_int(self: Self, val: i64) !void {
             if (val >= 0) {
                 try self.write_uint(@intCast(val));
@@ -286,7 +286,7 @@ pub fn MsgPack(
             }
         }
 
-        // write f32
+        /// write f32
         fn write_f32(self: Self, val: f32) !void {
             try self.write_type_marker(.FLOAT32);
             const int: u32 = @bitCast(val);
@@ -298,7 +298,7 @@ pub fn MsgPack(
             }
         }
 
-        // write f64
+        /// write f64
         fn write_f64(self: Self, val: f64) !void {
             try self.write_type_marker(.FLOAT64);
             const int: u64 = @bitCast(val);
@@ -310,6 +310,7 @@ pub fn MsgPack(
             }
         }
 
+        /// write float
         pub fn write_float(self: Self, val: f64) !void {
             const tmp_val = if (val < 0) 0 - val else val;
             const min_f32 = std.math.floatMin(f32);
@@ -322,7 +323,7 @@ pub fn MsgPack(
             }
         }
 
-        // write fix str
+        /// write fix str
         fn write_fix_str(self: Self, str: []const u8) !void {
             const len = str.len;
             if (len > 0x1f) {
@@ -337,7 +338,7 @@ pub fn MsgPack(
             }
         }
 
-        // write str8
+        /// write str8
         fn write_str8(self: Self, str: []const u8) !void {
             const len = str.len;
             if (len > 0xff) {
@@ -361,6 +362,7 @@ pub fn MsgPack(
             }
         }
 
+        /// write str16
         fn write_str16(self: Self, str: []const u8) !void {
             const len = str.len;
             if (len > 0xffff) {
@@ -384,6 +386,7 @@ pub fn MsgPack(
             }
         }
 
+        /// write str32
         fn write_str32(self: Self, str: []const u8) !void {
             const len = str.len;
             if (len > 0xffff_ffff) {
@@ -407,6 +410,7 @@ pub fn MsgPack(
             }
         }
 
+        /// write str
         pub fn write_str(self: Self, str: []const u8) !void {
             const len = str.len;
             if (len <= 0x1f) {
@@ -420,6 +424,7 @@ pub fn MsgPack(
             }
         }
 
+        /// write bin8
         fn write_bin8(self: Self, bin: []const u8) !void {
             const len = bin.len;
             if (len > 0xff) {
@@ -443,6 +448,7 @@ pub fn MsgPack(
             }
         }
 
+        /// write bin16
         fn write_bin16(self: Self, bin: []const u8) !void {
             const len = bin.len;
             if (len > 0xffff) {
@@ -466,6 +472,7 @@ pub fn MsgPack(
             }
         }
 
+        /// write bin32
         fn write_bin32(self: Self, bin: []const u8) !void {
             const len = bin.len;
             if (len > 0xffff_ffff) {
@@ -489,6 +496,7 @@ pub fn MsgPack(
             }
         }
 
+        /// write bin
         pub fn write_bin(self: Self, bin: []const u8) !void {
             const len = bin.len;
             if (len <= 0xff) {
@@ -500,6 +508,7 @@ pub fn MsgPack(
             }
         }
 
+        /// write arr value
         fn write_arr_value(self: Self, comptime T: type, val: []const T) !void {
             const type_info = @typeInfo(T);
             switch (type_info) {
@@ -535,19 +544,13 @@ pub fn MsgPack(
                     if (float_bits > 64) {
                         @compileError("float larger than f64 is not supported!");
                     }
-
-                    if (float_bits <= 32) {
-                        for (val) |value| {
-                            try self.write_f32(value);
-                        }
-                    } else if (float_bits <= 64) {
-                        for (val) |value| {
-                            try self.write_f64(value);
-                        }
+                    for (val) |value| {
+                        try self.write_float(value);
                     }
                 },
                 .Pointer => |pointer| {
                     // NOTE: whether we support other pointer ?
+                    // TODO: how to optimize this?
                     if (pointer.size == .Slice) {
                         const ele_type = pointer.child;
                         try self.write_arr(ele_type, val);
@@ -577,6 +580,7 @@ pub fn MsgPack(
             }
         }
 
+        /// write fix arr
         fn write_fix_arr(self: Self, comptime T: type, val: []const T) !void {
             const arr_len = val.len;
             const max_len = 0xf;
@@ -593,6 +597,7 @@ pub fn MsgPack(
             try self.write_arr_value(T, val);
         }
 
+        /// write arr16
         fn write_arr16(self: Self, comptime T: type, val: []const T) !void {
             const arr_len = val.len;
             const max_len = 0xffff;
@@ -616,6 +621,7 @@ pub fn MsgPack(
             try self.write_arr_value(T, val);
         }
 
+        /// write arr32
         fn write_arr32(self: Self, comptime T: type, val: []const T) !void {
             const arr_len = val.len;
             const max_len = 0xffff_ffff;
@@ -640,6 +646,7 @@ pub fn MsgPack(
             try self.write_arr_value(T, val);
         }
 
+        /// write arr
         pub fn write_arr(self: Self, comptime T: type, val: []const T) !void {
             const len = val.len;
             if (len <= 0xf) {
@@ -651,6 +658,7 @@ pub fn MsgPack(
             }
         }
 
+        /// write map value
         fn write_map_value(self: Self, comptime T: type, val: T, len: usize) !void {
             const type_info = @typeInfo(T);
             if (type_info != .Struct or type_info.Struct.is_tuple) {
@@ -698,11 +706,7 @@ pub fn MsgPack(
                             @compileError("float larger than f64 is not supported!");
                         }
 
-                        if (float_bits <= 32) {
-                            try self.write_f32(field_value);
-                        } else if (float_bits <= 64) {
-                            try self.write_f64(field_value);
-                        }
+                        try self.write_float(field_value);
                     },
                     .Pointer => |pointer| {
                         // NOTE: whether we support other pointer ?
@@ -739,6 +743,7 @@ pub fn MsgPack(
             }
         }
 
+        /// write fix map
         fn write_fixmap(self: Self, comptime T: type, val: T) !void {
             const type_info = @typeInfo(T);
             if (type_info != .Struct or type_info.Struct.is_tuple) {
@@ -760,6 +765,7 @@ pub fn MsgPack(
             try self.write_map_value(T, val, max_len);
         }
 
+        /// write map16
         fn write_map16(self: Self, comptime T: type, val: T) !void {
             const type_info = @typeInfo(T);
             if (type_info != .Struct or type_info.Struct.is_tuple) {
@@ -790,6 +796,7 @@ pub fn MsgPack(
             try self.write_map_value(T, val, max_len);
         }
 
+        /// write map32
         fn write_map32(self: Self, comptime T: type, val: T) !void {
             const type_info = @typeInfo(T);
             if (type_info != .Struct or type_info.Struct.is_tuple) {
@@ -820,6 +827,7 @@ pub fn MsgPack(
             try self.write_map_value(T, val, max_len);
         }
 
+        /// write map
         pub fn write_map(self: Self, comptime T: type, val: T) !void {
             const type_info = @typeInfo(T);
             if (type_info != .Struct or type_info.Struct.is_tuple) {
@@ -851,6 +859,7 @@ pub fn MsgPack(
         //
         // pub fn write_ext(self: Self, type: u8, val: []const u8) !void {}
 
+        /// write
         pub fn write(self: Self, val: anytype) !void {
             const val_type = @TypeOf(val);
             const val_type_info = @typeInfo(val_type);
@@ -906,11 +915,13 @@ pub fn MsgPack(
 
         // read
 
-        fn read_fn(self: Self, bytes: []u8) ErrorSet!usize {
+        /// wrap for readFn
+        pub fn read_fn(self: Self, bytes: []u8) ErrorSet!usize {
             return readFn(self.context, bytes);
         }
 
-        fn read_byte(self: Self) !u8 {
+        /// read one byte
+        pub fn read_byte(self: Self) !u8 {
             var res = [1]u8{0};
             const len = try readFn(self.context, &res);
 
@@ -921,12 +932,14 @@ pub fn MsgPack(
             return res[0];
         }
 
-        fn read_type_marker_u8(self: Self) !u8 {
+        /// read type marker u8
+        pub fn read_type_marker_u8(self: Self) !u8 {
             const val = try self.read_byte();
             return val;
         }
 
-        fn marker_u8_to(_: Self, marker_u8: u8) !Markers {
+        /// convert marker u8 to marker
+        pub fn marker_u8_to(_: Self, marker_u8: u8) !Markers {
             var val = marker_u8;
 
             if (val <= 0x7f) {
@@ -944,11 +957,13 @@ pub fn MsgPack(
             return @enumFromInt(val);
         }
 
-        fn read_type_marker(self: Self) !Markers {
+        /// read type marker
+        pub fn read_type_marker(self: Self) !Markers {
             const val = try self.read_type_marker_u8();
             return try self.marker_u8_to(val);
         }
 
+        /// read nil
         pub fn read_nil(self: Self) !void {
             const marker = try self.read_type_marker();
             if (marker != .NIL) {
@@ -956,6 +971,7 @@ pub fn MsgPack(
             }
         }
 
+        /// read bool
         pub fn read_bool(self: Self) !bool {
             const marker = try self.read_type_marker();
             switch (marker) {
@@ -965,6 +981,7 @@ pub fn MsgPack(
             }
         }
 
+        /// read i8
         fn read_i8(self: Self) !i8 {
             const marker_u8 = try self.read_type_marker_u8();
             const marker = try self.marker_u8_to(marker_u8);
@@ -987,6 +1004,7 @@ pub fn MsgPack(
             }
         }
 
+        /// read i16
         fn read_i16(self: Self) !i16 {
             const marker_u8 = try self.read_type_marker_u8();
             const marker = try self.marker_u8_to(marker_u8);
@@ -1028,6 +1046,7 @@ pub fn MsgPack(
             }
         }
 
+        /// read i32
         fn read_i32(self: Self) !i32 {
             const marker_u8 = try self.read_type_marker_u8();
             const marker = try self.marker_u8_to(marker_u8);
@@ -1087,6 +1106,7 @@ pub fn MsgPack(
             }
         }
 
+        /// read i64
         fn read_i64(self: Self) !i64 {
             const marker_u8 = try self.read_type_marker_u8();
             const marker = try self.marker_u8_to(marker_u8);
@@ -1164,6 +1184,7 @@ pub fn MsgPack(
             }
         }
 
+        /// read u8
         fn read_u8(self: Self) !u8 {
             const marker_u8 = try self.read_type_marker_u8();
             const marker = try self.marker_u8_to(marker_u8);
@@ -1187,6 +1208,7 @@ pub fn MsgPack(
             }
         }
 
+        /// read u16
         fn read_u16(self: Self) !u16 {
             const marker_u8 = try self.read_type_marker_u8();
             const marker = try self.marker_u8_to(marker_u8);
@@ -1231,6 +1253,7 @@ pub fn MsgPack(
             }
         }
 
+        /// read u32
         fn read_u32(self: Self) !u32 {
             const marker_u8 = try self.read_type_marker_u8();
             const marker = try self.marker_u8_to(marker_u8);
@@ -1296,6 +1319,7 @@ pub fn MsgPack(
             }
         }
 
+        /// read u64
         fn read_u64(self: Self) !u64 {
             const marker_u8 = try self.read_type_marker_u8();
             const marker = try self.marker_u8_to(marker_u8);
@@ -1382,14 +1406,17 @@ pub fn MsgPack(
             }
         }
 
+        /// read int
         pub fn read_int(self: Self) !i64 {
             return self.read_i64();
         }
 
+        /// read uint
         pub fn read_uint(self: Self) !u64 {
             return self.read_u64();
         }
 
+        /// read f32
         fn read_f32(self: Self) !f32 {
             const marker = try self.read_type_marker();
             switch (marker) {
@@ -1407,6 +1434,7 @@ pub fn MsgPack(
             }
         }
 
+        /// read f64
         fn read_f64(self: Self) !f64 {
             const marker = try self.read_type_marker();
             switch (marker) {
@@ -1434,10 +1462,12 @@ pub fn MsgPack(
             }
         }
 
+        /// read float
         pub fn read_float(self: Self) !f64 {
             return self.read_f64();
         }
 
+        /// read str
         pub fn read_str(self: Self, allocator: Allocator) ![]const u8 {
             const marker_u8 = try self.read_type_marker_u8();
             const marker = try self.marker_u8_to(marker_u8);
@@ -1516,6 +1546,7 @@ pub fn MsgPack(
             }
         }
 
+        /// read bin
         pub fn read_bin(self: Self, allocator: Allocator) ![]u8 {
             const marker = try self.read_type_marker();
 
@@ -1581,6 +1612,7 @@ pub fn MsgPack(
             }
         }
 
+        /// read arr
         pub fn read_arr(self: Self, allocator: Allocator, comptime T: type) ![]T {
             const marker_u8 = try self.read_type_marker_u8();
             const marker = try self.marker_u8_to(marker_u8);
@@ -1658,6 +1690,7 @@ pub fn MsgPack(
             return arr;
         }
 
+        /// read map
         pub fn read_map(self: Self, comptime T: type, allocator: Allocator) !T {
             const marker_u8 = try self.read_type_marker_u8();
             const marker = try self.marker_u8_to(marker_u8);
@@ -1779,6 +1812,7 @@ pub fn MsgPack(
 
         // TODO: add read_ext and read_timestamp
 
+        /// read
         pub fn read(self: Self, comptime T: type, allocator: Allocator) !(if (@typeInfo(T) == .Array) [](@typeInfo(T).Array.child) else T) {
             const type_info = @typeInfo(T);
             switch (type_info) {
