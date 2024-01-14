@@ -981,20 +981,93 @@ pub fn MsgPack(
             }
         }
 
+        /// read positive and negative fixint
+        fn read_fixint_value(_: Self, marker_u8: u8) i8 {
+            return @bitCast(marker_u8);
+        }
+
+        fn read_i8_value(self: Self) !i8 {
+            const val = try self.read_byte();
+            return @bitCast(val);
+        }
+
+        fn read_u8_value(self: Self) !u8 {
+            return self.read_byte();
+        }
+
+        fn read_i16_value(self: Self) !i16 {
+            var buffer: [2]u8 = std.mem.zeroes([2]u8);
+            const len = try self.read_fn(&buffer);
+            if (len != 2) {
+                return MsGPackError.LENGTH_READING;
+            }
+            const val = std.mem.readInt(i16, &buffer, .big);
+            return val;
+        }
+
+        fn read_u16_value(self: Self) !u16 {
+            var buffer: [2]u8 = std.mem.zeroes([2]u8);
+            const len = try self.read_fn(&buffer);
+            if (len != 2) {
+                return MsGPackError.LENGTH_READING;
+            }
+            const val = std.mem.readInt(u16, &buffer, .big);
+            return val;
+        }
+
+        fn read_i32_value(self: Self) !i32 {
+            var buffer: [4]u8 = std.mem.zeroes([4]u8);
+            const len = try self.read_fn(&buffer);
+            if (len != 4) {
+                return MsGPackError.LENGTH_READING;
+            }
+            const val = std.mem.readInt(i32, &buffer, .big);
+            return val;
+        }
+
+        fn read_u32_value(self: Self) !u32 {
+            var buffer: [4]u8 = std.mem.zeroes([4]u8);
+            const len = try self.read_fn(&buffer);
+            if (len != 4) {
+                return MsGPackError.LENGTH_READING;
+            }
+            const val = std.mem.readInt(u32, &buffer, .big);
+            return val;
+        }
+
+        fn read_i64_value(self: Self) !i64 {
+            var buffer: [8]u8 = std.mem.zeroes([8]u8);
+            const len = try self.read_fn(&buffer);
+            if (len != 8) {
+                return MsGPackError.LENGTH_READING;
+            }
+            const val = std.mem.readInt(i64, &buffer, .big);
+            return val;
+        }
+
+        fn read_u64_value(self: Self) !u64 {
+            var buffer: [8]u8 = std.mem.zeroes([8]u8);
+            const len = try self.read_fn(&buffer);
+            if (len != 8) {
+                return MsGPackError.LENGTH_READING;
+            }
+            const val = std.mem.readInt(u64, &buffer, .big);
+            return val;
+        }
+
         /// read i8
         fn read_i8(self: Self) !i8 {
             const marker_u8 = try self.read_type_marker_u8();
             const marker = try self.marker_u8_to(marker_u8);
             switch (marker) {
                 .NEGATIVE_FIXINT, .POSITIVE_FIXINT => {
-                    return @bitCast(marker_u8);
+                    return self.read_fixint_value(marker_u8);
                 },
                 .INT8 => {
-                    const val = try self.read_byte();
-                    return @bitCast(val);
+                    return self.read_i8_value();
                 },
                 .UINT8 => {
-                    const val = try self.read_byte();
+                    const val = try self.read_u8_value();
                     if (val <= 127) {
                         return @intCast(val);
                     }
@@ -1009,34 +1082,23 @@ pub fn MsgPack(
             const marker_u8 = try self.read_type_marker_u8();
             const marker = try self.marker_u8_to(marker_u8);
             switch (marker) {
-                .INT8, .NEGATIVE_FIXINT, .POSITIVE_FIXINT => {
-                    const val: i8 = @bitCast(marker_u8);
+                .NEGATIVE_FIXINT, .POSITIVE_FIXINT => {
+                    const val = self.read_fixint_value(marker_u8);
                     return val;
                 },
                 .INT8 => {
-                    const val = try self.read_byte();
-                    return @as(i8, @bitCast(val));
+                    const val = try self.read_i8_value();
+                    return val;
                 },
                 .UINT8 => {
-                    const val = try self.read_byte();
+                    const val = try self.read_u8_value();
                     return val;
                 },
                 .INT16 => {
-                    var buffer: [2]u8 = std.mem.zeroes([2]u8);
-                    const len = try self.read_fn(&buffer);
-                    if (len != 2) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-                    const val = std.mem.readInt(i16, &buffer, .big);
-                    return val;
+                    return self.read_i16_value();
                 },
                 .UINT16 => {
-                    var buffer: [2]u8 = std.mem.zeroes([2]u8);
-                    const len = try self.read_fn(&buffer);
-                    if (len != 2) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-                    const val = std.mem.readInt(u16, &buffer, .big);
+                    const val = try self.read_u16_value();
                     if (val <= 32767) {
                         return @intCast(val);
                     }
@@ -1051,52 +1113,32 @@ pub fn MsgPack(
             const marker_u8 = try self.read_type_marker_u8();
             const marker = try self.marker_u8_to(marker_u8);
             switch (marker) {
-                .INT8, .NEGATIVE_FIXINT, .POSITIVE_FIXINT => {
-                    const val: i8 = @bitCast(marker_u8);
+                .NEGATIVE_FIXINT, .POSITIVE_FIXINT => {
+                    const val = self.read_fixint_value(marker_u8);
                     return val;
                 },
                 .INT8 => {
-                    const val = try self.read_byte();
-                    return @as(i8, @bitCast(val));
+                    const val = try self.read_i8_value();
+                    return val;
                 },
                 .UINT8 => {
-                    const val = try self.read_byte();
+                    const val = try self.read_u8_value();
                     return val;
                 },
                 .INT16 => {
-                    var buffer: [2]u8 = std.mem.zeroes([2]u8);
-                    const len = try self.read_fn(&buffer);
-                    if (len != 2) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-                    const val = std.mem.readInt(i16, &buffer, .big);
+                    const val = try self.read_i16_value();
                     return val;
                 },
                 .UINT16 => {
-                    var buffer: [2]u8 = std.mem.zeroes([2]u8);
-                    const len = try self.read_fn(&buffer);
-                    if (len != 2) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-                    const val = std.mem.readInt(u16, &buffer, .big);
+                    const val = try self.read_u16_value();
                     return val;
                 },
                 .Int32 => {
-                    var buffer: [4]u8 = std.mem.zeroes([4]u8);
-                    const len = try self.read_fn(&buffer);
-                    if (len != 4) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-                    const val = std.mem.readInt(i32, &buffer, .big);
+                    const val = try self.read_i32_value();
                     return val;
                 },
                 .UINT32 => {
-                    var buffer: [4]u8 = std.mem.zeroes([4]u8);
-                    const len = try self.read_fn(&buffer);
-                    if (len != 4) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-                    const val = std.mem.readInt(u32, &buffer, .big);
+                    const val = try self.read_u32_value();
                     if (val <= 2147483647) {
                         return @intCast(val);
                     }
@@ -1112,70 +1154,39 @@ pub fn MsgPack(
             const marker = try self.marker_u8_to(marker_u8);
             switch (marker) {
                 .NEGATIVE_FIXINT, .POSITIVE_FIXINT => {
-                    const val: i8 = @bitCast(marker_u8);
+                    const val = self.read_fixint_value(marker_u8);
                     return val;
                 },
                 .INT8 => {
-                    const val = try self.read_byte();
-                    return @as(i8, @bitCast(val));
+                    const val = try self.read_i8_value();
+                    return val;
                 },
                 .UINT8 => {
-                    const val = try self.read_byte();
+                    const val = try self.read_u8_value();
                     return val;
                 },
                 .INT16 => {
-                    var buffer: [2]u8 = std.mem.zeroes([2]u8);
-                    const len = try self.read_fn(&buffer);
-                    if (len != 2) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-                    const val = std.mem.readInt(i16, &buffer, .big);
+                    const val = try self.read_i16_value();
                     return val;
                 },
                 .UINT16 => {
-                    var buffer: [2]u8 = std.mem.zeroes([2]u8);
-                    const len = try self.read_fn(&buffer);
-                    if (len != 2) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-                    const val = std.mem.readInt(u16, &buffer, .big);
+                    const val = try self.read_u16_value();
                     return val;
                 },
                 .INT32 => {
-                    var buffer: [4]u8 = std.mem.zeroes([4]u8);
-                    const len = try self.read_fn(&buffer);
-                    if (len != 4) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-                    const val = std.mem.readInt(i32, &buffer, .big);
+                    const val = try self.read_i32_value();
                     return val;
                 },
                 .UINT32 => {
-                    var buffer: [4]u8 = std.mem.zeroes([4]u8);
-                    const len = try self.read_fn(&buffer);
-                    if (len != 4) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-                    const val = std.mem.readInt(u32, &buffer, .big);
+                    const val = try self.read_u32_value();
                     return val;
                 },
                 .INT64 => {
-                    var buffer: [8]u8 = std.mem.zeroes([8]u8);
-                    const len = try self.read_fn(&buffer);
-                    if (len != 8) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-                    const val = std.mem.readInt(i64, &buffer, .big);
-                    return val;
+                    return self.read_i64_value();
                 },
                 .UINT64 => {
-                    var buffer: [8]u8 = std.mem.zeroes([8]u8);
-                    const len = try self.read_fn(&buffer);
-                    if (len != 8) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-                    const val = std.mem.readInt(u64, &buffer, .big);
-                    if (val <= 9223372036854775807) {
+                    const val = try self.read_u64_value();
+                    if (val <= std.math.maxInt(i64)) {
                         return @intCast(val);
                     }
                     return MsGPackError.INVALID_TYPE;
@@ -1193,14 +1204,12 @@ pub fn MsgPack(
                     return marker_u8;
                 },
                 .UINT8 => {
-                    const val = try self.read_byte();
-                    return val;
+                    return self.read_u8_value();
                 },
                 .INT8 => {
-                    const val = try self.read_byte();
-                    const ival: i8 = @bitCast(val);
-                    if (ival >= 0) {
-                        return @intCast(ival);
+                    const val = try self.read_i8_value();
+                    if (val >= 0) {
+                        return @intCast(val);
                     }
                     return MsGPackError.INVALID_TYPE;
                 },
@@ -1217,33 +1226,21 @@ pub fn MsgPack(
                     return marker_u8;
                 },
                 .UINT8 => {
-                    const val = try self.read_byte();
+                    const val = try self.read_u8_value();
                     return val;
                 },
                 .INT8 => {
-                    const val = try self.read_byte();
-                    const ival: i8 = @bitCast(val);
-                    if (ival >= 0) {
-                        return @intCast(ival);
+                    const val = try self.read_i8_value();
+                    if (val >= 0) {
+                        return @intCast(val);
                     }
                     return MsGPackError.INVALID_TYPE;
                 },
                 .UINT16 => {
-                    var buffer: [2]u8 = std.mem.zeroes([2]u8);
-                    const len = try self.read_fn(&buffer);
-                    if (len != 2) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-                    const val = std.mem.readInt(u16, &buffer, .big);
-                    return val;
+                    return self.read_u16_value();
                 },
                 .INT16 => {
-                    var buffer: [2]u8 = std.mem.zeroes([2]u8);
-                    const len = try self.read_fn(&buffer);
-                    if (len != 2) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-                    const val = std.mem.readInt(i16, &buffer, .big);
+                    const val = try self.read_i16_value();
                     if (val >= 0) {
                         return @intCast(val);
                     }
@@ -1262,54 +1259,32 @@ pub fn MsgPack(
                     return marker_u8;
                 },
                 .UINT8 => {
-                    const val = try self.read_byte();
+                    const val = try self.read_u8_value();
                     return val;
                 },
                 .INT8 => {
-                    const val = try self.read_byte();
-                    const ival: i8 = @bitCast(val);
-                    if (ival >= 0) {
-                        return @intCast(ival);
+                    const val = try self.read_i8_value();
+                    if (val >= 0) {
+                        return @intCast(val);
                     }
                     return MsGPackError.INVALID_TYPE;
                 },
                 .UINT16 => {
-                    var buffer: [2]u8 = std.mem.zeroes([2]u8);
-                    const len = try self.read_fn(&buffer);
-                    if (len != 2) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-                    const val = std.mem.readInt(u16, &buffer, .big);
+                    const val = try self.read_u16_value();
                     return val;
                 },
                 .INT16 => {
-                    var buffer: [2]u8 = std.mem.zeroes([2]u8);
-                    const len = try self.read_fn(&buffer);
-                    if (len != 2) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-                    const val = std.mem.readInt(i16, &buffer, .big);
+                    const val = try self.read_i16_value();
                     if (val >= 0) {
                         return @intCast(val);
                     }
                     return MsGPackError.INVALID_TYPE;
                 },
                 .UINT32 => {
-                    var buffer: [4]u8 = std.mem.zeroes([4]u8);
-                    const len = try self.read_fn(&buffer);
-                    if (len != 4) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-                    const val = std.mem.readInt(u32, &buffer, .big);
-                    return val;
+                    return self.read_u32_value();
                 },
                 .INT32 => {
-                    var buffer: [4]u8 = std.mem.zeroes([4]u8);
-                    const len = try self.read_fn(&buffer);
-                    if (len != 4) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-                    const val = std.mem.readInt(i32, &buffer, .big);
+                    const val = try self.read_i32_value();
                     if (val >= 0) {
                         return @intCast(val);
                     }
@@ -1328,75 +1303,43 @@ pub fn MsgPack(
                     return marker_u8;
                 },
                 .UINT8 => {
-                    const val = try self.read_byte();
+                    const val = try self.read_u8_value();
                     return val;
                 },
                 .INT8 => {
-                    const val = try self.read_byte();
-                    const ival: i8 = @bitCast(val);
-                    if (ival >= 0) {
-                        return @intCast(ival);
+                    const val = try self.read_i8_value();
+                    if (val >= 0) {
+                        return @intCast(val);
                     }
                     return MsGPackError.INVALID_TYPE;
                 },
                 .UINT16 => {
-                    var buffer: [2]u8 = std.mem.zeroes([2]u8);
-                    const len = try self.read_fn(&buffer);
-                    if (len != 2) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-                    const val = std.mem.readInt(u16, &buffer, .big);
+                    const val = try self.read_u16_value();
                     return val;
                 },
                 .INT16 => {
-                    var buffer: [2]u8 = std.mem.zeroes([2]u8);
-                    const len = try self.read_fn(&buffer);
-                    if (len != 2) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-                    const val = std.mem.readInt(i16, &buffer, .big);
+                    const val = try self.read_i16_value();
                     if (val >= 0) {
                         return @intCast(val);
                     }
                     return MsGPackError.INVALID_TYPE;
                 },
                 .UINT32 => {
-                    var buffer: [4]u8 = std.mem.zeroes([4]u8);
-                    const len = try self.read_fn(&buffer);
-                    if (len != 4) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-                    const val = std.mem.readInt(u32, &buffer, .big);
+                    const val = try self.read_u32_value();
                     return val;
                 },
                 .INT32 => {
-                    var buffer: [4]u8 = std.mem.zeroes([4]u8);
-                    const len = try self.read_fn(&buffer);
-                    if (len != 4) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-                    const val = std.mem.readInt(i32, &buffer, .big);
+                    const val = try self.read_i32_value();
                     if (val >= 0) {
                         return @intCast(val);
                     }
                     return MsGPackError.INVALID_TYPE;
                 },
                 .UINT64 => {
-                    var buffer: [8]u8 = std.mem.zeroes([8]u8);
-                    const len = try self.read_fn(&buffer);
-                    if (len != 8) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-                    const val = std.mem.readInt(u64, &buffer, .big);
-                    return val;
+                    return self.read_u64_value();
                 },
                 .INT64 => {
-                    var buffer: [8]u8 = std.mem.zeroes([8]u8);
-                    const len = try self.read_fn(&buffer);
-                    if (len != 8) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-                    const val = std.mem.readInt(u64, &buffer, .big);
+                    const val = try self.read_i64_value();
                     if (val >= 0) {
                         return @intCast(val);
                     }
@@ -1416,19 +1359,34 @@ pub fn MsgPack(
             return self.read_u64();
         }
 
+        fn read_f32_value(self: Self) !f32 {
+            var buffer: [4]u8 = std.mem.zeroes([4]u8);
+            const len = try self.read_fn(&buffer);
+            if (len != 4) {
+                return MsGPackError.LENGTH_READING;
+            }
+            const val_int = std.mem.readInt(u32, &buffer, .big);
+            const val: f32 = @bitCast(val_int);
+            return val;
+        }
+
+        fn read_f64_value(self: Self) !f64 {
+            var buffer: [8]u8 = std.mem.zeroes([8]u8);
+            const len = try self.read_fn(&buffer);
+            if (len != 8) {
+                return MsGPackError.LENGTH_READING;
+            }
+            const val_int = std.mem.readInt(u64, &buffer, .big);
+            const val: f64 = @bitCast(val_int);
+            return val;
+        }
+
         /// read f32
         fn read_f32(self: Self) !f32 {
             const marker = try self.read_type_marker();
             switch (marker) {
                 .FLOAT32 => {
-                    var buffer: [4]u8 = std.mem.zeroes([4]u8);
-                    const len = try self.read_fn(&buffer);
-                    if (len != 4) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-                    const val_int = std.mem.readInt(u32, &buffer, .big);
-                    const val: f32 = @bitCast(val_int);
-                    return val;
+                    return self.read_f32_value();
                 },
                 else => return MsGPackError.TYPE_MARKER_READING,
             }
@@ -1439,24 +1397,11 @@ pub fn MsgPack(
             const marker = try self.read_type_marker();
             switch (marker) {
                 .FLOAT32 => {
-                    var buffer: [4]u8 = std.mem.zeroes([4]u8);
-                    const len = try self.read_fn(&buffer);
-                    if (len != 4) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-                    const val_int = std.mem.readInt(u32, &buffer, .big);
-                    const val: f32 = @bitCast(val_int);
+                    const val = try self.read_f32_value();
                     return val;
                 },
                 .FLOAT64 => {
-                    var buffer: [8]u8 = std.mem.zeroes([8]u8);
-                    const len = try self.read_fn(&buffer);
-                    if (len != 8) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-                    const val_int = std.mem.readInt(u64, &buffer, .big);
-                    const val: f64 = @bitCast(val_int);
-                    return val;
+                    return self.read_f64_value();
                 },
                 else => return MsGPackError.TYPE_MARKER_READING,
             }
@@ -1467,6 +1412,72 @@ pub fn MsgPack(
             return self.read_f64();
         }
 
+        fn read_fix_str_value(self: Self, allocator: Allocator, marker_u8: u8) ![]const u8 {
+            const len: u8 = marker_u8 - @intFromEnum(Markers.FIXSTR);
+
+            const str = try allocator.alloc(u8, len);
+            const str_len = try self.read_fn(str);
+
+            if (str_len != len) {
+                return MsGPackError.LENGTH_READING;
+            }
+
+            return str;
+        }
+
+        fn read_str8_value(self: Self, allocator: Allocator) ![]const u8 {
+            var arr: [1]u8 = std.mem.zeroes([1]u8);
+            const str_len_len = try self.read_fn(&arr);
+
+            if (str_len_len != arr.len) {
+                return MsGPackError.LENGTH_READING;
+            }
+
+            const len = std.mem.readInt(u8, &arr, .big);
+
+            const str = try allocator.alloc(u8, len);
+            const str_len = try self.read_fn(str);
+
+            if (str_len != len) {
+                return MsGPackError.LENGTH_READING;
+            }
+
+            return str;
+        }
+
+        fn read_str16_value(self: Self, allocator: Allocator) ![]const u8 {
+            var arr: [2]u8 = std.mem.zeroes([2]u8);
+            const str_len_len = try self.read_fn(&arr);
+
+            if (str_len_len != arr.len) {
+                return MsGPackError.LENGTH_READING;
+            }
+
+            const len = std.mem.readInt(u16, &arr, .big);
+
+            const str = try allocator.alloc(u8, len);
+            const str_len = try self.read_fn(str);
+
+            if (str_len != len) {
+                return MsGPackError.LENGTH_READING;
+            }
+
+            return str;
+        }
+
+        fn read_str32_value(self: Self, allocator: Allocator) ![]const u8 {
+            const len = try self.read_u32_value();
+
+            const str = try allocator.alloc(u8, len);
+            const str_len = try self.read_fn(str);
+
+            if (str_len != len) {
+                return MsGPackError.LENGTH_READING;
+            }
+
+            return str;
+        }
+
         /// read str
         pub fn read_str(self: Self, allocator: Allocator) ![]const u8 {
             const marker_u8 = try self.read_type_marker_u8();
@@ -1474,76 +1485,58 @@ pub fn MsgPack(
 
             switch (marker) {
                 .FIXSTR => {
-                    const len: u8 = marker_u8 - @intFromEnum(Markers.FIXSTR);
-
-                    const str = try allocator.alloc(u8, len);
-                    const str_len = try self.read_fn(str);
-
-                    if (str_len != len) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-
-                    return str;
+                    return self.read_fix_str_value(allocator, marker_u8);
                 },
                 .STR8 => {
-                    var arr: [1]u8 = std.mem.zeroes([1]u8);
-                    const str_len_len = try self.read_fn(&arr);
-
-                    if (str_len_len != arr.len) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-
-                    const len = std.mem.readInt(u8, &arr, .big);
-
-                    const str = try allocator.alloc(u8, len);
-                    const str_len = try self.read_fn(str);
-
-                    if (str_len != len) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-
-                    return str;
+                    return self.read_str8_value(allocator);
                 },
                 .STR16 => {
-                    var arr: [2]u8 = std.mem.zeroes([2]u8);
-                    const str_len_len = try self.read_fn(&arr);
-
-                    if (str_len_len != arr.len) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-
-                    const len = std.mem.readInt(u16, &arr, .big);
-
-                    const str = try allocator.alloc(u8, len);
-                    const str_len = try self.read_fn(str);
-
-                    if (str_len != len) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-
-                    return str;
+                    return self.read_str16_value(allocator);
                 },
                 .STR32 => {
-                    var arr: [4]u8 = std.mem.zeroes([4]u8);
-                    const str_len_len = try self.read_fn(&arr);
-
-                    if (str_len_len != arr.len) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-
-                    const len = std.mem.readInt(u32, &arr, .big);
-
-                    const str = try allocator.alloc(u8, len);
-                    const str_len = try self.read_fn(str);
-
-                    if (str_len != len) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-
-                    return str;
+                    return self.read_str32_value(allocator);
                 },
                 else => return MsGPackError.TYPE_MARKER_READING,
             }
+        }
+
+        fn read_bin8_value(self: Self, allocator: Allocator) ![]u8 {
+            const len = try self.read_u8_value();
+
+            const bin = try allocator.alloc(u8, len);
+            const bin_len = try self.read_fn(bin);
+
+            if (bin_len != len) {
+                return MsGPackError.LENGTH_READING;
+            }
+
+            return bin;
+        }
+
+        fn read_bin16_value(self: Self, allocator: Allocator) ![]u8 {
+            const len = try self.read_u16_value();
+
+            const bin = try allocator.alloc(u8, len);
+            const bin_len = try self.read_fn(bin);
+
+            if (bin_len != len) {
+                return MsGPackError.LENGTH_READING;
+            }
+
+            return bin;
+        }
+
+        fn read_bin32_value(self: Self, allocator: Allocator) ![]u8 {
+            const len = try self.read_u32_value();
+
+            const bin = try allocator.alloc(u8, len);
+            const bin_len = try self.read_fn(bin);
+
+            if (bin_len != len) {
+                return MsGPackError.LENGTH_READING;
+            }
+
+            return bin;
         }
 
         /// read bin
@@ -1552,61 +1545,13 @@ pub fn MsgPack(
 
             switch (marker) {
                 .BIN8 => {
-                    var arr: [1]u8 = std.mem.zeroes([1]u8);
-                    const bin_len_len = try self.read_fn(&arr);
-
-                    if (bin_len_len != arr.len) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-
-                    const len = std.mem.readInt(u8, &arr, .big);
-
-                    const bin = try allocator.alloc(u8, len);
-                    const bin_len = try self.read_fn(bin);
-
-                    if (bin_len != len) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-
-                    return bin;
+                    return self.read_bin8_value(allocator);
                 },
                 .BIN16 => {
-                    var arr: [2]u8 = std.mem.zeroes([2]u8);
-                    const bin_len_len = try self.read_fn(&arr);
-
-                    if (bin_len_len != arr.len) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-
-                    const len = std.mem.readInt(u16, &arr, .big);
-
-                    const bin = try allocator.alloc(u8, len);
-                    const bin_len = try self.read_fn(bin);
-
-                    if (bin_len != len) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-
-                    return bin;
+                    return self.read_bin16_value(allocator);
                 },
                 .BIN32 => {
-                    var arr: [4]u8 = std.mem.zeroes([4]u8);
-                    const bin_len_len = try self.read_fn(&arr);
-
-                    if (bin_len_len != arr.len) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-
-                    const len = std.mem.readInt(u32, &arr, .big);
-
-                    const bin = try allocator.alloc(u8, len);
-                    const bin_len = try self.read_fn(bin);
-
-                    if (bin_len != len) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-
-                    return bin;
+                    return self.read_bin32_value(allocator);
                 },
                 else => return MsGPackError.TYPE_MARKER_READING,
             }
@@ -1622,24 +1567,10 @@ pub fn MsgPack(
                     len = marker_u8 - 0x90;
                 },
                 .ARRAY16 => {
-                    var arr: [2]u8 = std.mem.zeroes([2]u8);
-                    const map_len_len = try self.read_fn(&arr);
-
-                    if (map_len_len != arr.len) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-
-                    len = std.mem.readInt(u16, &arr, .big);
+                    len = try self.read_u16_value();
                 },
                 .ARRAY32 => {
-                    var arr: [4]u8 = std.mem.zeroes([4]u8);
-                    const map_len_len = try self.read_fn(&arr);
-
-                    if (map_len_len != arr.len) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-
-                    len = std.mem.readInt(u32, &arr, .big);
+                    len = try self.read_u32_value();
                 },
                 else => {
                     return MsGPackError.INVALID_TYPE;
@@ -1706,24 +1637,10 @@ pub fn MsgPack(
                     len = marker_u8 - @intFromEnum(Markers.FIXMAP);
                 },
                 .MAP16 => {
-                    var arr: [2]u8 = std.mem.zeroes([2]u8);
-                    const map_len_len = try self.read_fn(&arr);
-
-                    if (map_len_len != arr.len) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-
-                    len = std.mem.readInt(u16, &arr, .big);
+                    len = try self.read_u16_value();
                 },
                 .MAP32 => {
-                    var arr: [4]u8 = std.mem.zeroes([4]u8);
-                    const map_len_len = try self.read_fn(&arr);
-
-                    if (map_len_len != arr.len) {
-                        return MsGPackError.LENGTH_READING;
-                    }
-
-                    len = std.mem.readInt(u32, &arr, .big);
+                    len = try self.read_u32_value();
                 },
                 else => {
                     return MsGPackError.INVALID_TYPE;
