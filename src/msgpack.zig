@@ -571,20 +571,8 @@ pub fn MsgPack(
                     }
                 },
                 .Pointer => |pointer| {
-                    // NOTE: whether we support other pointer ?
-                    // TODO: how to optimize this?
-                    if (pointer.size == .Slice) {
-                        const ele_type = pointer.child;
+                    if (PO.to_slice(pointer)) |ele_type| {
                         try self.write_arr(ele_type, val);
-                    } else if (pointer.size == .One) {
-                        const child_type = pointer.child;
-                        const child_type_info = @typeInfo(child_type);
-                        if (child_type_info == .Array) {
-                            const child_ele_type = child_type_info.Array.child;
-                            try self.write_arr(child_ele_type, val);
-                        } else {
-                            @compileError("not support non-slice pointer!");
-                        }
                     } else {
                         @compileError("not support non-slice pointer!");
                     }
@@ -721,18 +709,8 @@ pub fn MsgPack(
                     },
                     .Pointer => |pointer| {
                         // NOTE: whether we support other pointer ?
-                        if (pointer.size == .Slice) {
-                            const ele_type = pointer.child;
+                        if (PO.to_slice(pointer)) |ele_type| {
                             try self.write_arr(ele_type, field_value);
-                        } else if (pointer.size == .One) {
-                            const child_type = pointer.child;
-                            const child_type_info = @typeInfo(child_type);
-                            if (child_type_info == .Array) {
-                                const child_ele_type = child_type_info.Array.child;
-                                try self.write_arr(child_ele_type, val);
-                            } else {
-                                @compileError("not support non-slice pointer!");
-                            }
                         } else {
                             @compileError("not support non-slice pointer!");
                         }
@@ -882,19 +860,8 @@ pub fn MsgPack(
                     try self.write_arr(ele_type, &val);
                 },
                 .Pointer => |pointer| {
-                    // NOTE: whether we support other pointer ?
-                    if (pointer.size == .Slice) {
-                        const ele_type = pointer.child;
+                    if (PO.to_slice(pointer)) |ele_type| {
                         try self.write_arr(ele_type, val);
-                    } else if (pointer.size == .One) {
-                        const child_type = pointer.child;
-                        const child_type_info = @typeInfo(child_type);
-                        if (child_type_info == .Array) {
-                            const child_ele_type = child_type_info.Array.child;
-                            try self.write_arr(child_ele_type, val);
-                        } else {
-                            @compileError("not support non-slice pointer!");
-                        }
                     } else {
                         @compileError("not support non-slice pointer!");
                     }
@@ -1726,8 +1693,21 @@ pub fn MsgPack(
 
         // TODO: add read_ext and read_timestamp
 
+        inline fn read_type_help(comptime T: type) type {
+            const type_info = @typeInfo(T);
+            switch (type_info) {
+                .Array => |array| {
+                    const child = array.child;
+                    return []child;
+                },
+                else => {
+                    return T;
+                },
+            }
+        }
+
         /// read
-        pub fn read(self: Self, comptime T: type, allocator: Allocator) !(if (@typeInfo(T) == .Array) [](@typeInfo(T).Array.child) else T) {
+        pub fn read(self: Self, comptime T: type, allocator: Allocator) !read_type_help(T) {
             const type_info = @typeInfo(T);
             switch (type_info) {
                 .Bool => {
@@ -1748,18 +1728,8 @@ pub fn MsgPack(
                     return self.read_arr(allocator, ele_type);
                 },
                 .Pointer => |pointer| {
-                    if (pointer.size == .Slice) {
-                        const ele_type = pointer.child;
+                    if (PO.to_slice(pointer)) |ele_type| {
                         return self.read_arr(allocator, ele_type);
-                    } else if (pointer.size == .One) {
-                        const child_type = pointer.child;
-                        const child_type_info = @typeInfo(child_type);
-                        if (child_type_info == .Array) {
-                            const child_ele_type = child_type_info.Array.child;
-                            return self.read_arr(allocator, child_ele_type);
-                        } else {
-                            @compileError("not support non-slice pointer!");
-                        }
                     } else {
                         @compileError("not support non-slice pointer!");
                     }
@@ -1829,5 +1799,21 @@ pub const Buffer = struct {
 
     pub fn get_read_index(self: *Buffer) usize {
         return self.read_index;
+    }
+};
+
+const PO = struct {
+    fn to_slice(comptime pointer: std.builtin.Type.Pointer) ?type {
+        if (pointer.size == .Slice) {
+            return pointer.child;
+        } else if (pointer.size == .One) {
+            const child_type = pointer.child;
+            const child_type_info = @typeInfo(child_type);
+            if (child_type_info == .Array) {
+                return child_type_info.Array.child;
+            }
+            return null;
+        }
+        return null;
     }
 };
