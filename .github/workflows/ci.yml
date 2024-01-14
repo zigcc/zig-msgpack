@@ -1,0 +1,23 @@
+name: CI
+
+on:
+    push:
+        branches:
+            - "*"
+    workflow_dispatch:
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v3
+              with:
+                  fetch-depth: 0
+
+            - name: Set up Zig
+              uses: goto-bus-stop/setup-zig@v2
+
+            - name: Build and test with Zig
+              run: zig build test
