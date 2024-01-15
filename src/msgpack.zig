@@ -1603,6 +1603,15 @@ pub fn MsgPack(
 
         /// read map
         pub fn read_map(self: Self, comptime T: type, allocator: Allocator) !T {
+            if (T == Bin) {
+                const bin = try self.read_bin(allocator);
+                return Bin{ .bin = bin };
+            } else if (T == Str) {
+                const str = try self.read_str(allocator);
+                return Str{ .str = str };
+            } else if (T == EXT) {
+                return self.read_ext(allocator);
+            }
             if (T == EXT) {
                 @compileError("please use read_ext for EXT");
             }
@@ -1694,19 +1703,9 @@ pub fn MsgPack(
                                 if (ss.is_tuple) {
                                     @compileError("not support tuple");
                                 }
-                                if (field_type == Str) {
-                                    const str = try self.read_str(allocator);
-                                    @field(res, field_name) = wrapStr(str);
-                                } else if (field_type == Bin) {
-                                    const bin = try self.read_bin(allocator);
-                                    @field(res, field_name) = wrapBin(bin);
-                                } else if (field_type == EXT) {
-                                    const ext = try self.read_ext(allocator);
-                                    @field(res, field_name) = ext;
-                                } else {
-                                    const val = try self.read_map(field_type, allocator);
-                                    @field(res, field_name) = val;
-                                }
+
+                                const val = try self.read_map(field_type, allocator);
+                                @field(res, field_name) = val;
                             },
                             else => {
                                 @compileError("type is not supported!");
@@ -1808,15 +1807,7 @@ pub fn MsgPack(
                     }
                 },
                 .Struct => {
-                    if (T == Bin) {
-                        return self.read_bin(allocator);
-                    } else if (T == Str) {
-                        return self.read_str(allocator);
-                    } else if (T == EXT) {
-                        return self.read_ext(allocator);
-                    } else {
-                        return self.read_map(T, allocator);
-                    }
+                    return self.read_map(T, allocator);
                 },
                 else => {
                     @compileError("type is not supported!");
