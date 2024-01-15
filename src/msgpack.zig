@@ -118,6 +118,13 @@ pub fn MsgPack(
             }
         }
 
+        pub fn write_data(self: Self, data: []u8) !void {
+            const len = try self.write_fn(data);
+            if (len != data.len) {
+                return MsGPackError.LENGTH_WRITING;
+            }
+        }
+
         /// write type marker
         pub fn write_type_marker(self: Self, comptime marker: Markers) !void {
             switch (marker) {
@@ -825,7 +832,7 @@ pub fn MsgPack(
 
         fn write_ext_value(self: Self, ext: EXT) !void {
             try self.write_u8_value(ext.type);
-            try self.write_fn(ext.data);
+            try self.write_data(ext.data);
         }
 
         fn write_fix_ext1(self: Self, ext: EXT) !void {
@@ -1748,7 +1755,7 @@ pub fn MsgPack(
             };
         }
 
-        fn read_ext(self: Self, allocator: Allocator) !EXT {
+        pub fn read_ext(self: Self, allocator: Allocator) !EXT {
             const marker = try self.read_type_marker();
             switch (marker) {
                 .FIXEXT1 => {

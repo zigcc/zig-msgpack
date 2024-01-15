@@ -317,6 +317,21 @@ test "arrary write and read" {
     try expect(std.mem.eql(u8, &test_val, val));
 }
 
+test "ext write and read" {
+    var arr: [0xffff]u8 = std.mem.zeroes([0xffff]u8);
+    var buf = Buffer{ .arr = &arr };
+    var p = packType{ .context = &buf };
+
+    var test_data = [5]u8{ 1, 2, 3, 4, 5 };
+    const test_type: u8 = 1;
+
+    try p.write_ext(.{ .type = test_type, .data = &test_data });
+    const val = try p.read_ext(allocator);
+    defer allocator.free(val.data);
+    try expect(std.mem.eql(u8, &test_data, val.data));
+    try expect(test_type == val.type);
+}
+
 test "write and read" {
     var arr: [0xffff]u8 = std.mem.zeroes([0xffff]u8);
     var buf = Buffer{ .arr = &arr };
