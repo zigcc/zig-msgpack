@@ -684,13 +684,7 @@ pub fn MsgPack(
                         }
                     },
                     .Struct => {
-                        if (field_type == Str) {
-                            try self.write_str(@as(Str, field_value).value());
-                        } else if (field_type == Bin) {
-                            try self.write_bin(@as(Bin, field_value).value());
-                        } else {
-                            try self.write_map(field_type, field_value);
-                        }
+                        try self.write_map(field_type, field_value);
                     },
                     else => {
                         @compileError("type is not supported!");
@@ -775,6 +769,13 @@ pub fn MsgPack(
             const type_info = @typeInfo(T);
             if (type_info != .Struct or type_info.Struct.is_tuple) {
                 @compileError("now only support struct");
+            }
+            if (T == EXT) {
+                return self.write_ext(@as(EXT, val));
+            } else if (T == Str) {
+                return self.write_str(@as(Str, val).value());
+            } else if (T == Bin) {
+                return self.write_bin(@as(Bin, val).value());
             }
 
             const fields_len = type_info.Struct.fields.len;
@@ -1602,6 +1603,15 @@ pub fn MsgPack(
 
         /// read map
         pub fn read_map(self: Self, comptime T: type, allocator: Allocator) !T {
+            if (T == EXT) {
+                @compileError("please use read_ext for EXT");
+            }
+            if (T == Str) {
+                @compileError("please use read_str for Str");
+            }
+            if (T == Bin) {
+                @compileError("please use read_bin for Bin");
+            }
             const marker_u8 = try self.read_type_marker_u8();
             const marker = try self.marker_u8_to(marker_u8);
             var len: usize = 0;
@@ -1690,6 +1700,9 @@ pub fn MsgPack(
                                 } else if (field_type == Bin) {
                                     const bin = try self.read_bin(allocator);
                                     @field(res, field_name) = wrapBin(bin);
+                                } else if (field_type == EXT) {
+                                    const ext = try self.read_ext(allocator);
+                                    @field(res, field_name) = ext;
                                 } else {
                                     const val = try self.read_map(field_type, allocator);
                                     @field(res, field_name) = val;
@@ -1795,7 +1808,15 @@ pub fn MsgPack(
                     }
                 },
                 .Struct => {
-                    return self.read_map(T, allocator);
+                    if (T == Bin) {
+                        return self.read_bin(allocator);
+                    } else if (T == Str) {
+                        return self.read_str(allocator);
+                    } else if (T == EXT) {
+                        return self.read_ext(allocator);
+                    } else {
+                        return self.read_map(T, allocator);
+                    }
                 },
                 else => {
                     @compileError("type is not supported!");
@@ -1878,7 +1899,7 @@ const PO = struct {
     }
 };
 
-const EXT = struct {
+pub const EXT = struct {
     type: u8,
     data: []u8,
 };

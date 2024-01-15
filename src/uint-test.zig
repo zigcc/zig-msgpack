@@ -311,8 +311,8 @@ test "arrary write and read" {
 
     const test_val = [5]u8{ 1, 2, 3, 4, 5 };
 
-    try p.write_arr(u8, &test_val);
-    const val = try p.read_arr(allocator, u8);
+    try p.write(&test_val);
+    const val = try p.read([]u8, allocator);
     defer allocator.free(val);
     try expect(std.mem.eql(u8, &test_val, val));
 }
@@ -325,8 +325,8 @@ test "ext write and read" {
     var test_data = [5]u8{ 1, 2, 3, 4, 5 };
     const test_type: u8 = 1;
 
-    try p.write_ext(.{ .type = test_type, .data = &test_data });
-    const val = try p.read_ext(allocator);
+    try p.write(msgpack.EXT{ .type = test_type, .data = &test_data });
+    const val = try p.read(msgpack.EXT, allocator);
     defer allocator.free(val.data);
     try expect(std.mem.eql(u8, &test_data, val.data));
     try expect(test_type == val.type);
