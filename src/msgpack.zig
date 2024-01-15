@@ -105,7 +105,7 @@ pub fn MsgPack(
         }
 
         /// wrap for writeFn
-        pub fn write_fn(self: Self, bytes: []const u8) ErrorSet!usize {
+        fn write_fn(self: Self, bytes: []const u8) ErrorSet!usize {
             return writeFn(self.context, bytes);
         }
 
