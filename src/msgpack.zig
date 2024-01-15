@@ -118,7 +118,7 @@ pub fn MsgPack(
             }
         }
 
-        pub fn write_data(self: Self, data: []u8) !void {
+        pub fn write_data(self: Self, data: []const u8) !void {
             const len = try self.write_fn(data);
             if (len != data.len) {
                 return MsGPackError.LENGTH_WRITING;
@@ -183,10 +183,7 @@ pub fn MsgPack(
             var arr: [2]u8 = std.mem.zeroes([2]u8);
             std.mem.writeInt(u16, &arr, val, .big);
 
-            const len = try self.write_fn(&arr);
-            if (len != 2) {
-                return MsGPackError.LENGTH_WRITING;
-            }
+            try self.write_data(&arr);
         }
 
         /// write u16 int
@@ -199,10 +196,7 @@ pub fn MsgPack(
             var arr: [4]u8 = std.mem.zeroes([4]u8);
             std.mem.writeInt(u32, &arr, val, .big);
 
-            const len = try self.write_fn(&arr);
-            if (len != 4) {
-                return MsGPackError.LENGTH_WRITING;
-            }
+            try self.write_data(&arr);
         }
 
         /// write u32 int
@@ -215,10 +209,7 @@ pub fn MsgPack(
             var arr: [8]u8 = std.mem.zeroes([8]u8);
             std.mem.writeInt(u64, &arr, val, .big);
 
-            const len = try self.write_fn(&arr);
-            if (len != 8) {
-                return MsGPackError.LENGTH_WRITING;
-            }
+            try self.write_data(&arr);
         }
 
         /// write u64 int
@@ -250,10 +241,7 @@ pub fn MsgPack(
             var arr: [2]u8 = std.mem.zeroes([2]u8);
             std.mem.writeInt(i16, &arr, val, .big);
 
-            const len = try self.write_fn(&arr);
-            if (len != 2) {
-                return MsGPackError.LENGTH_WRITING;
-            }
+            try self.write_data(&arr);
         }
 
         /// write i16 int
@@ -266,10 +254,7 @@ pub fn MsgPack(
             var arr: [4]u8 = std.mem.zeroes([4]u8);
             std.mem.writeInt(i32, &arr, val, .big);
 
-            const len = try self.write_fn(&arr);
-            if (len != 4) {
-                return MsGPackError.LENGTH_WRITING;
-            }
+            try self.write_data(&arr);
         }
 
         /// write i32 int
@@ -282,10 +267,7 @@ pub fn MsgPack(
             var arr: [8]u8 = std.mem.zeroes([8]u8);
             std.mem.writeInt(i64, &arr, val, .big);
 
-            const len = try self.write_fn(&arr);
-            if (len != 8) {
-                return MsGPackError.LENGTH_WRITING;
-            }
+            try self.write_data(&arr);
         }
 
         /// write i64 int
@@ -330,10 +312,8 @@ pub fn MsgPack(
             const int: u32 = @bitCast(val);
             var arr: [4]u8 = std.mem.zeroes([4]u8);
             std.mem.writeInt(u32, &arr, int, .big);
-            const len = try self.write_fn(&arr);
-            if (len != 4) {
-                return MsGPackError.LENGTH_WRITING;
-            }
+
+            try self.write_data(&arr);
         }
 
         /// write f32
@@ -346,10 +326,8 @@ pub fn MsgPack(
             const int: u64 = @bitCast(val);
             var arr: [8]u8 = std.mem.zeroes([8]u8);
             std.mem.writeInt(u64, &arr, int, .big);
-            const len = try self.write_fn(&arr);
-            if (len != 8) {
-                return MsGPackError.LENGTH_WRITING;
-            }
+
+            try self.write_data(&arr);
         }
 
         /// write f64
@@ -396,15 +374,9 @@ pub fn MsgPack(
             var arr: [1]u8 = std.mem.zeroes([1]u8);
             std.mem.writeInt(u8, &arr, str_len, .big);
 
-            const write_len_len = try self.write_fn(&arr);
-            if (write_len_len != arr.len) {
-                return MsGPackError.LENGTH_WRITING;
-            }
+            try self.write_data(&arr);
 
-            const write_len = try self.write_fn(str);
-            if (write_len != len) {
-                return MsGPackError.LENGTH_WRITING;
-            }
+            try self.write_data(str);
         }
 
         /// write str8
@@ -424,15 +396,9 @@ pub fn MsgPack(
             var arr: [2]u8 = std.mem.zeroes([2]u8);
             std.mem.writeInt(u16, &arr, str_len, .big);
 
-            const write_len_len = try self.write_fn(&arr);
-            if (write_len_len != arr.len) {
-                return MsGPackError.LENGTH_WRITING;
-            }
+            try self.write_data(&arr);
 
-            const write_len = try self.write_fn(str);
-            if (write_len != len) {
-                return MsGPackError.LENGTH_WRITING;
-            }
+            try self.write_data(str);
         }
 
         /// write str16
@@ -453,15 +419,9 @@ pub fn MsgPack(
             var arr: [4]u8 = std.mem.zeroes([4]u8);
             std.mem.writeInt(u32, &arr, str_len, .big);
 
-            const write_len_len = try self.write_fn(&arr);
-            if (write_len_len != arr.len) {
-                return MsGPackError.LENGTH_WRITING;
-            }
+            try self.write_data(&arr);
 
-            const write_len = try self.write_fn(str);
-            if (write_len != len) {
-                return MsGPackError.LENGTH_WRITING;
-            }
+            try self.write_data(str);
         }
 
         /// write str32
