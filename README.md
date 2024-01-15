@@ -7,3 +7,8 @@ This is an implementation of [MessagePack](https://msgpack.org/index.html) for [
 - Supports all MessagePack types
 - Efficient encoding and decoding
 - Simple and easy-to-use API
+
+## NOTE
+
+The current protocol implementation has been completed, but it has not been fully tested.
+Only limited unit testing has been conducted, which does not cover everything.
