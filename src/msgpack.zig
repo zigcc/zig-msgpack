@@ -792,7 +792,7 @@ pub fn MsgPack(
         }
 
         fn write_ext_value(self: Self, ext: EXT) !void {
-            try self.write_u8_value(ext.type);
+            try self.write_i8_value(ext.type);
             try self.write_data(ext.data);
         }
 
@@ -1719,7 +1719,7 @@ pub fn MsgPack(
         }
 
         fn read_ext_value(self: Self, allocator: Allocator, len: usize) !EXT {
-            const ext_type = try self.read_u8_value();
+            const ext_type = try self.read_i8_value();
             const data = try self.read_data(allocator, len);
             return EXT{
                 .type = ext_type,
@@ -1903,6 +1903,6 @@ const PO = struct {
 };
 
 pub const EXT = struct {
-    type: u8,
+    type: i8,
     data: []u8,
 };
