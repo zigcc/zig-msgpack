@@ -78,6 +78,7 @@ pub const MsGPackError = error{
     DATA_WRITING,
     EXT_TYPE_READING,
     EXT_TYPE_WRITING,
+    EXT_TYPE_LENGTH,
     INVALID_TYPE,
     LENGTH_READING,
     LENGTH_WRITING,
@@ -822,17 +823,102 @@ pub fn MsgPack(
             }
         }
 
-        // fn write_fix_ext1(self: Self, type: u8, val: []const u8) !void {}
-        // fn write_fix_ext2(self: Self, type: u8, val: []const u8) !void {}
-        // fn write_fix_ext4(self: Self, type: u8, val: []const u8) !void {}
-        // fn write_fix_ext8(self: Self, type: u8, val: []const u8) !void {}
-        // fn write_fix_ext16(self: Self, type: u8, val: []const u8) !void {}
-        //
-        // fn write_ext8(self: Self, type: u8, val: []const u8) !void {}
-        // fn write_ext16(self: Self, type: u8, val: []const u8) !void {}
-        // fn write_ext17(self: Self, type: u8, val: []const u8) !void {}
-        //
-        // pub fn write_ext(self: Self, type: u8, val: []const u8) !void {}
+        fn write_ext_value(self: Self, ext: EXT) !void {
+            try self.write_u8_value(ext.type);
+            try self.write_fn(ext.data);
+        }
+
+        fn write_fix_ext1(self: Self, ext: EXT) !void {
+            if (ext.data.len != 1) {
+                return MsGPackError.EXT_TYPE_LENGTH;
+            }
+            try self.write_type_marker(.FIXEXT1);
+
+            try self.write_ext_value(ext);
+        }
+
+        fn write_fix_ext2(self: Self, ext: EXT) !void {
+            if (ext.data.len != 2) {
+                return MsGPackError.EXT_TYPE_LENGTH;
+            }
+            try self.write_type_marker(.FIXEXT2);
+            try self.write_ext_value(ext);
+        }
+
+        fn write_fix_ext4(self: Self, ext: EXT) !void {
+            if (ext.data.len != 4) {
+                return MsGPackError.EXT_TYPE_LENGTH;
+            }
+            try self.write_type_marker(.FIXEXT4);
+            try self.write_ext_value(ext);
+        }
+
+        fn write_fix_ext8(self: Self, ext: EXT) !void {
+            if (ext.data.len != 8) {
+                return MsGPackError.EXT_TYPE_LENGTH;
+            }
+            try self.write_type_marker(.FIXEXT8);
+            try self.write_ext_value(ext);
+        }
+
+        fn write_fix_ext16(self: Self, ext: EXT) !void {
+            if (ext.data.len != 16) {
+                return MsGPackError.EXT_TYPE_LENGTH;
+            }
+            try self.write_type_marker(.FIXEXT16);
+            try self.write_ext_value(ext);
+        }
+
+        fn write_ext8(self: Self, ext: EXT) !void {
+            if (ext.data.len > std.math.maxInt(u8)) {
+                return MsGPackError.EXT_TYPE_LENGTH;
+            }
+
+            try self.write_type_marker(.EXT8);
+            try self.write_u8_value(@intCast(ext.data.len));
+            try self.write_ext_value(ext);
+        }
+
+        fn write_ext16(self: Self, ext: EXT) !void {
+            if (ext.data.len > std.math.maxInt(u16)) {
+                return MsGPackError.EXT_TYPE_LENGTH;
+            }
+            try self.write_type_marker(.EXT16);
+            try self.write_u16_value(@intCast(ext.data.len));
+            try self.write_ext_value(ext);
+        }
+
+        fn write_ext32(self: Self, ext: EXT) !void {
+            if (ext.data.len > std.math.maxInt(u32)) {
+                return MsGPackError.EXT_TYPE_LENGTH;
+            }
+            try self.write_type_marker(.EXT32);
+            try self.write_u32_value(@intCast(ext.data.len));
+            try self.write_ext_value(ext);
+        }
+
+        pub fn write_ext(self: Self, ext: EXT) !void {
+            const len = ext.data.len;
+            if (len == 1) {
+                try self.write_fix_ext1(ext);
+            } else if (len == 2) {
+                try self.write_fix_ext2(ext);
+            } else if (len == 4) {
+                try self.write_fix_ext4(ext);
+            } else if (len == 8) {
+                try self.write_fix_ext8(ext);
+            } else if (len == 16) {
+                try self.write_fix_ext16(ext);
+            } else if (len <= std.math.maxInt(u8)) {
+                try self.write_ext8(ext);
+            } else if (len <= std.math.maxInt(u16)) {
+                try self.write_ext16(ext);
+            } else if (len <= std.math.maxInt(u32)) {
+                try self.write_ext32(ext);
+            } else {
+                return MsGPackError.EXT_TYPE_LENGTH;
+            }
+        }
 
         /// write
         pub fn write(self: Self, val: anytype) !void {
@@ -894,6 +980,17 @@ pub fn MsgPack(
             }
 
             return res[0];
+        }
+
+        fn read_data(self: Self, allocator: Allocator, len: usize) ![]u8 {
+            const data = try allocator.alloc(u8, len);
+            const data_len = try self.read_fn(data);
+
+            if (data_len != len) {
+                return MsGPackError.LENGTH_READING;
+            }
+
+            return data;
         }
 
         /// read type marker u8
@@ -1378,13 +1475,7 @@ pub fn MsgPack(
 
         fn read_fix_str_value(self: Self, allocator: Allocator, marker_u8: u8) ![]const u8 {
             const len: u8 = marker_u8 - @intFromEnum(Markers.FIXSTR);
-
-            const str = try allocator.alloc(u8, len);
-            const str_len = try self.read_fn(str);
-
-            if (str_len != len) {
-                return MsGPackError.LENGTH_READING;
-            }
+            const str = try self.read_data(allocator, len);
 
             return str;
         }
@@ -1398,46 +1489,21 @@ pub fn MsgPack(
             }
 
             const len = std.mem.readInt(u8, &arr, .big);
-
-            const str = try allocator.alloc(u8, len);
-            const str_len = try self.read_fn(str);
-
-            if (str_len != len) {
-                return MsGPackError.LENGTH_READING;
-            }
+            const str = try self.read_data(allocator, len);
 
             return str;
         }
 
         fn read_str16_value(self: Self, allocator: Allocator) ![]const u8 {
-            var arr: [2]u8 = std.mem.zeroes([2]u8);
-            const str_len_len = try self.read_fn(&arr);
-
-            if (str_len_len != arr.len) {
-                return MsGPackError.LENGTH_READING;
-            }
-
-            const len = std.mem.readInt(u16, &arr, .big);
-
-            const str = try allocator.alloc(u8, len);
-            const str_len = try self.read_fn(str);
-
-            if (str_len != len) {
-                return MsGPackError.LENGTH_READING;
-            }
+            const len = try self.read_u16_value();
+            const str = try self.read_data(allocator, len);
 
             return str;
         }
 
         fn read_str32_value(self: Self, allocator: Allocator) ![]const u8 {
             const len = try self.read_u32_value();
-
-            const str = try allocator.alloc(u8, len);
-            const str_len = try self.read_fn(str);
-
-            if (str_len != len) {
-                return MsGPackError.LENGTH_READING;
-            }
+            const str = try self.read_data(allocator, len);
 
             return str;
         }
@@ -1466,39 +1532,21 @@ pub fn MsgPack(
 
         fn read_bin8_value(self: Self, allocator: Allocator) ![]u8 {
             const len = try self.read_u8_value();
-
-            const bin = try allocator.alloc(u8, len);
-            const bin_len = try self.read_fn(bin);
-
-            if (bin_len != len) {
-                return MsGPackError.LENGTH_READING;
-            }
+            const bin = try self.read_data(allocator, len);
 
             return bin;
         }
 
         fn read_bin16_value(self: Self, allocator: Allocator) ![]u8 {
             const len = try self.read_u16_value();
-
-            const bin = try allocator.alloc(u8, len);
-            const bin_len = try self.read_fn(bin);
-
-            if (bin_len != len) {
-                return MsGPackError.LENGTH_READING;
-            }
+            const bin = try self.read_data(allocator, len);
 
             return bin;
         }
 
         fn read_bin32_value(self: Self, allocator: Allocator) ![]u8 {
             const len = try self.read_u32_value();
-
-            const bin = try allocator.alloc(u8, len);
-            const bin_len = try self.read_fn(bin);
-
-            if (bin_len != len) {
-                return MsGPackError.LENGTH_READING;
-            }
+            const bin = try self.read_data(allocator, len);
 
             return bin;
         }
@@ -1691,6 +1739,51 @@ pub fn MsgPack(
             return res;
         }
 
+        fn read_ext_value(self: Self, allocator: Allocator, len: usize) !EXT {
+            const ext_type = try self.read_u8_value();
+            const data = try self.read_data(allocator, len);
+            return EXT{
+                .type = ext_type,
+                .data = data,
+            };
+        }
+
+        fn read_ext(self: Self, allocator: Allocator) !EXT {
+            const marker = try self.read_type_marker();
+            switch (marker) {
+                .FIXEXT1 => {
+                    return self.read_ext_value(allocator, 1);
+                },
+                .FIXEXT2 => {
+                    return self.read_ext_value(allocator, 2);
+                },
+                .FIXEXT4 => {
+                    return self.read_ext_value(allocator, 4);
+                },
+                .FIXEXT8 => {
+                    return self.read_ext_value(allocator, 8);
+                },
+                .FIXEXT16 => {
+                    return self.read_ext_value(allocator, 16);
+                },
+                .EXT8 => {
+                    const len = try self.read_u8_value();
+                    return self.read_ext_value(allocator, len);
+                },
+                .EXT16 => {
+                    const len = try self.read_u16_value();
+                    return self.read_ext_value(allocator, len);
+                },
+                .EXT32 => {
+                    const len = try self.read_u32_value();
+                    return self.read_ext_value(allocator, len);
+                },
+                else => {
+                    return MsGPackError.INVALID_TYPE;
+                },
+            }
+        }
+
         // TODO: add read_ext and read_timestamp
 
         inline fn read_type_help(comptime T: type) type {
@@ -1816,4 +1909,9 @@ const PO = struct {
         }
         return null;
     }
+};
+
+const EXT = struct {
+    type: u8,
+    data: []u8,
 };
