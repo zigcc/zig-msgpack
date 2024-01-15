@@ -901,7 +901,7 @@ pub fn MsgPack(
                 },
                 .Int => {
                     if (val >= 0) {
-                        try self.write_uint(val);
+                        try self.write_uint(@intCast(val));
                     } else {
                         try self.write_int(val);
                     }
@@ -1772,6 +1772,14 @@ pub fn MsgPack(
                     const child = array.child;
                     return []child;
                 },
+                .Pointer => |pointer| {
+                    if (PO.to_slice(pointer)) |ele_type| {
+                        return []ele_type;
+                    } else {
+                        @compileError("not support non-slice pointer");
+                    }
+                },
+
                 else => {
                     return T;
                 },
@@ -1786,14 +1794,18 @@ pub fn MsgPack(
                     return self.read_bool();
                 },
                 .Int => |int| {
-                    if (int.signedness) {
-                        return self.read_int();
+                    const is_signed = int.signedness == .signed;
+                    if (is_signed) {
+                        const val = try self.read_int();
+                        return @intCast(val);
                     } else {
-                        return self.read_uint();
+                        const val = try self.read_uint();
+                        return @intCast(val);
                     }
                 },
                 .Float => {
-                    return self.read_float();
+                    const val = try self.read_float();
+                    return @floatCast(val);
                 },
                 .Array => |array| {
                     const ele_type = array.child;
