@@ -180,7 +180,7 @@ pub fn MsgPack(
         }
 
         fn write_u16_value(self: Self, val: u16) !void {
-            var arr: [2]u8 = std.mem.zeroes([2]u8);
+            var arr: [2]u8 = undefined;
             std.mem.writeInt(u16, &arr, val, .big);
 
             try self.write_data(&arr);
@@ -193,7 +193,7 @@ pub fn MsgPack(
         }
 
         fn write_u32_value(self: Self, val: u32) !void {
-            var arr: [4]u8 = std.mem.zeroes([4]u8);
+            var arr: [4]u8 = undefined;
             std.mem.writeInt(u32, &arr, val, .big);
 
             try self.write_data(&arr);
@@ -206,7 +206,7 @@ pub fn MsgPack(
         }
 
         fn write_u64_value(self: Self, val: u64) !void {
-            var arr: [8]u8 = std.mem.zeroes([8]u8);
+            var arr: [8]u8 = undefined;
             std.mem.writeInt(u64, &arr, val, .big);
 
             try self.write_data(&arr);
@@ -238,7 +238,7 @@ pub fn MsgPack(
         }
 
         fn write_i16_value(self: Self, val: i16) !void {
-            var arr: [2]u8 = std.mem.zeroes([2]u8);
+            var arr: [2]u8 = undefined;
             std.mem.writeInt(i16, &arr, val, .big);
 
             try self.write_data(&arr);
@@ -251,7 +251,7 @@ pub fn MsgPack(
         }
 
         fn write_i32_value(self: Self, val: i32) !void {
-            var arr: [4]u8 = std.mem.zeroes([4]u8);
+            var arr: [4]u8 = undefined;
             std.mem.writeInt(i32, &arr, val, .big);
 
             try self.write_data(&arr);
@@ -264,7 +264,7 @@ pub fn MsgPack(
         }
 
         fn write_i64_value(self: Self, val: i64) !void {
-            var arr: [8]u8 = std.mem.zeroes([8]u8);
+            var arr: [8]u8 = undefined;
             std.mem.writeInt(i64, &arr, val, .big);
 
             try self.write_data(&arr);
@@ -310,7 +310,7 @@ pub fn MsgPack(
 
         fn write_f32_value(self: Self, val: f32) !void {
             const int: u32 = @bitCast(val);
-            var arr: [4]u8 = std.mem.zeroes([4]u8);
+            var arr: [4]u8 = undefined;
             std.mem.writeInt(u32, &arr, int, .big);
 
             try self.write_data(&arr);
@@ -324,7 +324,7 @@ pub fn MsgPack(
 
         fn write_f64_value(self: Self, val: f64) !void {
             const int: u64 = @bitCast(val);
-            var arr: [8]u8 = std.mem.zeroes([8]u8);
+            var arr: [8]u8 = undefined;
             std.mem.writeInt(u64, &arr, int, .big);
 
             try self.write_data(&arr);
@@ -370,11 +370,7 @@ pub fn MsgPack(
 
         fn write_str8_value(self: Self, str: []const u8) !void {
             const len = str.len;
-            const str_len: u8 = @intCast(len);
-            var arr: [1]u8 = std.mem.zeroes([1]u8);
-            std.mem.writeInt(u8, &arr, str_len, .big);
-
-            try self.write_data(&arr);
+            try self.write_i8_value(@intCast(len));
 
             try self.write_data(str);
         }
@@ -392,11 +388,7 @@ pub fn MsgPack(
 
         fn write_str16_value(self: Self, str: []const u8) !void {
             const len = str.len;
-            const str_len: u16 = @intCast(len);
-            var arr: [2]u8 = std.mem.zeroes([2]u8);
-            std.mem.writeInt(u16, &arr, str_len, .big);
-
-            try self.write_data(&arr);
+            try self.write_u16_value(@intCast(len));
 
             try self.write_data(str);
         }
@@ -415,11 +407,7 @@ pub fn MsgPack(
 
         fn write_str32_value(self: Self, str: []const u8) !void {
             const len = str.len;
-            const str_len: u32 = @intCast(len);
-            var arr: [4]u8 = std.mem.zeroes([4]u8);
-            std.mem.writeInt(u32, &arr, str_len, .big);
-
-            try self.write_data(&arr);
+            try self.write_u32_value(@intCast(len));
 
             try self.write_data(str);
         }
@@ -1025,7 +1013,7 @@ pub fn MsgPack(
         }
 
         fn read_i16_value(self: Self) !i16 {
-            var buffer: [2]u8 = std.mem.zeroes([2]u8);
+            var buffer: [2]u8 = undefined;
             const len = try self.read_fn(&buffer);
             if (len != 2) {
                 return MsGPackError.LENGTH_READING;
@@ -1035,7 +1023,7 @@ pub fn MsgPack(
         }
 
         fn read_u16_value(self: Self) !u16 {
-            var buffer: [2]u8 = std.mem.zeroes([2]u8);
+            var buffer: [2]u8 = undefined;
             const len = try self.read_fn(&buffer);
             if (len != 2) {
                 return MsGPackError.LENGTH_READING;
@@ -1045,7 +1033,7 @@ pub fn MsgPack(
         }
 
         fn read_i32_value(self: Self) !i32 {
-            var buffer: [4]u8 = std.mem.zeroes([4]u8);
+            var buffer: [4]u8 = undefined;
             const len = try self.read_fn(&buffer);
             if (len != 4) {
                 return MsGPackError.LENGTH_READING;
@@ -1055,7 +1043,7 @@ pub fn MsgPack(
         }
 
         fn read_u32_value(self: Self) !u32 {
-            var buffer: [4]u8 = std.mem.zeroes([4]u8);
+            var buffer: [4]u8 = undefined;
             const len = try self.read_fn(&buffer);
             if (len != 4) {
                 return MsGPackError.LENGTH_READING;
@@ -1065,7 +1053,7 @@ pub fn MsgPack(
         }
 
         fn read_i64_value(self: Self) !i64 {
-            var buffer: [8]u8 = std.mem.zeroes([8]u8);
+            var buffer: [8]u8 = undefined;
             const len = try self.read_fn(&buffer);
             if (len != 8) {
                 return MsGPackError.LENGTH_READING;
@@ -1075,7 +1063,7 @@ pub fn MsgPack(
         }
 
         fn read_u64_value(self: Self) !u64 {
-            var buffer: [8]u8 = std.mem.zeroes([8]u8);
+            var buffer: [8]u8 = undefined;
             const len = try self.read_fn(&buffer);
             if (len != 8) {
                 return MsGPackError.LENGTH_READING;
@@ -1389,7 +1377,7 @@ pub fn MsgPack(
         }
 
         fn read_f32_value(self: Self) !f32 {
-            var buffer: [4]u8 = std.mem.zeroes([4]u8);
+            var buffer: [4]u8 = undefined;
             const len = try self.read_fn(&buffer);
             if (len != 4) {
                 return MsGPackError.LENGTH_READING;
@@ -1400,7 +1388,7 @@ pub fn MsgPack(
         }
 
         fn read_f64_value(self: Self) !f64 {
-            var buffer: [8]u8 = std.mem.zeroes([8]u8);
+            var buffer: [8]u8 = undefined;
             const len = try self.read_fn(&buffer);
             if (len != 8) {
                 return MsGPackError.LENGTH_READING;
@@ -1449,14 +1437,7 @@ pub fn MsgPack(
         }
 
         fn read_str8_value(self: Self, allocator: Allocator) ![]const u8 {
-            var arr: [1]u8 = std.mem.zeroes([1]u8);
-            const str_len_len = try self.read_fn(&arr);
-
-            if (str_len_len != arr.len) {
-                return MsGPackError.LENGTH_READING;
-            }
-
-            const len = std.mem.readInt(u8, &arr, .big);
+            const len = try self.read_u8_value();
             const str = try self.read_data(allocator, len);
 
             return str;
