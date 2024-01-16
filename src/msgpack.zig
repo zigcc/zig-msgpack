@@ -1,3 +1,6 @@
+//! MessagePack implemention with zig
+//! https://msgpack.org/
+
 const std = @import("std");
 const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
