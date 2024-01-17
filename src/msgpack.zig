@@ -1770,6 +1770,14 @@ pub fn MsgPack(
             }
         }
 
+        // TODO: add skip support
+        //
+        // pub fn skip(self: Self, n: usize) !void {
+            // const marker_u8 = try self.read_type_marker_u8();
+            // const marker=try self.marker_u8_to(marker_u8);
+            // switch (mark) {}
+        // }
+
         /// read
         pub fn read(self: Self, comptime T: type, allocator: Allocator) !read_type_help(T) {
             const type_info = @typeInfo(T);
