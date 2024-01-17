@@ -1772,11 +1772,99 @@ pub fn MsgPack(
 
         // TODO: add skip support
         //
-        // pub fn skip(self: Self, n: usize) !void {
-            // const marker_u8 = try self.read_type_marker_u8();
-            // const marker=try self.marker_u8_to(marker_u8);
-            // switch (mark) {}
-        // }
+        pub fn skip(self: Self) !void {
+            const marker_u8 = try self.read_type_marker_u8();
+            const marker = try self.marker_u8_to(marker_u8);
+            var len: usize = undefined;
+            switch (marker) {
+                .NIL, .FALSE, .TRUE, .POSITIVE_FIXINT, .NEGATIVE_FIXINT => {},
+                .EXT32 => {
+                    len = try self.read_u32_value();
+                    _ = try self.read_u8_value();
+                },
+                .EXT16 => {
+                    len = try self.read_u16_value();
+                    _ = try self.read_u8_value();
+                },
+                .EXT8 => {
+                    len = try self.read_u8_value();
+                    _ = try self.read_u8_value();
+                },
+                .FIXEXT16 => {
+                    len = 16;
+                    _ = try self.read_u8_value();
+                },
+                .FIXEXT8 => {
+                    len = 8;
+                    _ = try self.read_u8_value();
+                },
+                .FIXEXT4 => {
+                    len = 4;
+                    _ = try self.read_u8_value();
+                },
+                .FIXEXT2 => {
+                    len = 2;
+                    _ = try self.read_u8_value();
+                },
+                .FIXEXT1 => {
+                    len = 1;
+                    _ = try self.read_u8_value();
+                },
+                .FIXMAP, .MAP16, .MAP32 => |val| {
+                    if (val == .FIXMAP) {
+                        len = marker_u8 - @intFromEnum(Markers.FIXMAP);
+                    } else if (val == .MAP16) {
+                        len = try self.read_u16_value();
+                    } else {
+                        len = try self.read_u32_value();
+                    }
+                    for (0..len * 2) |_| {
+                        try self.skip();
+                    }
+                    return;
+                },
+                .STR32, .BIN32 => {
+                    len = self.read_u32_value();
+                },
+                .STR16, .BIN16 => {
+                    len = self.read_u16_value();
+                },
+                .STR8, .BIN8 => {
+                    len = self.read_u8_value();
+                },
+                .FIXARRAY, .ARRAY16, .ARRAY32 => |val| {
+                    if (val == .FIXARRAY) {
+                        len = marker_u8 - @intFromEnum(Markers.FIXARRAY);
+                    } else if (val == .ARRAY16) {
+                        len = try self.read_u16_value();
+                    } else {
+                        len = try self.read_u32_value();
+                    }
+                    for (0..len) |_| {
+                        try self.skip();
+                    }
+                    return;
+                },
+                .FIXSTR => {
+                    len = marker_u8 - @intFromEnum(Markers.FIXSTR);
+                },
+                .UINT64, .INT64, .FLOAT64 => {
+                    _ = self.read_u64_value();
+                },
+                .INT32, .UINT32, .FLOAT32 => {
+                    _ = self.read_u32_value();
+                },
+                .UINT16, .INT16 => {
+                    _ = self.read_u16_value();
+                },
+                .UINT8, .INT8 => {
+                    _ = self.read_u8_value();
+                },
+            }
+            for (0..len) |_| {
+                _ = self.read_byte();
+            }
+        }
 
         /// read
         pub fn read(self: Self, comptime T: type, allocator: Allocator) !read_type_help(T) {
