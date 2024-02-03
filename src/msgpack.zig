@@ -72,6 +72,7 @@ pub const MsGPackError = error{
     STR_DATA_LENGTH_TOO_LONG,
     BIN_DATA_LENGTH_TOO_LONG,
     ARRAY_LENGTH_TOO_LONG,
+    TUPLE_LENGTH_TOO_LONG,
     MAP_LENGTH_TOO_LONG,
     INPUT_VALUE_TOO_LARGE,
     FIXED_VALUE_WRITING,
@@ -549,6 +550,16 @@ pub fn MsgPack(
             }
         }
 
+        /// write tuple value
+        fn write_tuple_value(self: Self, comptime T: type, val: T) !void {
+            const tuple_info = @typeInfo(T).Struct;
+            inline for (tuple_info.fields) |field| {
+                const field_name = field.name;
+                const field_value = @field(val, field_name);
+                try self.write(field_value);
+            }
+        }
+
         /// write fix arr
         fn write_fix_arr(self: Self, comptime T: type, val: []const T) !void {
             const arr_len = val.len;
@@ -564,6 +575,24 @@ pub fn MsgPack(
 
             // try to write arr value
             try self.write_arr_value(T, val);
+        }
+
+        fn write_fix_tuple(self: Self, comptime T: type, val: T) !void {
+            const tuple_info = @typeInfo(T).Struct;
+
+            const tuple_len = tuple_info.fields.len;
+            const max_len = 0xf;
+
+            if (tuple_len > max_len) {
+                return MsGPackError.TUPLE_LENGTH_TOO_LONG;
+            }
+
+            // write marker
+            const header: u8 = @intFromEnum(Markers.FIXARRAY) + @as(u8, @intCast(tuple_len));
+            try self.write_u8_value(header);
+
+            // try to write tuple value
+            try self.write_tuple_value(T, val);
         }
 
         /// write arr16
@@ -582,6 +611,27 @@ pub fn MsgPack(
 
             // try to write arr value
             try self.write_arr_value(T, val);
+        }
+
+        /// write tuple16
+        fn write_tuple16(self: Self, comptime T: type, val: T) !void {
+            const tuple_info = @typeInfo(T).Struct;
+
+            const tuple_len = tuple_info.fields.len;
+            const max_len = 0xffff;
+
+            if (tuple_len > max_len) {
+                return MsGPackError.TUPLE_LENGTH_TOO_LONG;
+            }
+
+            // write marker
+            try self.write_type_marker(.ARRAY16);
+
+            // write len
+            try self.write_u16_value(@intCast(tuple_len));
+
+            // write tuple value
+            try self.write_tuple_value(T, val);
         }
 
         /// write arr32
@@ -603,6 +653,27 @@ pub fn MsgPack(
             try self.write_arr_value(T, val);
         }
 
+        /// write tuple32
+        fn write_tuple32(self: Self, comptime T: type, val: T) !void {
+            const tuple_info = @typeInfo(T).Struct;
+
+            const tuple_len = tuple_info.fields.len;
+            const max_len = 0xffff_ffff;
+
+            if (tuple_len > max_len) {
+                return MsGPackError.TUPLE_LENGTH_TOO_LONG;
+            }
+
+            // write marker
+            try self.write_type_marker(.ARRAY32);
+
+            // write len
+            try self.write_u32_value(@intCast(tuple_len));
+
+            // write tuple value
+            try self.write_tuple_value(T, val);
+        }
+
         /// write arr
         pub fn write_arr(self: Self, comptime T: type, val: []const T) !void {
             const len = val.len;
@@ -612,6 +683,26 @@ pub fn MsgPack(
                 try self.write_arr16(T, val);
             } else {
                 try self.write_arr32(T, val);
+            }
+        }
+
+        /// write tuple
+        pub fn write_tuple(self: Self, comptime T: type, val: T) !void {
+            const type_info = @typeInfo(T);
+
+            if (type_info != .Struct or !type_info.Struct.is_tuple) {
+                @compileError("for struct, please use write_map");
+            }
+
+            const tuple_info = type_info.Struct;
+            const len = tuple_info.fields.len;
+
+            if (len <= 0xf) {
+                try self.write_fix_tuple(T, val);
+            } else if (len <= 0xffff) {
+                try self.write_tuple16(T, val);
+            } else {
+                try self.write_tuple32(T, val);
             }
         }
 
@@ -883,6 +974,7 @@ pub fn MsgPack(
         pub fn write(self: Self, val: anytype) !void {
             const val_type = @TypeOf(val);
             const val_type_info = @typeInfo(val_type);
+
             switch (val_type_info) {
                 .Null => {
                     try self.write_nil();
@@ -911,8 +1003,12 @@ pub fn MsgPack(
                         @compileError("not support non-slice pointer!");
                     }
                 },
-                .Struct => {
-                    try self.write_map(val_type, val);
+                .Struct => |ss| {
+                    if (ss.is_tuple) {
+                        try self.write_tuple(val_type, val);
+                    } else {
+                        try self.write_map(val_type, val);
+                    }
                 },
                 else => {
                     @compileError("type is not supported!");
