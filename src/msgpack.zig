@@ -491,62 +491,8 @@ pub fn MsgPack(
 
         /// write arr value
         fn write_arr_value(self: Self, comptime T: type, val: []const T) !void {
-            const type_info = @typeInfo(T);
-            switch (type_info) {
-                .Null => {
-                    for (val) |_| {
-                        try self.write_nil();
-                    }
-                },
-                .Bool => {
-                    for (val) |value| {
-                        try self.write_bool(value);
-                    }
-                },
-                .Int => |int| {
-                    // TODO: maybe this can be optimized?
-                    const int_bits = int.bits;
-                    const is_signed = if (int.signedness == .signed) true else false;
-                    if (int_bits > 64) {
-                        @compileError("not support bits larger than 64");
-                    }
-
-                    if (is_signed) {
-                        for (val) |value| {
-                            try self.write_int(@intCast(value));
-                        }
-                    } else {
-                        for (val) |value| {
-                            try self.write_uint(@intCast(value));
-                        }
-                    }
-                },
-                .Float => |float| {
-                    const float_bits = float.bits;
-                    if (float_bits > 64) {
-                        @compileError("float larger than f64 is not supported!");
-                    }
-                    for (val) |value| {
-                        try self.write_float(value);
-                    }
-                },
-                .Pointer => |pointer| {
-                    if (PO.to_slice(pointer)) |ele_type| {
-                        try self.write_arr(ele_type, val);
-                    } else {
-                        @compileError("not support non-slice pointer!");
-                    }
-                },
-                .Struct => {
-                    for (val) |value| {
-                        try self.write_map(T, value);
-                    }
-                },
-                else => {
-                    @compileError("type is not supported!");
-                },
-                // TODO: other type
-                // arrary optional pointer
+            for (val) |value| {
+                try self.write(value);
             }
         }
 
@@ -720,59 +666,12 @@ pub fn MsgPack(
 
             inline for (type_info.Struct.fields) |field| {
                 const field_name = field.name;
-                const field_type = field.type;
                 const field_value = @field(val, field_name);
-                const field_type_info = @typeInfo(field_type);
 
                 // write key
                 try self.write_str(field.name);
 
-                // write value
-                switch (field_type_info) {
-                    .Null => {
-                        try self.write_nil();
-                    },
-                    .Bool => {
-                        try self.write_bool(field_value);
-                    },
-                    .Int => |int| {
-                        // TODO: maybe this can be optimized ?
-                        const int_bits = int.bits;
-                        const is_signed = if (int.signedness == .signed) true else false;
-                        if (int_bits > 64) {
-                            @compileError("not support bits larger than 64");
-                        }
-
-                        if (is_signed) {
-                            try self.write_int(@intCast(field_value));
-                        } else {
-                            try self.write_uint(@intCast(field_value));
-                        }
-                    },
-                    .Float => |float| {
-                        const float_bits = float.bits;
-                        if (float_bits > 64) {
-                            @compileError("float larger than f64 is not supported!");
-                        }
-
-                        try self.write_float(field_value);
-                    },
-                    .Pointer => |pointer| {
-                        // NOTE: whether we support other pointer ?
-                        if (PO.to_slice(pointer)) |ele_type| {
-                            try self.write_arr(ele_type, field_value);
-                        } else {
-                            @compileError("not support non-slice pointer!");
-                        }
-                    },
-                    .Struct => {
-                        try self.write_map(field_type, field_value);
-                    },
-                    else => {
-                        @compileError("type is not supported!");
-                    },
-                    // TODO: other type
-                }
+                try self.write(field_value);
             }
         }
 
@@ -982,14 +881,25 @@ pub fn MsgPack(
                 .Bool => {
                     try self.write_bool(val);
                 },
-                .Int => {
-                    if (val >= 0) {
-                        try self.write_uint(@intCast(val));
-                    } else {
+                .Int => |int| {
+                    const int_bits = int.bits;
+                    const is_signed = if (int.signedness == .signed) true else false;
+
+                    if (int_bits > 64) {
+                        @compileError("not support bits larger than 64");
+                    }
+
+                    if (is_signed) {
                         try self.write_int(val);
+                    } else {
+                        try self.write_uint(val);
                     }
                 },
-                .Float => {
+                .Float => |float| {
+                    const float_bits = float.bits;
+                    if (float_bits > 64) {
+                        @compileError("float larger than f64 is not supported!");
+                    }
                     try self.write_float(val);
                 },
                 .Array => |array| {
