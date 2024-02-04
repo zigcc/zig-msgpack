@@ -4,6 +4,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
+const comptimePrint = std.fmt.comptimePrint;
 const native_endian = builtin.cpu.arch.endian();
 
 pub const Str = struct {
@@ -772,6 +773,26 @@ pub fn MsgPack(
             }
         }
 
+        /// write enum value, enum will treated as a number
+        pub fn write_enum(self: Self, comptime T: type, val: T) !void {
+            const type_info = @typeInfo(T);
+            if (type_info != .Enum) {
+                const err_msg = comptimePrint("T ({}) is not enum", .{T});
+                @compileError(err_msg);
+            }
+
+            const enum_info = type_info.Enum;
+            const tag_type = enum_info.tag_type;
+
+            const tag_type_info = @typeInfo(tag_type);
+            if (tag_type_info != .Int) {
+                const err_msg = comptimePrint("enum type ({})'s tag type({}) must be int,", .{ T, tag_type });
+                @compileError(err_msg);
+            }
+
+            try self.write_uint(@intFromEnum(val));
+        }
+
         fn write_ext_value(self: Self, ext: EXT) !void {
             try self.write_i8_value(ext.type);
             try self.write_data(ext.data);
@@ -875,6 +896,9 @@ pub fn MsgPack(
             const val_type_info = @typeInfo(val_type);
 
             switch (val_type_info) {
+                .Enum => {
+                    try self.write_enum(val_type, val);
+                },
                 .Null => {
                     try self.write_nil();
                 },
@@ -1591,6 +1615,18 @@ pub fn MsgPack(
             return res;
         }
 
+        /// read enum
+        pub fn read_enum(self: Self, comptime T: type) !T {
+            const type_info = @typeInfo(T);
+            if (type_info != .Enum) {
+                const err_msg = comptimePrint("T ({}) is not enum", .{T});
+                @compileError(err_msg);
+            }
+            const val = try self.read_uint();
+
+            return @enumFromInt(val);
+        }
+
         /// read map
         pub fn read_map(self: Self, comptime T: type, allocator: Allocator) !T {
             if (T == Bin) {
@@ -1844,6 +1880,9 @@ pub fn MsgPack(
                         const val = try self.read_uint();
                         return @intCast(val);
                     }
+                },
+                .Enum => {
+                    return self.read_enum(T);
                 },
                 .Float => {
                     const val = try self.read_float();
