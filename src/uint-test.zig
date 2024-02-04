@@ -330,6 +330,18 @@ test "tuple wirte and read" {
     try expect(std.meta.eql(val, test_val));
 }
 
+test "enum write and read" {
+    var arr: [0xffff]u8 = std.mem.zeroes([0xffff]u8);
+    var buf = Buffer{ .arr = &arr };
+    var p = packType{ .context = &buf };
+
+    const test_enum = enum { A, B, C, D };
+
+    try p.write_enum(test_enum, test_enum.A);
+    const val = try p.read_enum(test_enum);
+    try expect(val == test_enum.A);
+}
+
 test "ext write and read" {
     var arr: [0xffff]u8 = std.mem.zeroes([0xffff]u8);
     var buf = Buffer{ .arr = &arr };
