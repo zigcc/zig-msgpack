@@ -1549,46 +1549,46 @@ pub fn MsgPack(
 
             const arr = try allocator.alloc(T, len);
             for (0..arr.len) |i| {
-                const type_info = @typeInfo(T);
-                switch (type_info) {
-                    .Bool => {
-                        arr[i] = try self.read_bool();
-                    },
-
-                    .Int => |int| {
-                        const int_bits = int.bits;
-                        const is_signed = if (int.signedness == .signed) true else false;
-
-                        if (int_bits > 64) {
-                            @compileError("not support bits larger than 64");
-                        }
-                        if (is_signed) {
-                            const val = try self.read_int();
-                            arr[i] = @intCast(val);
-                        } else {
-                            const val = try self.read_uint();
-                            arr[i] = @intCast(val);
-                        }
-                    },
-                    .Float => |float| {
-                        const float_bits = float.bits;
-                        if (float_bits > 64) {
-                            @compileError("float larger than f64 is not supported!");
-                        }
-
-                        const val = try self.read_float();
-                        arr[i] = @floatCast(val);
-                    },
-                    .Struct => {
-                        arr[i] = try self.read_map(T);
-                    },
-
-                    else => {
-                        @compileError("not support other type");
-                    },
-                }
+                arr[i] = try self.read(T, allocator);
             }
             return arr;
+        }
+
+        pub fn read_tuple(self: Self, allocator: Allocator, comptime T: type) !T {
+            const type_info = @typeInfo(T);
+            if (type_info != .Struct or !type_info.Struct.is_tuple) {
+                @compileError("for strcut, please use read map");
+            }
+            const tuple_info = type_info.Struct;
+
+            const marker_u8 = try self.read_type_marker_u8();
+            const marker = try self.marker_u8_to(marker_u8);
+
+            var len: usize = 0;
+            switch (marker) {
+                .FIXARRAY => {
+                    len = marker_u8 - 0x90;
+                },
+                .ARRAY16 => {
+                    len = try self.read_u16_value();
+                },
+                .ARRAY32 => {
+                    len = try self.read_u32_value();
+                },
+                else => {
+                    return MsGPackError.INVALID_TYPE;
+                },
+            }
+            if (len != tuple_info.fields.len) {
+                return MsGPackError.TUPLE_LENGTH_TOO_LONG;
+            }
+            var res: T = undefined;
+            inline for (tuple_info.fields) |field| {
+                const field_type = field.type;
+                const field_name = field.name;
+                @field(res, field_name) = try self.read(field_type, allocator);
+            }
+            return res;
         }
 
         /// read map
@@ -1615,9 +1615,12 @@ pub fn MsgPack(
             const marker = try self.marker_u8_to(marker_u8);
             var len: usize = 0;
             const type_info = @typeInfo(T);
+
             if (type_info != .Struct) {
-                @compileError("read map not support other type");
+                const err = std.fmt.comptimePrint("read map not support {}", .{T});
+                @compileError(err);
             }
+
             const struct_info = type_info.Struct;
 
             switch (marker) {
@@ -1649,58 +1652,8 @@ pub fn MsgPack(
                     const field_name = field.name;
                     if (field_name.len == key.len and std.mem.eql(u8, field_name, key)) {
                         const field_type = field.type;
-                        const field_type_info = @typeInfo(field_type);
-                        switch (field_type_info) {
-                            .Bool => {
-                                const val = try self.read_bool();
-                                @field(res, field_name) = val;
-                            },
-                            .Int => |int| {
-                                const int_bits = int.bits;
-                                const is_signed = if (int.signedness == .signed) true else false;
 
-                                if (int_bits > 64) {
-                                    @compileError("not support bits larger than 64");
-                                }
-                                if (is_signed) {
-                                    const val = try self.read_int();
-                                    @field(res, field_name) = @intCast(val);
-                                } else {
-                                    const val = try self.read_uint();
-                                    @field(res, field_name) = @intCast(val);
-                                }
-                            },
-                            .Float => |float| {
-                                const float_bits = float.bits;
-                                if (float_bits > 64) {
-                                    @compileError("float larger than f64 is not supported!");
-                                }
-
-                                const val = try self.read_float();
-                                @field(res, field_name) = @floatCast(val);
-                            },
-                            .Pointer => |pointer| {
-                                // NOTE: whether we support other pointer ?
-                                if (pointer.size == .Slice) {
-                                    const ele_type = pointer.child;
-                                    const arr = try self.read_arr(allocator, ele_type);
-                                    @field(res, field_name) = arr;
-                                } else {
-                                    @compileError("not support non-slice pointer!");
-                                }
-                            },
-                            .Struct => |ss| {
-                                if (ss.is_tuple) {
-                                    @compileError("not support tuple");
-                                }
-
-                                const val = try self.read_map(field_type, allocator);
-                                @field(res, field_name) = val;
-                            },
-                            else => {
-                                @compileError("type is not supported!");
-                            },
-                        }
+                        @field(res, field_name) = try self.read(field_type, allocator);
                     }
                 }
             }
@@ -1880,7 +1833,11 @@ pub fn MsgPack(
                     return self.read_bool();
                 },
                 .Int => |int| {
+                    if (int.bits > 64) {
+                        @compileError("Numbers larger than 64 bits are not supported");
+                    }
                     const is_signed = int.signedness == .signed;
+
                     if (is_signed) {
                         const val = try self.read_int();
                         return @intCast(val);
