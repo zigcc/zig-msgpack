@@ -317,6 +317,19 @@ test "arrary write and read" {
     try expect(std.mem.eql(u8, &test_val, val));
 }
 
+test "tuple wirte and read" {
+    var arr: [0xffff]u8 = std.mem.zeroes([0xffff]u8);
+    var buf = Buffer{ .arr = &arr };
+    var p = packType{ .context = &buf };
+
+    const tuple = struct { u8, u8 };
+    const test_val = tuple{ 1, 2 };
+
+    try p.write_tuple(tuple, test_val);
+    const val = try p.read_tuple(tuple, allocator);
+    try expect(std.meta.eql(val, test_val));
+}
+
 test "ext write and read" {
     var arr: [0xffff]u8 = std.mem.zeroes([0xffff]u8);
     var buf = Buffer{ .arr = &arr };

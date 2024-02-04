@@ -1554,7 +1554,7 @@ pub fn MsgPack(
             return arr;
         }
 
-        pub fn read_tuple(self: Self, allocator: Allocator, comptime T: type) !T {
+        pub fn read_tuple(self: Self, comptime T: type, allocator: Allocator) !T {
             const type_info = @typeInfo(T);
             if (type_info != .Struct or !type_info.Struct.is_tuple) {
                 @compileError("for strcut, please use read map");
@@ -1616,7 +1616,7 @@ pub fn MsgPack(
             var len: usize = 0;
             const type_info = @typeInfo(T);
 
-            if (type_info != .Struct) {
+            if (type_info != .Struct or type_info.Struct.is_tuple) {
                 const err = std.fmt.comptimePrint("read map not support {}", .{T});
                 @compileError(err);
             }
@@ -1729,8 +1729,7 @@ pub fn MsgPack(
             }
         }
 
-        // TODO: add skip support
-        //
+        // skip
         pub fn skip(self: Self) !void {
             const marker_u8 = try self.read_type_marker_u8();
             const marker = try self.marker_u8_to(marker_u8);
@@ -1861,7 +1860,10 @@ pub fn MsgPack(
                         @compileError("not support non-slice pointer!");
                     }
                 },
-                .Struct => {
+                .Struct => |ss| {
+                    if (ss.is_tuple) {
+                        return self.read_tuple(T, allocator);
+                    }
                     return self.read_map(T, allocator);
                 },
                 else => {
