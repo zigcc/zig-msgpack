@@ -90,7 +90,7 @@ pub const MsGPackError = error{
     INTERNAL,
 };
 
-pub fn MsgPack(
+pub fn Pack(
     comptime Context: type,
     comptime ErrorSet: type,
     comptime writeFn: fn (context: *Context, bytes: []const u8) ErrorSet!usize,

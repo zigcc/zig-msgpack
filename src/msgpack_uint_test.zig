@@ -1,10 +1,10 @@
 const std = @import("std");
-const msgpack = @import("msgpack.zig");
+const msgpack = @import("msgpack");
 const allocator = std.testing.allocator;
 const expect = std.testing.expect;
 
 const Buffer = msgpack.Buffer;
-const packType = msgpack.MsgPack(
+const packType = msgpack.Pack(
     Buffer,
     Buffer.ErrorSet,
     Buffer.write,
