@@ -91,27 +91,29 @@ pub const MsGPackError = error{
 };
 
 pub fn Pack(
-    comptime Context: type,
-    comptime ErrorSet: type,
-    comptime writeFn: fn (context: *Context, bytes: []const u8) ErrorSet!usize,
-    comptime readFn: fn (context: *Context, arr: []u8) ErrorSet!usize,
+    comptime WriteContext: type,
+    comptime ReadContext: type,
+    comptime WriteError: type,
+    comptime ReadError: type,
+    comptime writeFn: fn (context: WriteContext, bytes: []const u8) WriteError!usize,
+    comptime readFn: fn (context: ReadContext, arr: []u8) ReadError!usize,
 ) type {
     return struct {
-        context: *Context,
+        writeContext: WriteContext,
+        readContext: ReadContext,
 
         const Self = @This();
 
-        pub const Error = ErrorSet;
-
-        pub fn init(context: Context) Self {
+        pub fn init(writeContext: WriteContext, readContext: ReadContext) Self {
             return Self{
-                .context = context,
+                .writeContext = writeContext,
+                .readContext = readContext,
             };
         }
 
         /// wrap for writeFn
-        fn write_fn(self: Self, bytes: []const u8) ErrorSet!usize {
-            return writeFn(self.context, bytes);
+        fn write_fn(self: Self, bytes: []const u8) !usize {
+            return writeFn(self.writeContext, bytes);
         }
 
         /// write one byte
@@ -896,6 +898,13 @@ pub fn Pack(
             const val_type_info = @typeInfo(val_type);
 
             switch (val_type_info) {
+                .Optional => {
+                    if (val) |v| {
+                        try self.write(v);
+                    } else {
+                        try self.write_nil();
+                    }
+                },
                 .Enum => {
                     try self.write_enum(val_type, val);
                 },
@@ -955,14 +964,14 @@ pub fn Pack(
         // read
 
         /// wrap for readFn
-        pub fn read_fn(self: Self, bytes: []u8) ErrorSet!usize {
-            return readFn(self.context, bytes);
+        pub fn read_fn(self: Self, bytes: []u8) !usize {
+            return readFn(self.readContext, bytes);
         }
 
         /// read one byte
         pub fn read_byte(self: Self) !u8 {
             var res = [1]u8{0};
-            const len = try readFn(self.context, &res);
+            const len = try self.read_fn(&res);
 
             if (len != 1) {
                 return MsGPackError.LENGTH_READING;
@@ -989,7 +998,7 @@ pub fn Pack(
         }
 
         /// convert marker u8 to marker
-        pub fn marker_u8_to(_: Self, marker_u8: u8) !Markers {
+        pub fn marker_u8_to(_: Self, marker_u8: u8) Markers {
             var val = marker_u8;
 
             if (val <= 0x7f) {
@@ -1010,7 +1019,7 @@ pub fn Pack(
         /// read type marker
         pub fn read_type_marker(self: Self) !Markers {
             const val = try self.read_type_marker_u8();
-            return try self.marker_u8_to(val);
+            return self.marker_u8_to(val);
         }
 
         /// read nil
@@ -1021,14 +1030,18 @@ pub fn Pack(
             }
         }
 
-        /// read bool
-        pub fn read_bool(self: Self) !bool {
-            const marker = try self.read_type_marker();
+        fn read_bool_value(_: Self, marker: Markers) !bool {
             switch (marker) {
                 .TRUE => return true,
                 .FALSE => return false,
                 else => return MsGPackError.TYPE_MARKER_READING,
             }
+        }
+
+        /// read bool
+        pub fn read_bool(self: Self) !bool {
+            const marker = try self.read_type_marker();
+            return self.read_bool_value(marker);
         }
 
         /// read positive and negative fixint
@@ -1108,7 +1121,7 @@ pub fn Pack(
         /// read i8
         fn read_i8(self: Self) !i8 {
             const marker_u8 = try self.read_type_marker_u8();
-            const marker = try self.marker_u8_to(marker_u8);
+            const marker = self.marker_u8_to(marker_u8);
             switch (marker) {
                 .NEGATIVE_FIXINT, .POSITIVE_FIXINT => {
                     return self.read_fixint_value(marker_u8);
@@ -1130,7 +1143,7 @@ pub fn Pack(
         /// read i16
         fn read_i16(self: Self) !i16 {
             const marker_u8 = try self.read_type_marker_u8();
-            const marker = try self.marker_u8_to(marker_u8);
+            const marker = self.marker_u8_to(marker_u8);
             switch (marker) {
                 .NEGATIVE_FIXINT, .POSITIVE_FIXINT => {
                     const val = self.read_fixint_value(marker_u8);
@@ -1161,7 +1174,7 @@ pub fn Pack(
         /// read i32
         fn read_i32(self: Self) !i32 {
             const marker_u8 = try self.read_type_marker_u8();
-            const marker = try self.marker_u8_to(marker_u8);
+            const marker = self.marker_u8_to(marker_u8);
             switch (marker) {
                 .NEGATIVE_FIXINT, .POSITIVE_FIXINT => {
                     const val = self.read_fixint_value(marker_u8);
@@ -1201,54 +1214,13 @@ pub fn Pack(
         /// read i64
         fn read_i64(self: Self) !i64 {
             const marker_u8 = try self.read_type_marker_u8();
-            const marker = try self.marker_u8_to(marker_u8);
-            switch (marker) {
-                .NEGATIVE_FIXINT, .POSITIVE_FIXINT => {
-                    const val = self.read_fixint_value(marker_u8);
-                    return val;
-                },
-                .INT8 => {
-                    const val = try self.read_i8_value();
-                    return val;
-                },
-                .UINT8 => {
-                    const val = try self.read_u8_value();
-                    return val;
-                },
-                .INT16 => {
-                    const val = try self.read_i16_value();
-                    return val;
-                },
-                .UINT16 => {
-                    const val = try self.read_u16_value();
-                    return val;
-                },
-                .INT32 => {
-                    const val = try self.read_i32_value();
-                    return val;
-                },
-                .UINT32 => {
-                    const val = try self.read_u32_value();
-                    return val;
-                },
-                .INT64 => {
-                    return self.read_i64_value();
-                },
-                .UINT64 => {
-                    const val = try self.read_u64_value();
-                    if (val <= std.math.maxInt(i64)) {
-                        return @intCast(val);
-                    }
-                    return MsGPackError.INVALID_TYPE;
-                },
-                else => return MsGPackError.TYPE_MARKER_READING,
-            }
+            return self.read_int_value(marker_u8);
         }
 
         /// read u8
         fn read_u8(self: Self) !u8 {
             const marker_u8 = try self.read_type_marker_u8();
-            const marker = try self.marker_u8_to(marker_u8);
+            const marker = self.marker_u8_to(marker_u8);
             switch (marker) {
                 .POSITIVE_FIXINT => {
                     return marker_u8;
@@ -1270,7 +1242,7 @@ pub fn Pack(
         /// read u16
         fn read_u16(self: Self) !u16 {
             const marker_u8 = try self.read_type_marker_u8();
-            const marker = try self.marker_u8_to(marker_u8);
+            const marker = self.marker_u8_to(marker_u8);
             switch (marker) {
                 .POSITIVE_FIXINT => {
                     return marker_u8;
@@ -1303,7 +1275,7 @@ pub fn Pack(
         /// read u32
         fn read_u32(self: Self) !u32 {
             const marker_u8 = try self.read_type_marker_u8();
-            const marker = try self.marker_u8_to(marker_u8);
+            const marker = self.marker_u8_to(marker_u8);
             switch (marker) {
                 .POSITIVE_FIXINT => {
                     return marker_u8;
@@ -1347,7 +1319,59 @@ pub fn Pack(
         /// read u64
         fn read_u64(self: Self) !u64 {
             const marker_u8 = try self.read_type_marker_u8();
-            const marker = try self.marker_u8_to(marker_u8);
+            return self.read_uint_value(marker_u8);
+        }
+
+        fn read_int_value(self: Self, marker_u8: u8) !i64 {
+            const marker = self.marker_u8_to(marker_u8);
+            switch (marker) {
+                .NEGATIVE_FIXINT, .POSITIVE_FIXINT => {
+                    const val = self.read_fixint_value(marker_u8);
+                    return val;
+                },
+                .INT8 => {
+                    const val = try self.read_i8_value();
+                    return val;
+                },
+                .UINT8 => {
+                    const val = try self.read_u8_value();
+                    return val;
+                },
+                .INT16 => {
+                    const val = try self.read_i16_value();
+                    return val;
+                },
+                .UINT16 => {
+                    const val = try self.read_u16_value();
+                    return val;
+                },
+                .INT32 => {
+                    const val = try self.read_i32_value();
+                    return val;
+                },
+                .UINT32 => {
+                    const val = try self.read_u32_value();
+                    return val;
+                },
+                .INT64 => {
+                    return self.read_i64_value();
+                },
+                .UINT64 => {
+                    const val = try self.read_u64_value();
+                    if (val <= std.math.maxInt(i64)) {
+                        return @intCast(val);
+                    }
+                    return MsGPackError.INVALID_TYPE;
+                },
+                else => return MsGPackError.TYPE_MARKER_READING,
+            }
+        }
+
+        /// read int
+        pub const read_int = read_i64;
+
+        fn read_uint_value(self: Self, marker_u8: u8) !u64 {
+            const marker = self.marker_u8_to(marker_u8);
             switch (marker) {
                 .POSITIVE_FIXINT => {
                     return marker_u8;
@@ -1399,15 +1423,8 @@ pub fn Pack(
             }
         }
 
-        /// read int
-        pub fn read_int(self: Self) !i64 {
-            return self.read_i64();
-        }
-
         /// read uint
-        pub fn read_uint(self: Self) !u64 {
-            return self.read_u64();
-        }
+        pub const read_uint = read_u64;
 
         fn read_f32_value(self: Self) !f32 {
             var buffer: [4]u8 = undefined;
@@ -1445,6 +1462,10 @@ pub fn Pack(
         /// read f64
         fn read_f64(self: Self) !f64 {
             const marker = try self.read_type_marker();
+            return self.read_float_value(marker);
+        }
+
+        fn read_float_value(self: Self, marker: Markers) !f64 {
             switch (marker) {
                 .FLOAT32 => {
                     const val = try self.read_f32_value();
@@ -1458,9 +1479,7 @@ pub fn Pack(
         }
 
         /// read float
-        pub fn read_float(self: Self) !f64 {
-            return self.read_f64();
-        }
+        pub const read_float = read_f64;
 
         fn read_fix_str_value(self: Self, allocator: Allocator, marker_u8: u8) ![]const u8 {
             const len: u8 = marker_u8 - @intFromEnum(Markers.FIXSTR);
@@ -1490,10 +1509,8 @@ pub fn Pack(
             return str;
         }
 
-        /// read str
-        pub fn read_str(self: Self, allocator: Allocator) ![]const u8 {
-            const marker_u8 = try self.read_type_marker_u8();
-            const marker = try self.marker_u8_to(marker_u8);
+        fn read_str_value(self: Self, marker_u8: u8, allocator: Allocator) ![]const u8 {
+            const marker = self.marker_u8_to(marker_u8);
 
             switch (marker) {
                 .FIXSTR => {
@@ -1510,6 +1527,15 @@ pub fn Pack(
                 },
                 else => return MsGPackError.TYPE_MARKER_READING,
             }
+        }
+
+        /// read str
+        pub fn read_str(self: Self, allocator: Allocator) !Str {
+            const marker_u8 = try self.read_type_marker_u8();
+            const str = try self.read_str_value(marker_u8, allocator);
+            return Str{
+                .str = str,
+            };
         }
 
         fn read_bin8_value(self: Self, allocator: Allocator) ![]u8 {
@@ -1533,10 +1559,7 @@ pub fn Pack(
             return bin;
         }
 
-        /// read bin
-        pub fn read_bin(self: Self, allocator: Allocator) ![]u8 {
-            const marker = try self.read_type_marker();
-
+        fn read_bin_value(self: Self, marker: Markers, allocator: Allocator) ![]u8 {
             switch (marker) {
                 .BIN8 => {
                     return self.read_bin8_value(allocator);
@@ -1551,10 +1574,17 @@ pub fn Pack(
             }
         }
 
-        /// read arr
-        pub fn read_arr(self: Self, allocator: Allocator, comptime T: type) ![]T {
-            const marker_u8 = try self.read_type_marker_u8();
-            const marker = try self.marker_u8_to(marker_u8);
+        /// read bin
+        pub fn read_bin(self: Self, allocator: Allocator) !Bin {
+            const marker = try self.read_type_marker();
+            const bin = try self.read_bin_value(marker, allocator);
+            return Bin{
+                .bin = bin,
+            };
+        }
+
+        pub fn read_arr_value(self: Self, marker_u8: u8, allocator: Allocator, comptime T: type) ![]T {
+            const marker = self.marker_u8_to(marker_u8);
             var len: usize = 0;
             switch (marker) {
                 .FIXARRAY => {
@@ -1578,15 +1608,15 @@ pub fn Pack(
             return arr;
         }
 
-        pub fn read_tuple(self: Self, comptime T: type, allocator: Allocator) !T {
-            const type_info = @typeInfo(T);
-            if (type_info != .Struct or !type_info.Struct.is_tuple) {
-                @compileError("for strcut, please use read map");
-            }
-            const tuple_info = type_info.Struct;
-
+        /// read arr
+        pub fn read_arr(self: Self, allocator: Allocator, comptime T: type) ![]T {
             const marker_u8 = try self.read_type_marker_u8();
-            const marker = try self.marker_u8_to(marker_u8);
+            return self.read_arr_value(marker_u8, allocator, T);
+        }
+
+        fn read_tuple_value(self: Self, marker_u8: u8, comptime T: type, allocator: Allocator) !T {
+            const tuple_info = @typeInfo(T).Struct;
+            const marker = self.marker_u8_to(marker_u8);
 
             var len: usize = 0;
             switch (marker) {
@@ -1615,29 +1645,34 @@ pub fn Pack(
             return res;
         }
 
-        /// read enum
-        pub fn read_enum(self: Self, comptime T: type) !T {
+        pub fn read_tuple(self: Self, comptime T: type, allocator: Allocator) !T {
+            const type_info = @typeInfo(T);
+            if (type_info != .Struct or !type_info.Struct.is_tuple) {
+                @compileError("for strcut, please use read map");
+            }
+
+            const marker_u8 = try self.read_type_marker_u8();
+            return self.read_tuple_value(marker_u8, T, allocator);
+        }
+
+        fn read_enum_value(self: Self, marker_u8: u8, comptime T: type) !T {
             const type_info = @typeInfo(T);
             if (type_info != .Enum) {
                 const err_msg = comptimePrint("T ({}) is not enum", .{T});
                 @compileError(err_msg);
             }
-            const val = try self.read_uint();
 
+            const val = try self.read_uint_value(marker_u8);
             return @enumFromInt(val);
         }
 
-        /// read map
-        pub fn read_map(self: Self, comptime T: type, allocator: Allocator) !T {
-            if (T == Bin) {
-                const bin = try self.read_bin(allocator);
-                return Bin{ .bin = bin };
-            } else if (T == Str) {
-                const str = try self.read_str(allocator);
-                return Str{ .str = str };
-            } else if (T == EXT) {
-                return self.read_ext(allocator);
-            }
+        /// read enum
+        pub fn read_enum(self: Self, comptime T: type) !T {
+            const marker_u8 = try self.read_type_marker_u8();
+            return self.read_enum_value(marker_u8, T);
+        }
+
+        fn read_map_value(self: Self, marker_u8: u8, comptime T: type, allocator: Allocator) !T {
             if (T == EXT) {
                 @compileError("please use read_ext for EXT");
             }
@@ -1647,11 +1682,11 @@ pub fn Pack(
             if (T == Bin) {
                 @compileError("please use read_bin for Bin");
             }
-            const marker_u8 = try self.read_type_marker_u8();
-            const marker = try self.marker_u8_to(marker_u8);
-            var len: usize = 0;
-            const type_info = @typeInfo(T);
 
+            const marker = self.marker_u8_to(marker_u8);
+            var len: usize = 0;
+
+            const type_info = @typeInfo(T);
             if (type_info != .Struct or type_info.Struct.is_tuple) {
                 const err = std.fmt.comptimePrint("read map not support {}", .{T});
                 @compileError(err);
@@ -1683,12 +1718,11 @@ pub fn Pack(
 
             for (0..map_len) |_| {
                 const key = try self.read_str(allocator);
-                defer allocator.free(key);
+                defer allocator.free(key.str);
                 inline for (struct_info.fields) |field| {
                     const field_name = field.name;
-                    if (field_name.len == key.len and std.mem.eql(u8, field_name, key)) {
+                    if (field_name.len == key.str.len and std.mem.eql(u8, field_name, key.value())) {
                         const field_type = field.type;
-
                         @field(res, field_name) = try self.read(field_type, allocator);
                     }
                 }
@@ -1697,7 +1731,13 @@ pub fn Pack(
             return res;
         }
 
-        fn read_ext_value(self: Self, allocator: Allocator, len: usize) !EXT {
+        /// read map
+        pub fn read_map(self: Self, comptime T: type, allocator: Allocator) !T {
+            const marker_u8 = try self.read_type_marker_u8();
+            return self.read_map_value(marker_u8, T, allocator);
+        }
+
+        fn read_ext_data(self: Self, allocator: Allocator, len: usize) !EXT {
             const ext_type = try self.read_i8_value();
             const data = try self.read_data(allocator, len);
             return EXT{
@@ -1706,40 +1746,44 @@ pub fn Pack(
             };
         }
 
-        pub fn read_ext(self: Self, allocator: Allocator) !EXT {
-            const marker = try self.read_type_marker();
+        fn read_ext_value(self: Self, marker: Markers, allocator: Allocator) !EXT {
             switch (marker) {
                 .FIXEXT1 => {
-                    return self.read_ext_value(allocator, 1);
+                    return self.read_ext_data(allocator, 1);
                 },
                 .FIXEXT2 => {
-                    return self.read_ext_value(allocator, 2);
+                    return self.read_ext_data(allocator, 2);
                 },
                 .FIXEXT4 => {
-                    return self.read_ext_value(allocator, 4);
+                    return self.read_ext_data(allocator, 4);
                 },
                 .FIXEXT8 => {
-                    return self.read_ext_value(allocator, 8);
+                    return self.read_ext_data(allocator, 8);
                 },
                 .FIXEXT16 => {
-                    return self.read_ext_value(allocator, 16);
+                    return self.read_ext_data(allocator, 16);
                 },
                 .EXT8 => {
                     const len = try self.read_u8_value();
-                    return self.read_ext_value(allocator, len);
+                    return self.read_ext_data(allocator, len);
                 },
                 .EXT16 => {
                     const len = try self.read_u16_value();
-                    return self.read_ext_value(allocator, len);
+                    return self.read_ext_data(allocator, len);
                 },
                 .EXT32 => {
                     const len = try self.read_u32_value();
-                    return self.read_ext_value(allocator, len);
+                    return self.read_ext_data(allocator, len);
                 },
                 else => {
                     return MsGPackError.INVALID_TYPE;
                 },
             }
+        }
+
+        pub fn read_ext(self: Self, allocator: Allocator) !EXT {
+            const marker = try self.read_type_marker();
+            return self.read_ext_value(marker, allocator);
         }
 
         // TODO: add read_ext and read_timestamp
@@ -1758,6 +1802,10 @@ pub fn Pack(
                         @compileError("not support non-slice pointer");
                     }
                 },
+                .Optional => |optional| {
+                    const child_type = optional.child;
+                    return ?read_type_help(child_type);
+                },
 
                 else => {
                     return T;
@@ -1768,7 +1816,7 @@ pub fn Pack(
         // skip
         pub fn skip(self: Self) !void {
             const marker_u8 = try self.read_type_marker_u8();
-            const marker = try self.marker_u8_to(marker_u8);
+            const marker = self.marker_u8_to(marker_u8);
             var len: usize = undefined;
             switch (marker) {
                 .NIL, .FALSE, .TRUE, .POSITIVE_FIXINT, .NEGATIVE_FIXINT => {},
@@ -1860,12 +1908,21 @@ pub fn Pack(
             }
         }
 
-        /// read
-        pub fn read(self: Self, comptime T: type, allocator: Allocator) !read_type_help(T) {
+        // pub fn read_optional(self: Self, comptime T: type, allocator: Allocator) !?T {
+        //     const marker_u8 = try self.read_type_marker_u8();
+        //     const marker = try self.marker_u8_to(marker_u8);
+        //     if (marker == .NIL) {
+        //         return null;
+        //     }
+        // }
+
+        fn read_value(self: Self, marker_u8: u8, comptime T: type, allocator: Allocator) !read_type_help(T) {
+            const marker = self.marker_u8_to(marker_u8);
             const type_info = @typeInfo(T);
+
             switch (type_info) {
                 .Bool => {
-                    return self.read_bool();
+                    return self.read_bool_value(marker);
                 },
                 .Int => |int| {
                     if (int.bits > 64) {
@@ -1874,40 +1931,64 @@ pub fn Pack(
                     const is_signed = int.signedness == .signed;
 
                     if (is_signed) {
-                        const val = try self.read_int();
+                        const val = try self.read_int_value(marker_u8);
                         return @intCast(val);
                     } else {
-                        const val = try self.read_uint();
+                        const val = try self.read_uint_value(marker_u8);
                         return @intCast(val);
                     }
                 },
                 .Enum => {
-                    return self.read_enum(T);
+                    return self.read_enum_value(marker_u8, T);
                 },
                 .Float => {
-                    const val = try self.read_float();
+                    const val = try self.read_float_value(marker);
                     return @floatCast(val);
                 },
                 .Array => |array| {
                     const ele_type = array.child;
-                    return self.read_arr(allocator, ele_type);
+                    return self.read_arr_value(marker_u8, allocator, ele_type);
                 },
                 .Pointer => |pointer| {
                     if (PO.to_slice(pointer)) |ele_type| {
-                        return self.read_arr(allocator, ele_type);
+                        return self.read_arr_value(marker_u8, allocator, ele_type);
                     } else {
                         @compileError("not support non-slice pointer!");
                     }
                 },
                 .Struct => |ss| {
                     if (ss.is_tuple) {
-                        return self.read_tuple(T, allocator);
+                        return self.read_tuple_value(marker_u8, T, allocator);
+                    } else if (T == EXT) {
+                        return self.read_ext_value(marker, allocator);
+                    } else if (T == Bin) {
+                        const bin = try self.read_bin_value(marker, allocator);
+                        return Bin{ .bin = bin };
+                    } else if (T == Str) {
+                        const str = try self.read_str_value(marker_u8, allocator);
+                        return Str{ .str = str };
+                    } else {
+                        return self.read_map_value(marker_u8, T, allocator);
                     }
-                    return self.read_map(T, allocator);
                 },
                 else => {
                     @compileError("type is not supported!");
                 },
+            }
+        }
+
+        /// read
+        pub fn read(self: Self, comptime T: type, allocator: Allocator) !read_type_help(T) {
+            const type_info = @typeInfo(T);
+            const marker_u8 = try self.read_type_marker_u8();
+            if (type_info == .Optional) {
+                const marker = self.marker_u8_to(marker_u8);
+                if (marker == .NIL) {
+                    return null;
+                }
+                return try self.read_value(marker_u8, type_info.Optional.child, allocator);
+            } else {
+                return self.read_value(marker_u8, T, allocator);
             }
         }
     };

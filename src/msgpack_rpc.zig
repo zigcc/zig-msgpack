@@ -11,3 +11,9 @@ const MessageType = enum(u2) {
     Response = 1,
     Notification = 2,
 };
+
+const Header = struct {
+    t: MessageType,
+    id: ?u32,
+};
+
