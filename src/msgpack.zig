@@ -431,16 +431,16 @@ pub fn Pack(
         }
 
         /// write str
-        pub fn write_str(self: Self, str: []const u8) !void {
-            const len = str.len;
+        pub fn write_str(self: Self, str: Str) !void {
+            const len = str.value().len;
             if (len <= 0x1f) {
-                try self.write_fix_str(str);
+                try self.write_fix_str(str.value());
             } else if (len <= 0xff) {
-                try self.write_str8(str);
+                try self.write_str8(str.value());
             } else if (len <= 0xffff) {
-                try self.write_str16(str);
+                try self.write_str16(str.value());
             } else {
-                try self.write_str32(str);
+                try self.write_str32(str.value());
             }
         }
 
@@ -481,14 +481,14 @@ pub fn Pack(
         }
 
         /// write bin
-        pub fn write_bin(self: Self, bin: []const u8) !void {
-            const len = bin.len;
+        pub fn write_bin(self: Self, bin: Bin) !void {
+            const len = bin.value().len;
             if (len <= 0xff) {
-                try self.write_bin8(bin);
+                try self.write_bin8(bin.value());
             } else if (len <= 0xffff) {
-                try self.write_bin16(bin);
+                try self.write_bin16(bin.value());
             } else {
-                try self.write_bin32(bin);
+                try self.write_bin32(bin.value());
             }
         }
 
@@ -672,7 +672,7 @@ pub fn Pack(
                 const field_value = @field(val, field_name);
 
                 // write key
-                try self.write_str(field.name);
+                try self.write_str(wrapStr(field.name));
 
                 try self.write(field_value);
             }
@@ -757,9 +757,9 @@ pub fn Pack(
             if (T == EXT) {
                 return self.write_ext(@as(EXT, val));
             } else if (T == Str) {
-                return self.write_str(@as(Str, val).value());
+                return self.write_str(val);
             } else if (T == Bin) {
-                return self.write_bin(@as(Bin, val).value());
+                return self.write_bin( val);
             }
 
             const fields_len = type_info.Struct.fields.len;
@@ -1993,63 +1993,6 @@ pub fn Pack(
         }
     };
 }
-
-pub const Buffer = struct {
-    arr: []u8,
-    write_index: usize = 0,
-    read_index: usize = 0,
-
-    pub const ErrorSet = error{
-        WRITE_LEFT_LENGTH,
-        READ_LEFT_LENGTH,
-    };
-
-    pub fn write(self: *Buffer, bytes: []const u8) ErrorSet!usize {
-        const index = self.write_index;
-        const arr_len = self.arr.len;
-        const left_len = arr_len - index;
-        const bytes_len = bytes.len;
-
-        if (left_len < bytes_len) {
-            return ErrorSet.WRITE_LEFT_LENGTH;
-        }
-
-        @memcpy(self.arr[index .. index + bytes_len], bytes);
-        self.write_index += bytes_len;
-        return bytes_len;
-    }
-
-    pub fn set_write_index(self: *Buffer, index: usize) void {
-        self.write_index = index;
-    }
-
-    pub fn get_write_index(self: *Buffer) usize {
-        return self.write_index;
-    }
-
-    pub fn read(self: *Buffer, bytes: []u8) ErrorSet!usize {
-        const index = self.read_index;
-        const arr_len = self.arr.len;
-        const left_len = arr_len - index;
-        const bytes_len = bytes.len;
-
-        if (left_len < bytes_len) {
-            return ErrorSet.READ_LEFT_LENGTH;
-        }
-
-        @memcpy(bytes, self.arr[index .. index + bytes_len]);
-        self.read_index += bytes_len;
-        return bytes_len;
-    }
-
-    pub fn set_read_index(self: *Buffer, index: usize) void {
-        self.read_index = index;
-    }
-
-    pub fn get_read_index(self: *Buffer) usize {
-        return self.read_index;
-    }
-};
 
 const PO = struct {
     fn to_slice(comptime pointer: std.builtin.Type.Pointer) ?type {
