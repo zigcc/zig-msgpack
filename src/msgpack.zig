@@ -759,7 +759,7 @@ pub fn Pack(
             } else if (T == Str) {
                 return self.write_str(val);
             } else if (T == Bin) {
-                return self.write_bin( val);
+                return self.write_bin(val);
             }
 
             const fields_len = type_info.Struct.fields.len;
@@ -2014,3 +2014,56 @@ pub const EXT = struct {
     type: i8,
     data: []u8,
 };
+
+fn typeIfNeedAlloc(comptime T: type) bool {
+    const type_info = @typeInfo(T);
+    switch (type_info) {
+        .Optional => |optional| {
+            if (typeIfNeedAlloc(optional.child)) {
+                return true;
+            }
+        },
+        .Null => {
+            return false;
+        },
+        .Bool => {
+            return false;
+        },
+        .Int => {
+            return false;
+        },
+        .Float => {
+            return false;
+        },
+        .Enum => {
+            return false;
+        },
+        .Array => |array| {
+            return typeIfNeedAlloc(array.child);
+        },
+        .Union => |u| {
+            inline for (u.fields) |field| {
+                if (typeIfNeedAlloc(field.type)) {
+                    return true;
+                }
+            }
+            return true;
+        },
+        .Struct => |s| {
+            inline for (s.fields) |field| {
+                if (typeIfNeedAlloc(field.type)) {
+                    return true;
+                }
+            }
+            return true;
+        },
+        .Pointer => {
+            return true;
+        },
+        else => {
+            @compileError("this type is not suuported!");
+        },
+    }
+
+    return true;
+}
