@@ -1946,6 +1946,9 @@ pub fn Pack(
 
         /// read
         pub fn read(self: Self, comptime T: type, allocator: Allocator) !read_type_help(T) {
+            if (comptime !typeIfNeedAlloc(T)) {
+                return self.readNoAlloc(T);
+            }
             const type_info = @typeInfo(T);
             const marker_u8 = try self.read_type_marker_u8();
             if (type_info == .Optional) {
@@ -1960,8 +1963,39 @@ pub fn Pack(
         }
 
         fn read_value_no_alloc(self: Self, marker_u8: u8, comptime T: type) !read_type_help_no_alloc(T) {
-            _ = self;
-            _ = marker_u8;
+            const marker = self.marker_u8_to(marker_u8);
+            const type_info = @typeInfo(T);
+
+            switch (type_info) {
+                .Bool => {
+                    return self.read_bool_value(marker);
+                },
+                .Int => |int| {
+                    if (int.bits > 64) {
+                        @compileError("Numbers larger than 64 bits are not supported");
+                    }
+                    const is_signed = int.signedness == .signed;
+
+                    if (is_signed) {
+                        const val = try self.read_int_value(marker_u8);
+                        return @intCast(val);
+                    } else {
+                        const val = try self.read_uint_value(marker_u8);
+                        return @intCast(val);
+                    }
+                },
+                .Float => {
+                    const val = try self.read_float_value(marker);
+                    return @floatCast(val);
+                },
+                .Enum => {
+                    return self.read_enum_value(marker_u8, T);
+                },
+                // TODO: struct, array
+                else => {
+                    @compileError("type is not supported!");
+                },
+            }
         }
 
         pub fn readNoAlloc(self: Self, comptime T: type) !read_type_help_no_alloc(T) {
