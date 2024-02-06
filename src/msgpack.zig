@@ -1788,31 +1788,6 @@ pub fn Pack(
 
         // TODO: add read_ext and read_timestamp
 
-        inline fn read_type_help(comptime T: type) type {
-            const type_info = @typeInfo(T);
-            switch (type_info) {
-                .Array => |array| {
-                    const child = array.child;
-                    return []child;
-                },
-                .Pointer => |pointer| {
-                    if (PO.to_slice(pointer)) |ele_type| {
-                        return []ele_type;
-                    } else {
-                        @compileError("not support non-slice pointer");
-                    }
-                },
-                .Optional => |optional| {
-                    const child_type = optional.child;
-                    return ?read_type_help(child_type);
-                },
-
-                else => {
-                    return T;
-                },
-            }
-        }
-
         // skip
         pub fn skip(self: Self) !void {
             const marker_u8 = try self.read_type_marker_u8();
@@ -1908,14 +1883,6 @@ pub fn Pack(
             }
         }
 
-        // pub fn read_optional(self: Self, comptime T: type, allocator: Allocator) !?T {
-        //     const marker_u8 = try self.read_type_marker_u8();
-        //     const marker = try self.marker_u8_to(marker_u8);
-        //     if (marker == .NIL) {
-        //         return null;
-        //     }
-        // }
-
         fn read_value(self: Self, marker_u8: u8, comptime T: type, allocator: Allocator) !read_type_help(T) {
             const marker = self.marker_u8_to(marker_u8);
             const type_info = @typeInfo(T);
@@ -1988,7 +1955,29 @@ pub fn Pack(
                 }
                 return try self.read_value(marker_u8, type_info.Optional.child, allocator);
             } else {
-                return self.read_value(marker_u8, T, allocator);
+                return try self.read_value(marker_u8, T, allocator);
+            }
+        }
+
+        fn read_value_no_alloc(self: Self, marker_u8: u8, comptime T: type) !read_type_help_no_alloc(T) {
+            _ = self;
+            _ = marker_u8;
+        }
+
+        pub fn readNoAlloc(self: Self, comptime T: type) !read_type_help_no_alloc(T) {
+            if (comptime typeIfNeedAlloc(T)) {
+                @compileError("type needs memory alloca");
+            }
+            const type_info = @typeInfo(T);
+            const marker_u8 = try self.read_type_marker_u8();
+            if (type_info == .Optional) {
+                const marker = self.marker_u8_to(marker_u8);
+                if (marker == .NIL) {
+                    return null;
+                }
+                return try self.read_value_no_alloc(marker_u8, type_info.Optional.child);
+            } else {
+                return try self.read_value_no_alloc(marker_u8, T);
             }
         }
     };
@@ -2066,4 +2055,46 @@ fn typeIfNeedAlloc(comptime T: type) bool {
     }
 
     return true;
+}
+
+inline fn read_type_help(comptime T: type) type {
+    const type_info = @typeInfo(T);
+    switch (type_info) {
+        .Array => |array| {
+            const child = array.child;
+            return []child;
+        },
+        .Pointer => |pointer| {
+            if (PO.to_slice(pointer)) |ele_type| {
+                return []ele_type;
+            } else {
+                @compileError("not support non-slice pointer");
+            }
+        },
+        .Optional => |optional| {
+            const child_type = optional.child;
+            return ?read_type_help(child_type);
+        },
+
+        else => {
+            return T;
+        },
+    }
+}
+
+inline fn read_type_help_no_alloc(comptime T: type) type {
+    const type_info = @typeInfo(T);
+    switch (type_info) {
+        .Pointer => {
+            @compileError("not support non-slice pointer");
+        },
+        .Optional => |optional| {
+            const child_type = optional.child;
+            return ?read_type_help(child_type);
+        },
+
+        else => {
+            return T;
+        },
+    }
 }
