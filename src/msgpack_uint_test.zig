@@ -401,7 +401,7 @@ test "map write and read" {
     try expect(val.float == test_val.float);
 }
 
-test "arrary write and read" {
+test "slice write and read" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
     var write_buffer = std.io.fixedBufferStream(&arr);
     var read_buffer = std.io.fixedBufferStream(&arr);
@@ -416,6 +416,22 @@ test "arrary write and read" {
     const val = try p.read([]u8, allocator);
     defer allocator.free(val);
     try expect(std.mem.eql(u8, &test_val, val));
+}
+
+test "array write and read" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = std.io.fixedBufferStream(&arr);
+    var read_buffer = std.io.fixedBufferStream(&arr);
+    var p = pack.init(
+        &write_buffer,
+        &read_buffer,
+    );
+
+    const test_val = [5]u8{ 1, 2, 3, 4, 5 };
+
+    try p.write(&test_val);
+    const val: [5]u8 = try p.readNoAlloc([5]u8);
+    try expect(std.mem.eql(u8, &test_val, &val));
 }
 
 test "tuple wirte and read" {
