@@ -1,0 +1,1 @@
+- 连接类型，支持tcp，stdin/out，socket（socket优先支持）

@@ -16,4 +16,3 @@ const Header = struct {
     t: MessageType,
     id: ?u32,
 };
-
