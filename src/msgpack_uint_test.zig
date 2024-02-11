@@ -520,3 +520,18 @@ test "optional type write and read" {
 
     try expect(val == test_val);
 }
+
+test "test" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = std.io.fixedBufferStream(&arr);
+    var read_buffer = std.io.fixedBufferStream(&arr);
+    var p = pack.init(
+        &write_buffer,
+        &read_buffer,
+    );
+
+    try p.write(.{ 0, 1, "nvim_get_api_info", .{} });
+    const arr1 = [_]u8{ 0x94, 0x00, 0x01, 0xB1, 0x6E, 0x76, 0x69, 0x6D, 0x5F, 0x67, 0x65, 0x74, 0x5F, 0x61, 0x70, 0x69, 0x5F, 0x69, 0x6E, 0x66, 0x6F, 0x90 };
+
+    try expect(std.mem.eql(u8, arr[0..arr1.len], &arr1));
+}

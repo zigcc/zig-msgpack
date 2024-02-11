@@ -182,7 +182,7 @@ pub fn Pack(
         }
 
         /// write positive fix int
-        fn write_pfix_int(self: Self, val: u8) !void {
+        pub fn write_pfix_int(self: Self, val: u8) !void {
             if (val <= 0x7f) {
                 try self.write_byte(val);
             } else {
@@ -195,7 +195,7 @@ pub fn Pack(
         }
 
         /// write u8 int
-        fn write_u8(self: Self, val: u8) !void {
+        pub fn write_u8(self: Self, val: u8) !void {
             try self.write_type_marker(.UINT8);
             try self.write_u8_value(val);
         }
@@ -208,7 +208,7 @@ pub fn Pack(
         }
 
         /// write u16 int
-        fn write_u16(self: Self, val: u16) !void {
+        pub fn write_u16(self: Self, val: u16) !void {
             try self.write_type_marker(.UINT16);
             try self.write_u16_value(val);
         }
@@ -221,7 +221,7 @@ pub fn Pack(
         }
 
         /// write u32 int
-        fn write_u32(self: Self, val: u32) !void {
+        pub fn write_u32(self: Self, val: u32) !void {
             try self.write_type_marker(.UINT32);
             try self.write_u32_value(val);
         }
@@ -234,13 +234,13 @@ pub fn Pack(
         }
 
         /// write u64 int
-        fn write_u64(self: Self, val: u64) !void {
+        pub fn write_u64(self: Self, val: u64) !void {
             try self.write_type_marker(.UINT64);
             try self.write_u64_value(val);
         }
 
         /// write negative fix int
-        fn write_nfix_int(self: Self, val: i8) !void {
+        pub fn write_nfix_int(self: Self, val: i8) !void {
             if (val >= -32 and val <= -1) {
                 try self.write_byte(@bitCast(val));
             } else {
@@ -253,7 +253,7 @@ pub fn Pack(
         }
 
         /// write i8 int
-        fn write_i8(self: Self, val: i8) !void {
+        pub fn write_i8(self: Self, val: i8) !void {
             try self.write_type_marker(.INT8);
             try self.write_i8_value(val);
         }
@@ -266,7 +266,7 @@ pub fn Pack(
         }
 
         /// write i16 int
-        fn write_i16(self: Self, val: i16) !void {
+        pub fn write_i16(self: Self, val: i16) !void {
             try self.write_type_marker(.INT16);
             try self.write_i16_value(val);
         }
@@ -279,7 +279,7 @@ pub fn Pack(
         }
 
         /// write i32 int
-        fn write_i32(self: Self, val: i32) !void {
+        pub fn write_i32(self: Self, val: i32) !void {
             try self.write_type_marker(.INT32);
             try self.write_i32_value(val);
         }
@@ -292,7 +292,7 @@ pub fn Pack(
         }
 
         /// write i64 int
-        fn write_i64(self: Self, val: i64) !void {
+        pub fn write_i64(self: Self, val: i64) !void {
             try self.write_type_marker(.INT64);
             try self.write_i64_value(val);
         }
@@ -338,7 +338,7 @@ pub fn Pack(
         }
 
         /// write f32
-        fn write_f32(self: Self, val: f32) !void {
+        pub fn write_f32(self: Self, val: f32) !void {
             try self.write_type_marker(.FLOAT32);
             try self.write_f32_value(val);
         }
@@ -352,7 +352,7 @@ pub fn Pack(
         }
 
         /// write f64
-        fn write_f64(self: Self, val: f64) !void {
+        pub fn write_f64(self: Self, val: f64) !void {
             try self.write_type_marker(.FLOAT64);
             try self.write_f64_value(val);
         }
@@ -693,7 +693,7 @@ pub fn Pack(
         }
 
         /// write fix map
-        fn write_fixmap(self: Self, comptime T: type, val: T) !void {
+        pub fn write_fixmap(self: Self, comptime T: type, val: T) !void {
             const type_info = @typeInfo(T);
             if (type_info != .Struct or type_info.Struct.is_tuple) {
                 @compileError("now only support struct");
@@ -715,7 +715,7 @@ pub fn Pack(
         }
 
         /// write map16
-        fn write_map16(self: Self, comptime T: type, val: T) !void {
+        pub fn write_map16(self: Self, comptime T: type, val: T) !void {
             const type_info = @typeInfo(T);
             if (type_info != .Struct or type_info.Struct.is_tuple) {
                 @compileError("now only support struct");
@@ -739,7 +739,7 @@ pub fn Pack(
         }
 
         /// write map32
-        fn write_map32(self: Self, comptime T: type, val: T) !void {
+        pub fn write_map32(self: Self, comptime T: type, val: T) !void {
             const type_info = @typeInfo(T);
             if (type_info != .Struct or type_info.Struct.is_tuple) {
                 @compileError("now only support struct");
