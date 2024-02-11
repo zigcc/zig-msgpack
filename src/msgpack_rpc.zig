@@ -3,9 +3,11 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
-const msgpack = @import("msgpack");
+const msgpack = @import("msgpack.zig");
 const Allocator = std.mem.Allocator;
 const net = std.net;
+
+const streamPack = msgpack.Pack(net.Stream, net.Stream, net.Stream.WriteError, net.Stream.ReadError, net.Stream.write, net.Stream.read);
 
 /// the types of msssage pack rpc
 const MessageType = enum(u2) {
@@ -46,6 +48,27 @@ pub const TcpServer = struct {
         const host = net.Address{ .in = loopback };
 
         try self.server.listen(host);
+    }
+};
+
+pub const TcpClient = struct {
+    allocator: Allocator,
+    id: u32 = 1,
+    stream: net.Stream,
+    pack: streamPack,
+
+    pub fn init(allocator: Allocator, address: []const u8, port: u16) !TcpClient {
+        const peer = try net.Address.parseIp4(address, port);
+        const stream = try net.tcpConnectToAddress(peer);
+        return TcpClient{
+            .allocator = allocator,
+            .stream = stream,
+            .pack = streamPack.init(stream, stream),
+        };
+    }
+
+    pub fn deinit(client: *TcpClient) void {
+        client.stream.close();
     }
 };
 
