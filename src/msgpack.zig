@@ -150,7 +150,8 @@ pub fn Pack(
         pub fn write_type_marker(self: Self, comptime marker: Markers) !void {
             switch (marker) {
                 .POSITIVE_FIXINT, .FIXMAP, .FIXARRAY, .FIXSTR, .NEGATIVE_FIXINT => {
-                    @compileError("wrong marker was used");
+                    const err_msg = comptimePrint("marker ({}) is wrong, the can not be write directly!", .{marker});
+                    @compileError(err_msg);
                 },
                 else => {},
             }
@@ -654,7 +655,8 @@ pub fn Pack(
             const type_info = @typeInfo(T);
 
             if (type_info != .Struct or !type_info.Struct.is_tuple) {
-                @compileError("for struct, please use write_map");
+                const err_msg = comptimePrint("type T ({}) is not tuple!", .{T});
+                @compileError(err_msg);
             }
 
             const tuple_info = type_info.Struct;
@@ -673,7 +675,8 @@ pub fn Pack(
         fn write_map_value(self: Self, comptime T: type, val: T, len: usize) !void {
             const type_info = @typeInfo(T);
             if (type_info != .Struct or type_info.Struct.is_tuple) {
-                @compileError("now only support struct");
+                const err_msg = comptimePrint("type T ({}) is not struct, now map is only for struct!", .{T});
+                @compileError(err_msg);
             }
 
             const fields_len = type_info.Struct.fields.len;
@@ -696,7 +699,8 @@ pub fn Pack(
         pub fn write_fixmap(self: Self, comptime T: type, val: T) !void {
             const type_info = @typeInfo(T);
             if (type_info != .Struct or type_info.Struct.is_tuple) {
-                @compileError("now only support struct");
+                const err_msg = comptimePrint("type T ({}) is not struct, now map is only for struct!", .{T});
+                @compileError(err_msg);
             }
 
             const max_len = 0xf;
@@ -718,7 +722,8 @@ pub fn Pack(
         pub fn write_map16(self: Self, comptime T: type, val: T) !void {
             const type_info = @typeInfo(T);
             if (type_info != .Struct or type_info.Struct.is_tuple) {
-                @compileError("now only support struct");
+                const err_msg = comptimePrint("type T ({}) is not struct, now map is only for struct!", .{T});
+                @compileError(err_msg);
             }
 
             const max_len = 0xffff;
@@ -742,7 +747,8 @@ pub fn Pack(
         pub fn write_map32(self: Self, comptime T: type, val: T) !void {
             const type_info = @typeInfo(T);
             if (type_info != .Struct or type_info.Struct.is_tuple) {
-                @compileError("now only support struct");
+                const err_msg = comptimePrint("type T ({}) is not struct, now map is only for struct!", .{T});
+                @compileError(err_msg);
             }
 
             const max_len = 0xffff_ffff;
@@ -766,7 +772,8 @@ pub fn Pack(
         pub fn write_map(self: Self, comptime T: type, val: T) !void {
             const type_info = @typeInfo(T);
             if (type_info != .Struct or type_info.Struct.is_tuple) {
-                @compileError("now only support struct");
+                const err_msg = comptimePrint("type T ({}) is not struct, now map is only for struct!", .{T});
+                @compileError(err_msg);
             }
             if (T == EXT) {
                 return self.write_ext(@as(EXT, val));
@@ -785,7 +792,8 @@ pub fn Pack(
             } else if (fields_len <= 0xffff_ffff) {
                 try self.write_map32(T, val);
             } else {
-                @compileError("too many keys for map");
+                const err_msg = comptimePrint("In map, too many fields for type T ({}), max value is (2^32)-1!", .{T});
+                @compileError(err_msg);
             }
         }
 
@@ -793,7 +801,7 @@ pub fn Pack(
         pub fn write_enum(self: Self, comptime T: type, val: T) !void {
             const type_info = @typeInfo(T);
             if (type_info != .Enum) {
-                const err_msg = comptimePrint("T ({}) is not enum", .{T});
+                const err_msg = comptimePrint("type T ({}) is not enum type!", .{T});
                 @compileError(err_msg);
             }
 
@@ -802,7 +810,7 @@ pub fn Pack(
 
             const tag_type_info = @typeInfo(tag_type);
             if (tag_type_info != .Int) {
-                const err_msg = comptimePrint("enum type ({})'s tag type({}) must be int,", .{ T, tag_type });
+                const err_msg = comptimePrint("enum type T ({})'s tag type({}) must be int!", .{ T, tag_type });
                 @compileError(err_msg);
             }
 
@@ -943,7 +951,8 @@ pub fn Pack(
                     const is_signed = if (int.signedness == .signed) true else false;
 
                     if (int_bits > 64) {
-                        @compileError("not support bits larger than 64");
+                        const err_msg = comptimePrint("type T ({}) too larger, the max value is 64 bits!", .{val_type});
+                        @compileError(err_msg);
                     }
 
                     if (is_signed) {
@@ -955,7 +964,8 @@ pub fn Pack(
                 .Float => |float| {
                     const float_bits = float.bits;
                     if (float_bits > 64) {
-                        @compileError("float larger than f64 is not supported!");
+                        const err_msg = comptimePrint("type T ({}) too larger, the max value is 64 bits!", .{val_type});
+                        @compileError(err_msg);
                     }
                     try self.write_float(val);
                 },
@@ -967,7 +977,8 @@ pub fn Pack(
                     if (PO.to_slice(pointer)) |ele_type| {
                         try self.write_arr(ele_type, val);
                     } else {
-                        @compileError("not support non-slice pointer!");
+                        const err_msg = comptimePrint("type T ({}) is not supported, now only supports non-slice pointer!", .{val_type});
+                        @compileError(err_msg);
                     }
                 },
                 .Struct => |ss| {
@@ -978,7 +989,7 @@ pub fn Pack(
                     }
                 },
                 else => {
-                    const err_msg = comptimePrint("type T ({}) is not supported", .{val_type});
+                    const err_msg = comptimePrint("type T ({}) is not supported!", .{val_type});
                     @compileError(err_msg);
                 },
             }
@@ -1636,7 +1647,8 @@ pub fn Pack(
         fn read_array_value(self: Self, marker_u8: u8, allocator: Allocator, comptime T: type) !T {
             const type_info = @typeInfo(T);
             if (type_info != .Array) {
-                @compileError("sorry, T must be arrary");
+                const err_msg = comptimePrint("type T ({}) must be array", .{T});
+                @compileError(err_msg);
             }
             const arrary_info = type_info.Array;
 
@@ -1671,7 +1683,8 @@ pub fn Pack(
         fn read_arrary_value_no_alloc(self: Self, marker_u8: u8, comptime T: type) !T {
             const type_info = @typeInfo(T);
             if (type_info != .Array) {
-                @compileError("sorry, T must be arrary");
+                const err_msg = comptimePrint("type T ({}) must be array", .{T});
+                @compileError(err_msg);
             }
             const arrary_info = type_info.Array;
 
@@ -1713,7 +1726,8 @@ pub fn Pack(
         pub fn read_array(self: Self, allocator: Allocator, comptime T: type) !T {
             const type_info = @typeInfo(T);
             if (type_info != .Array) {
-                @compileError("sorry, T must be arrary");
+                const err_msg = comptimePrint("type T ({}) must be array", .{T});
+                @compileError(err_msg);
             }
             const marker_u8 = try self.read_type_marker_u8();
             return self.read_array_value(marker_u8, allocator, T);
@@ -1723,7 +1737,8 @@ pub fn Pack(
         pub fn read_array_no_alloc(self: Self, comptime T: type) !T {
             const type_info = @typeInfo(T);
             if (type_info != .Array) {
-                @compileError("sorry, T must be arrary");
+                const err_msg = comptimePrint("type T ({}) must be array", .{T});
+                @compileError(err_msg);
             }
             const marker_u8 = try self.read_type_marker_u8();
             return self.read_arrary_value_no_alloc(marker_u8, T);
@@ -1760,10 +1775,12 @@ pub fn Pack(
             return res;
         }
 
+        /// read tuple
         pub fn read_tuple(self: Self, comptime T: type, allocator: Allocator) !T {
             const type_info = @typeInfo(T);
             if (type_info != .Struct or !type_info.Struct.is_tuple) {
-                @compileError("for strcut, please use read map");
+                const err_msg = comptimePrint("type T ({}) must be tuple", .{T});
+                @compileError(err_msg);
             }
 
             const marker_u8 = try self.read_type_marker_u8();
@@ -1772,7 +1789,8 @@ pub fn Pack(
 
         fn read_tuple_value_no_alloc(self: Self, marker_u8: u8, comptime T: type) !T {
             if (comptime typeIfNeedAlloc(T)) {
-                @compileError("sorry, T must be no alloc");
+                const err_msg = comptimePrint("type T ({}) must be non-alloc", .{T});
+                @compileError(err_msg);
             }
             const tuple_info = @typeInfo(T).Struct;
             const marker = self.marker_u8_to(marker_u8);
@@ -1806,11 +1824,13 @@ pub fn Pack(
 
         pub fn read_tuple_no_alloc(self: Self, comptime T: type) !T {
             if (comptime typeIfNeedAlloc(T)) {
-                @compileError("sorry, T must be no alloc");
+                const err_msg = comptimePrint("type T ({}) must be non-alloc", .{T});
+                @compileError(err_msg);
             }
             const type_info = @typeInfo(T);
             if (type_info != .Struct or !type_info.Struct.is_tuple) {
-                @compileError("for strcut, please use read map");
+                const err_msg = comptimePrint("type T ({}) must be tuple", .{T});
+                @compileError(err_msg);
             }
 
             const marker_u8 = try self.read_type_marker_u8();
@@ -1820,7 +1840,7 @@ pub fn Pack(
         fn read_enum_value(self: Self, marker_u8: u8, comptime T: type) !T {
             const type_info = @typeInfo(T);
             if (type_info != .Enum) {
-                const err_msg = comptimePrint("T ({}) is not enum", .{T});
+                const err_msg = comptimePrint("type T ({}) must be enum type!", .{T});
                 @compileError(err_msg);
             }
 
@@ -1850,7 +1870,7 @@ pub fn Pack(
 
             const type_info = @typeInfo(T);
             if (type_info != .Struct or type_info.Struct.is_tuple) {
-                const err = std.fmt.comptimePrint("read map not support {}", .{T});
+                const err = std.fmt.comptimePrint("type T ({}) must be struct!", .{T});
                 @compileError(err);
             }
 
@@ -1954,7 +1974,7 @@ pub fn Pack(
             const marker = self.marker_u8_to(marker_u8);
             const type_info = @typeInfo(T);
             if (comptime !typeIfNeedAlloc(T)) {
-                const err_msg = comptimePrint("Branch error, no memory allocation required for type T ({})", .{T});
+                const err_msg = comptimePrint("type T ({}) must be non-alloc", .{T});
                 @compileError(err_msg);
             }
 
@@ -1966,7 +1986,8 @@ pub fn Pack(
                     if (PO.to_slice(pointer)) |ele_type| {
                         return self.read_slice_value(marker_u8, allocator, ele_type);
                     } else {
-                        @compileError("not support non-slice pointer!");
+                        const err_msg = comptimePrint("type T ({}) must be non-slice pointer", .{T});
+                        @compileError(err_msg);
                     }
                 },
                 .Struct => |ss| {
@@ -1985,7 +2006,7 @@ pub fn Pack(
                     }
                 },
                 else => {
-                    const err_msg = comptimePrint("type T ({}) is not supported", .{T});
+                    const err_msg = comptimePrint("type T ({}) is not supported!", .{T});
                     @compileError(err_msg);
                 },
             }
@@ -2019,7 +2040,8 @@ pub fn Pack(
                 },
                 .Int => |int| {
                     if (int.bits > 64) {
-                        @compileError("Numbers larger than 64 bits are not supported");
+                        const err_msg = comptimePrint("type T ({}) is too larger, the max value is 64 bits!", .{T});
+                        @compileError(err_msg);
                     }
                     const is_signed = int.signedness == .signed;
 
@@ -2045,12 +2067,13 @@ pub fn Pack(
                     if (s.is_tuple) {
                         return self.read_tuple_value_no_alloc(marker_u8, T);
                     } else {
-                        const err_msg = comptimePrint("type T({})", .{T});
+                        const err_msg = comptimePrint("type T({}) must be tuple with non-alloc", .{T});
                         @compileError(err_msg);
                     }
                 },
                 else => {
-                    @compileError("type is not supported!");
+                    const err_msg = comptimePrint("type T ({}) is not supported", .{T});
+                    @compileError(err_msg);
                 },
             }
         }
@@ -2058,7 +2081,7 @@ pub fn Pack(
         // generic read func without allocator
         pub fn readNoAlloc(self: Self, comptime T: type) !read_type_help_no_alloc(T) {
             if (comptime typeIfNeedAlloc(T)) {
-                const err_msg = comptimePrint("Type T({}) must be of no memory allocated", .{T});
+                const err_msg = comptimePrint("Type T({}) must be of no memory allocated!", .{T});
                 @compileError(err_msg);
             }
             const type_info = @typeInfo(T);
@@ -2250,7 +2273,8 @@ fn typeIfNeedAlloc(comptime T: type) bool {
             return true;
         },
         else => {
-            @compileError("this type is not suuported!");
+            const err_msg = comptimePrint("this type ({}) is not supported!", .{T});
+            @compileError(err_msg);
         },
     }
 
@@ -2264,7 +2288,8 @@ inline fn read_type_help(comptime T: type) type {
             if (PO.to_slice(pointer)) |ele_type| {
                 return []ele_type;
             } else {
-                @compileError("not support non-slice pointer");
+                const err_msg = comptimePrint("type T ({}) must be silce for pointer", .{});
+                @compileError(err_msg);
             }
         },
         .Optional => |optional| {
@@ -2282,7 +2307,8 @@ inline fn read_type_help_no_alloc(comptime T: type) type {
     const type_info = @typeInfo(T);
     switch (type_info) {
         .Pointer => {
-            @compileError("not support non-slice pointer");
+            const err_msg = comptimePrint("type T ({}) must be silce for pointer", .{});
+            @compileError(err_msg);
         },
         .Optional => |optional| {
             const child_type = optional.child;
