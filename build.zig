@@ -44,10 +44,10 @@ pub fn build(b: *std.Build) void {
 
     {
         //// build test cli
-        const build_step = b.step("build_cli", "build cli test");
+        const build_step = b.step("build_dev", "build cli test");
         const exe = b.addExecutable(.{
             .name = "msgpack_rpc",
-            .root_source_file = .{ .path = "src/main.zig" },
+            .root_source_file = .{ .path = "src/dev.zig" },
             .target = target,
             .optimize = optimize,
         });
@@ -63,7 +63,33 @@ pub fn build(b: *std.Build) void {
         run_exe.step.dependOn(&install.step);
 
         // 指定一个 step 为 run
-        const run_step = b.step("run_cli", "Run the cli");
+        const run_step = b.step("dev", "Run the cli");
+
+        // 指定该 step 依赖于 run_exe，即实际的运行
+        run_step.dependOn(&run_exe.step);
+    }
+    {
+        //// build test cli
+        const build_step = b.step("build_serve", "build cli test");
+        const exe = b.addExecutable(.{
+            .name = "msgpack_rpc",
+            .root_source_file = .{ .path = "src/serve.zig" },
+            .target = target,
+            .optimize = optimize,
+        });
+
+        exe.root_module.addImport("msgpack_rpc", msgpack_rpc);
+
+        const install = b.addInstallArtifact(exe, .{});
+
+        build_step.dependOn(&install.step);
+
+        const run_exe = b.addRunArtifact(exe);
+
+        run_exe.step.dependOn(&install.step);
+
+        // 指定一个 step 为 run
+        const run_step = b.step("serve", "Run the cli");
 
         // 指定该 step 依赖于 run_exe，即实际的运行
         run_step.dependOn(&run_exe.step);

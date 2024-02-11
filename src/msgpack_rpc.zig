@@ -4,6 +4,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const msgpack = @import("msgpack.zig");
+const wrapStr = msgpack.wrapStr;
 const Allocator = std.mem.Allocator;
 const net = std.net;
 
@@ -70,12 +71,19 @@ pub const TcpClient = struct {
     pub fn deinit(client: *TcpClient) void {
         client.stream.close();
     }
+
+    pub fn call(client: *TcpClient, method: []const u8, params: anytype) !void {
+        try client.pack.write(.{ @intFromEnum(MessageType.Request), client.id, wrapStr(method), params });
+        client.id += 1;
+    }
 };
 
+/// this may be merged to tcpclient
 pub const UnixSocket = struct {
     allocator: Allocator,
     id: u32 = 0,
     stream: std.net.Stream,
+    pack: streamPack,
 
     /// init to create unix socket
     /// this is only useful for unix
@@ -85,6 +93,16 @@ pub const UnixSocket = struct {
         return UnixSocket{
             .allocator = allocator,
             .stream = stream,
+            .pack = streamPack.init(stream, stream),
         };
+    }
+
+    pub fn deinit(client: *UnixSocket) void {
+        client.stream.close();
+    }
+
+    pub fn call(client: *UnixSocket, method: []const u8, params: anytype) !void {
+        try client.pack.write(.{ @intFromEnum(MessageType.Request), client.id, wrapStr(method), params });
+        client.id += 1;
     }
 };
