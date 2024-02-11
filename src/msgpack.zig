@@ -912,6 +912,16 @@ pub fn Pack(
             const val_type_info = @typeInfo(val_type);
 
             switch (val_type_info) {
+                .ComptimeFloat => {
+                    try self.write_float(val);
+                },
+                .ComptimeInt => {
+                    if (val < 0) {
+                        try self.write_int(val);
+                    } else {
+                        try self.write_uint(val);
+                    }
+                },
                 .Optional => {
                     if (val) |v| {
                         try self.write(v);
@@ -968,7 +978,8 @@ pub fn Pack(
                     }
                 },
                 else => {
-                    @compileError("type is not supported!");
+                    const err_msg = comptimePrint("type T ({}) is not supported", .{val_type});
+                    @compileError(err_msg);
                 },
             }
         }
