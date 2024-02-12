@@ -923,6 +923,9 @@ pub fn Pack(
             const val_type_info = @typeInfo(val_type);
 
             switch (val_type_info) {
+                .Void => {
+                    try self.write_nil();
+                },
                 .ComptimeFloat => {
                     try self.write_float(val);
                 },
@@ -2038,6 +2041,9 @@ pub fn Pack(
             const type_info = @typeInfo(T);
 
             switch (type_info) {
+                .Void => {
+                    return;
+                },
                 .Bool => {
                     return self.read_bool_value(marker);
                 },
@@ -2231,6 +2237,9 @@ const PO = struct {
 pub fn typeIfNeedAlloc(comptime T: type) bool {
     const type_info = @typeInfo(T);
     switch (type_info) {
+        .Void => {
+            return false;
+        },
         .Optional => |optional| {
             return typeIfNeedAlloc(optional.child);
         },

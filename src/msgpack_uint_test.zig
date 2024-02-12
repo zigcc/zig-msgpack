@@ -504,6 +504,21 @@ test "write and read" {
     try expect(std.mem.eql(u8, &test_val, val));
 }
 
+test "test void" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = std.io.fixedBufferStream(&arr);
+    var read_buffer = std.io.fixedBufferStream(&arr);
+    var p = pack.init(
+        &write_buffer,
+        &read_buffer,
+    );
+
+    try p.write(void{});
+    try p.read(void, allocator);
+
+    try expect(arr[0] == 0xc0 and arr[1] == 0);
+}
+
 test "optional type write and read" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
     var write_buffer = std.io.fixedBufferStream(&arr);
@@ -521,7 +536,7 @@ test "optional type write and read" {
     try expect(val == test_val);
 }
 
-test "test" {
+test "test something" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
     var write_buffer = std.io.fixedBufferStream(&arr);
     var read_buffer = std.io.fixedBufferStream(&arr);
