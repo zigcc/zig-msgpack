@@ -550,3 +550,21 @@ test "test something" {
 
     try expect(std.mem.eql(u8, arr[0..arr1.len], &arr1));
 }
+
+test "test skip" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = std.io.fixedBufferStream(&arr);
+    var read_buffer = std.io.fixedBufferStream(&arr);
+    var p = pack.init(
+        &write_buffer,
+        &read_buffer,
+    );
+
+    try p.write(1);
+    try p.write(msgpack.wrapStr("test"));
+    try p.write(true);
+
+    try p.skip();
+    try p.skip();
+    try p.skip();
+}

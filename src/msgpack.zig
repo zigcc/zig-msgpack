@@ -2186,13 +2186,13 @@ pub fn Pack(
                     return;
                 },
                 .STR32, .BIN32 => {
-                    len = self.read_u32_value();
+                    len = try self.read_u32_value();
                 },
                 .STR16, .BIN16 => {
-                    len = self.read_u16_value();
+                    len = try self.read_u16_value();
                 },
                 .STR8, .BIN8 => {
-                    len = self.read_u8_value();
+                    len = try self.read_u8_value();
                 },
                 .FIXARRAY, .ARRAY16, .ARRAY32 => |val| {
                     if (val == .FIXARRAY) {
@@ -2211,20 +2211,20 @@ pub fn Pack(
                     len = marker_u8 - @intFromEnum(Markers.FIXSTR);
                 },
                 .UINT64, .INT64, .FLOAT64 => {
-                    _ = self.read_u64_value();
+                    _ = try self.read_u64_value();
                 },
                 .INT32, .UINT32, .FLOAT32 => {
-                    _ = self.read_u32_value();
+                    _ = try self.read_u32_value();
                 },
                 .UINT16, .INT16 => {
-                    _ = self.read_u16_value();
+                    _ = try self.read_u16_value();
                 },
                 .UINT8, .INT8 => {
-                    _ = self.read_u8_value();
+                    _ = try self.read_u8_value();
                 },
             }
             for (0..len) |_| {
-                _ = self.read_byte();
+                _ = try self.read_byte();
             }
         }
     };
