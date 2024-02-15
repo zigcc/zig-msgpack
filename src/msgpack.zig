@@ -1898,7 +1898,19 @@ pub fn Pack(
             }
 
             const map_len = len;
-            if (map_len != struct_info.fields.len) {
+
+            const field_len = blk: {
+                var tmp_len = struct_info.fields.len;
+                inline for (struct_info.fields) |field| {
+                    if (field.default_value != null) {
+                        tmp_len -= 1;
+                    }
+                }
+
+                break :blk tmp_len;
+            };
+            if (map_len != field_len and map_len != struct_info.fields.len) {
+                std.log.err("map_len is {}, field_len is {}", .{ map_len, field_len });
                 return MsGPackError.LENGTH_READING;
             }
 
