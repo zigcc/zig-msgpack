@@ -1,4 +1,4 @@
-//! MessagePack implemention with zig
+//! MessagePack implementation with zig
 //! https://msgpack.org/
 
 const std = @import("std");
@@ -1656,7 +1656,7 @@ pub fn Pack(
                 const err_msg = comptimePrint("type T ({}) must be array", .{T});
                 @compileError(err_msg);
             }
-            const arrary_info = type_info.Array;
+            const array_info = type_info.Array;
 
             const marker = self.marker_u8_to(marker_u8);
             var len: usize = 0;
@@ -1676,23 +1676,23 @@ pub fn Pack(
             }
 
             // check the len whether is valid
-            if (len != arrary_info.len) {
+            if (len != array_info.len) {
                 return MsGPackError.ARRAY_LENGTH_TOO_LONG;
             }
             var res: T = undefined;
             for (0..len) |index| {
-                res[index] = try self.read(arrary_info.child, allocator);
+                res[index] = try self.read(array_info.child, allocator);
             }
             return res;
         }
 
-        pub fn read_arrary_value_no_alloc(self: Self, marker_u8: u8, comptime T: type) !T {
+        pub fn read_array_value_no_alloc(self: Self, marker_u8: u8, comptime T: type) !T {
             const type_info = @typeInfo(T);
             if (type_info != .Array) {
                 const err_msg = comptimePrint("type T ({}) must be array", .{T});
                 @compileError(err_msg);
             }
-            const arrary_info = type_info.Array;
+            const array_info = type_info.Array;
 
             const marker = self.marker_u8_to(marker_u8);
             var len: usize = 0;
@@ -1712,13 +1712,13 @@ pub fn Pack(
             }
 
             // check the len whether is valid
-            if (len != arrary_info.len) {
+            if (len != array_info.len) {
                 return MsGPackError.ARRAY_LENGTH_TOO_LONG;
             }
 
             var res: T = undefined;
             for (0..len) |index| {
-                res[index] = try self.readNoAlloc(arrary_info.child);
+                res[index] = try self.readNoAlloc(array_info.child);
             }
             return res;
         }
@@ -1747,7 +1747,7 @@ pub fn Pack(
                 @compileError(err_msg);
             }
             const marker_u8 = try self.read_type_marker_u8();
-            return self.read_arrary_value_no_alloc(marker_u8, T);
+            return self.read_array_value_no_alloc(marker_u8, T);
         }
 
         pub fn read_tuple_value(self: Self, marker_u8: u8, comptime T: type, allocator: Allocator) !T {
@@ -2082,7 +2082,7 @@ pub fn Pack(
                     return self.read_enum_value(marker_u8, T);
                 },
                 .Array => {
-                    return self.read_arrary_value_no_alloc(marker_u8, T);
+                    return self.read_array_value_no_alloc(marker_u8, T);
                 },
                 .Struct => |s| {
                     if (s.is_tuple) {

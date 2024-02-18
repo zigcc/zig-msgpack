@@ -27,7 +27,7 @@ test "nil write and read" {
     try p.read_nil();
 }
 
-test "bool wirte and read" {
+test "bool write and read" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
     var write_buffer = std.io.fixedBufferStream(&arr);
     var read_buffer = std.io.fixedBufferStream(&arr);
@@ -434,7 +434,7 @@ test "array write and read" {
     try expect(std.mem.eql(u8, &test_val, &val));
 }
 
-test "tuple wirte and read" {
+test "tuple write and read" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
     var write_buffer = std.io.fixedBufferStream(&arr);
     var read_buffer = std.io.fixedBufferStream(&arr);

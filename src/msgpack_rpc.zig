@@ -1,4 +1,4 @@
-//! MessagePack RPC implemention with zig
+//! MessagePack RPC implementation with zig
 //! https://github.com/msgpack-rpc/msgpack-rpc
 
 const std = @import("std");
