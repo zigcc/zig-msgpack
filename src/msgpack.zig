@@ -2130,6 +2130,124 @@ pub fn Pack(
             }
         }
 
+        /// get the Map read handle
+        pub fn getArray(self: Self) !Array {
+            const marker_u8 = try self.read_type_marker_u8();
+            return Array.init(self, marker_u8);
+        }
+
+        /// this for dynamic array
+        pub const Array = struct {
+            len: u32,
+            pack: Self,
+
+            pub const ArrayErrorSet = error{
+                MARKERINVALID,
+            };
+
+            pub fn subArray(self: Array) !Array {
+                return self.pack.getArray();
+            }
+
+            pub fn subMap(self: Map) !Map {
+                return self.pack.getMap();
+            }
+
+            fn init(pack: Self, marker_u8: u8) !Array {
+                var len: u32 = 0;
+                const marker = pack.marker_u8_to(marker_u8);
+
+                switch (marker) {
+                    .FIXARRAY => {
+                        len = marker_u8 - 0x90;
+                    },
+                    .ARRAY16 => {
+                        len = try pack.read_u16_value();
+                    },
+                    .ARRAY32 => {
+                        len = try pack.read_u32_value();
+                    },
+                    else => {
+                        return ArrayErrorSet.MARKERINVALID;
+                    },
+                }
+            }
+
+            /// read element
+            pub fn read_element(self: Array, comptime T: type, allocator: Allocator) !read_type_help(T) {
+                return self.pack.read(T, allocator);
+            }
+
+            /// read elemtn no alloc
+            pub fn read_element_no_alloc(self: Array, comptime T: type) !read_type_help_no_alloc(T) {
+                return self.pack.readNoAlloc(T);
+            }
+        };
+
+        /// get the Map read handle
+        pub fn getMap(self: Self) !Map {
+            const marker_u8 = try self.read_type_marker_u8();
+            return Map.init(self, marker_u8);
+        }
+
+        /// this for dynamic map
+        pub const Map = struct {
+            len: u32,
+            pack: Self,
+
+            pub const MapErrorSet = error{
+                MARKERINVALID,
+            };
+
+            pub fn subMap(self: Map) !Map {
+                return self.pack.getMap();
+            }
+
+            pub fn subArray(self: Map) !Array {
+                return self.pack.getArray();
+            }
+
+            fn init(pack: Self, marker_u8: u8) !Map {
+                var len: u32 = 0;
+                const marker = pack.marker_u8_to(marker_u8);
+
+                switch (marker) {
+                    .FIXMAP => {
+                        len = marker_u8 - @intFromEnum(Markers.FIXMAP);
+                    },
+                    .MAP16 => {
+                        len = try pack.read_u16_value();
+                    },
+                    .MAP32 => {
+                        len = try pack.read_u32_value();
+                    },
+                    else => {
+                        return MapErrorSet.MARKERINVALID;
+                    },
+                }
+
+                return Map{
+                    .len = len,
+                    .pack = pack,
+                };
+            }
+
+            /// get the key
+            pub fn read_key(self: Map, allocator: Allocator) !Str {
+                return self.pack.read_str(allocator);
+            }
+
+            /// read value
+            pub fn read_element(self: Map, comptime T: type, allocator: Allocator) !read_type_help(T) {
+                return self.pack.read(T, allocator);
+            }
+
+            /// read elemet no alloc
+            pub fn read_element_no_alloc(self: Map, comptime T: type) !read_type_help_no_alloc(T) {
+                return self.pack.readNoAlloc(T);
+            }
+        };
+
         // skip
         pub fn skip(self: Self) !void {
             // get marker u8
