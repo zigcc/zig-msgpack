@@ -1916,18 +1916,24 @@ pub fn Pack(
 
             var res: T = undefined;
 
+            // first we need to assign default to struct
+            inline for (struct_info.fields) |field| {
+                const field_name = field.name;
+                const field_type = field.type;
+                // assign default value
+                if (field.default_value) |default_ptr| {
+                    const new_default_ptr: *align(field.alignment) const anyopaque = @alignCast(default_ptr);
+                    const ptr: *const field_type = @ptrCast(new_default_ptr);
+                    @field(res, field_name) = ptr.*;
+                }
+            }
+
             for (0..map_len) |_| {
                 const key = try self.read_str(allocator);
                 defer allocator.free(key.str);
                 inline for (struct_info.fields) |field| {
                     const field_name = field.name;
                     const field_type = field.type;
-                    // assign default value
-                    if (field.default_value) |default_ptr| {
-                        const new_default_ptr: *align(field.alignment) const anyopaque = @alignCast(default_ptr);
-                        const ptr: *const field_type = @ptrCast(new_default_ptr);
-                        @field(res, field_name) = ptr.*;
-                    }
                     if (field_name.len == key.str.len and std.mem.eql(u8, field_name, key.value())) {
                         @field(res, field_name) = try self.read(field_type, allocator);
                     }
