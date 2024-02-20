@@ -1001,6 +1001,109 @@ pub fn Pack(
             }
         }
 
+        /// get ArrayWriter
+        pub fn getArrayWriter(self: Self, len: u32) !ArrayWriter {
+            return ArrayWriter.init(self, len);
+        }
+
+        /// this for dynamic array write
+        pub const ArrayWriter = struct {
+            len: u32,
+            pack: Self,
+
+            pub const ArrayWriterErrorSet = error{
+                LENTOOLONG,
+            };
+
+            pub fn subArrayWriter(self: ArrayWriter, len: u32) !ArrayWriter {
+                return self.pack.getArrayWriter(len);
+            }
+
+            pub fn subMapWriter(self: ArrayWriter, len: u32) !MapWriter {
+                return self.pack.getMapWriter(len);
+            }
+
+            pub fn init(pack: Self, len: u32) !ArrayWriter {
+                if (len <= 0xf) {
+                    const header: u8 = @intCast(@intFromEnum(Markers.FIXARRAY) + len);
+                    pack.write_byte(header);
+                } else if (len <= 0xffff) {
+                    const header: u8 = @intFromEnum(Markers.ARRAY16);
+                    pack.write_byte(header);
+                    pack.write_u16_value(@intCast(len));
+                } else if (len <= 0xffff_ffff) {
+                    const header: u8 = @intFromEnum(Markers.ARRAY32);
+                    pack.write_byte(header);
+                    pack.write_u32_value(len);
+                } else {
+                    return ArrayWriterErrorSet.LENTOOLONG;
+                }
+
+                return ArrayWriter{
+                    .len = len,
+                    .pack = pack,
+                };
+            }
+
+            /// write element of array
+            pub fn write_element(self: ArrayWriter, val: anytype) !void {
+                return self.pack.write(val);
+            }
+        };
+
+        pub fn getMapWriter(self: Self, len: u32) !MapWriter {
+            return MapWriter.init(self, len);
+        }
+
+        pub const MapWriter = struct {
+            len: u32,
+            pack: Self,
+
+            pub const MapWriterErrorSet = error{
+                LENTOOLONG,
+            };
+
+            pub fn subMapWriter(self: MapWriter, len: u32) !MapWriter {
+                return self.pack.getMapWriter(len);
+            }
+
+            pub fn subArrayWriter(self: ArrayWriter, len: u32) !ArrayWriter {
+                return self.pack.getArrayWriter(len);
+            }
+
+            pub fn init(pack: Self, len: u32) !MapWriter {
+                if (len <= 0xf) {
+                    const header: u8 = @intCast(@intFromEnum(Markers.FIXMAP) + len);
+                    pack.write_byte(header);
+                } else if (len <= 0xffff) {
+                    const header: u8 = @intFromEnum(Markers.MAP16);
+                    pack.write_byte(header);
+                    pack.write_u16_value(@intCast(len));
+                } else if (len <= 0xffff_ffff) {
+                    const header: u8 = @intFromEnum(Markers.MAP32);
+                    pack.write_byte(header);
+                    pack.write_u32_value(len);
+                } else {
+                    return MapWriterErrorSet.LENTOOLONG;
+                }
+
+                return MapWriter{
+                    .len = len,
+                    .pack = pack,
+                };
+            }
+
+            /// write key
+            pub fn write_key(self: MapWriter, str: Str) !void {
+                return self.pack.write_str(str);
+            }
+
+            /// write element
+            pub fn write_element(self: MapWriter, val: anytype) !void {
+                return self.pack.write(val);
+            }
+        };
+
         // TODO: add timestamp
 
         //// read
@@ -2131,29 +2234,29 @@ pub fn Pack(
         }
 
         /// get the Map read handle
-        pub fn getArray(self: Self) !Array {
+        pub fn getArrayReader(self: Self) !ArrayReader {
             const marker_u8 = try self.read_type_marker_u8();
-            return Array.init(self, marker_u8);
+            return ArrayReader.init(self, marker_u8);
         }
 
         /// this for dynamic array
-        pub const Array = struct {
+        pub const ArrayReader = struct {
             len: u32,
             pack: Self,
 
-            pub const ArrayErrorSet = error{
+            pub const ArrayReaderErrorSet = error{
                 MARKERINVALID,
             };
 
-            pub fn subArray(self: Array) !Array {
-                return self.pack.getArray();
+            pub fn subArrayReader(self: ArrayReader) !ArrayReader {
+                return self.pack.getArrayReader();
             }
 
-            pub fn subMap(self: Map) !Map {
-                return self.pack.getMap();
+            pub fn subMapReader(self: MapReader) !MapReader {
+                return self.pack.getMapReader();
             }
 
-            fn init(pack: Self, marker_u8: u8) !Array {
+            fn init(pack: Self, marker_u8: u8) !ArrayReader {
                 var len: u32 = 0;
                 const marker = pack.marker_u8_to(marker_u8);
 
@@ -2168,30 +2271,34 @@ pub fn Pack(
                         len = try pack.read_u32_value();
                     },
                     else => {
-                        return ArrayErrorSet.MARKERINVALID;
+                        return ArrayReaderErrorSet.MARKERINVALID;
                     },
                 }
+                return ArrayReader{
+                    .len = len,
+                    .pack = pack,
+                };
             }
 
             /// read element
-            pub fn read_element(self: Array, comptime T: type, allocator: Allocator) !read_type_help(T) {
+            pub fn read_element(self: ArrayReader, comptime T: type, allocator: Allocator) !read_type_help(T) {
                 return self.pack.read(T, allocator);
             }
 
             /// read elemtn no alloc
-            pub fn read_element_no_alloc(self: Array, comptime T: type) !read_type_help_no_alloc(T) {
+            pub fn read_element_no_alloc(self: ArrayReader, comptime T: type) !read_type_help_no_alloc(T) {
                 return self.pack.readNoAlloc(T);
             }
         };
 
         /// get the Map read handle
-        pub fn getMap(self: Self) !Map {
+        pub fn getMapReader(self: Self) !MapReader {
             const marker_u8 = try self.read_type_marker_u8();
-            return Map.init(self, marker_u8);
+            return MapReader.init(self, marker_u8);
         }
 
         /// this for dynamic map
-        pub const Map = struct {
+        pub const MapReader = struct {
             len: u32,
             pack: Self,
 
@@ -2199,15 +2306,15 @@ pub fn Pack(
                 MARKERINVALID,
             };
 
-            pub fn subMap(self: Map) !Map {
-                return self.pack.getMap();
+            pub fn subMapReader(self: MapReader) !MapReader {
+                return self.pack.getMapReader();
             }
 
-            pub fn subArray(self: Map) !Array {
-                return self.pack.getArray();
+            pub fn subArrayReader(self: MapReader) !ArrayReader {
+                return self.pack.getArrayReader();
             }
 
-            fn init(pack: Self, marker_u8: u8) !Map {
+            fn init(pack: Self, marker_u8: u8) !MapReader {
                 var len: u32 = 0;
                 const marker = pack.marker_u8_to(marker_u8);
 
@@ -2226,24 +2333,24 @@ pub fn Pack(
                     },
                 }
 
-                return Map{
+                return MapReader{
                     .len = len,
                     .pack = pack,
                 };
             }
 
             /// get the key
-            pub fn read_key(self: Map, allocator: Allocator) !Str {
+            pub fn read_key(self: MapReader, allocator: Allocator) !Str {
                 return self.pack.read_str(allocator);
             }
 
             /// read value
-            pub fn read_element(self: Map, comptime T: type, allocator: Allocator) !read_type_help(T) {
+            pub fn read_element(self: MapReader, comptime T: type, allocator: Allocator) !read_type_help(T) {
                 return self.pack.read(T, allocator);
             }
 
             /// read elemet no alloc
-            pub fn read_element_no_alloc(self: Map, comptime T: type) !read_type_help_no_alloc(T) {
+            pub fn read_element_no_alloc(self: MapReader, comptime T: type) !read_type_help_no_alloc(T) {
                 return self.pack.readNoAlloc(T);
             }
         };
