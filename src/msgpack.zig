@@ -1023,18 +1023,18 @@ pub fn Pack(
                 return self.pack.getMapWriter(len);
             }
 
-            pub fn init(pack: Self, len: u32) !ArrayWriter {
+            fn init(pack: Self, len: u32) !ArrayWriter {
                 if (len <= 0xf) {
                     const header: u8 = @intCast(@intFromEnum(Markers.FIXARRAY) + len);
-                    pack.write_byte(header);
+                    try pack.write_byte(header);
                 } else if (len <= 0xffff) {
                     const header: u8 = @intFromEnum(Markers.ARRAY16);
-                    pack.write_byte(header);
-                    pack.write_u16_value(@intCast(len));
+                    try pack.write_byte(header);
+                    try pack.write_u16_value(@intCast(len));
                 } else if (len <= 0xffff_ffff) {
                     const header: u8 = @intFromEnum(Markers.ARRAY32);
-                    pack.write_byte(header);
-                    pack.write_u32_value(len);
+                    try pack.write_byte(header);
+                    try pack.write_u32_value(len);
                 } else {
                     return ArrayWriterErrorSet.LENTOOLONG;
                 }
@@ -1071,18 +1071,18 @@ pub fn Pack(
                 return self.pack.getArrayWriter(len);
             }
 
-            pub fn init(pack: Self, len: u32) !MapWriter {
+            fn init(pack: Self, len: u32) !MapWriter {
                 if (len <= 0xf) {
                     const header: u8 = @intCast(@intFromEnum(Markers.FIXMAP) + len);
-                    pack.write_byte(header);
+                    try pack.write_byte(header);
                 } else if (len <= 0xffff) {
                     const header: u8 = @intFromEnum(Markers.MAP16);
-                    pack.write_byte(header);
-                    pack.write_u16_value(@intCast(len));
+                    try pack.write_byte(header);
+                    try pack.write_u16_value(@intCast(len));
                 } else if (len <= 0xffff_ffff) {
                     const header: u8 = @intFromEnum(Markers.MAP32);
-                    pack.write_byte(header);
-                    pack.write_u32_value(len);
+                    try pack.write_byte(header);
+                    try pack.write_u32_value(len);
                 } else {
                     return MapWriterErrorSet.LENTOOLONG;
                 }
@@ -1093,14 +1093,10 @@ pub fn Pack(
                 };
             }
 
-            /// write key
-            pub fn write_key(self: MapWriter, str: Str) !void {
-                return self.pack.write_str(str);
-            }
-
-            /// write element
-            pub fn write_element(self: MapWriter, val: anytype) !void {
-                return self.pack.write(val);
+            /// write key and value
+            pub fn write(self: MapWriter, key: Str, val: anytype) !void {
+                try self.pack.write_str(key);
+                try self.pack.write(val);
             }
         };
 

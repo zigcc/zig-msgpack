@@ -568,3 +568,65 @@ test "test skip" {
     try p.skip();
     try p.skip();
 }
+
+test "test dynamic array write and read" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = std.io.fixedBufferStream(&arr);
+    var read_buffer = std.io.fixedBufferStream(&arr);
+    var p = pack.init(
+        &write_buffer,
+        &read_buffer,
+    );
+
+    const test_arr = [4]u16{ 15, 16, 17, 18 };
+
+    const arraywriter = try p.getArrayWriter(4);
+    for (test_arr) |value| {
+        try arraywriter.write_element(value);
+    }
+
+    const arrayreader = try p.getArrayReader();
+    try expect(arrayreader.len == arraywriter.len);
+    for (0..arrayreader.len) |i| {
+        const ele = try arrayreader.read_element_no_alloc(u16);
+        try expect(ele == test_arr[i]);
+    }
+}
+
+test "test dynamic map write and read" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = std.io.fixedBufferStream(&arr);
+    var read_buffer = std.io.fixedBufferStream(&arr);
+    var p = pack.init(
+        &write_buffer,
+        &read_buffer,
+    );
+
+    const key_1 = "key1";
+    const key_2 = "key2";
+    const val_1: u8 = 56;
+    const val_2 = "val2";
+
+    const mapwriter = try p.getMapWriter(2);
+    try mapwriter.write(msgpack.wrapStr(key_1), val_1);
+    try mapwriter.write(msgpack.wrapStr(key_2), msgpack.wrapStr(val_2));
+
+    const mapreader = try p.getMapReader();
+
+    try expect(mapreader.len == mapwriter.len);
+
+    const read_key_1 = try mapreader.read_key(allocator);
+    defer allocator.free(read_key_1.value());
+    try expect(std.mem.eql(u8, key_1, read_key_1.value()));
+
+    const read_val_1 = try mapreader.read_element_no_alloc(u8);
+    try expect(val_1 == read_val_1);
+
+    const read_key_2 = try mapreader.read_key(allocator);
+    defer allocator.free(read_key_2.value());
+    try expect(std.mem.eql(u8, key_2, read_key_2.value()));
+
+    const read_val_2 = try mapreader.read_element(msgpack.Str, allocator);
+    defer allocator.free(read_val_2.value());
+    try expect(std.mem.eql(u8, val_2, read_val_2.value()));
+}
