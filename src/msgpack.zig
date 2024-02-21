@@ -2538,7 +2538,7 @@ pub fn typeIfNeedAlloc(comptime T: type) bool {
     return true;
 }
 
-inline fn read_type_help(comptime T: type) type {
+pub inline fn read_type_help(comptime T: type) type {
     const type_info = @typeInfo(T);
     switch (type_info) {
         .Pointer => |pointer| {
@@ -2560,7 +2560,7 @@ inline fn read_type_help(comptime T: type) type {
     }
 }
 
-inline fn read_type_help_no_alloc(comptime T: type) type {
+pub inline fn read_type_help_no_alloc(comptime T: type) type {
     const type_info = @typeInfo(T);
     switch (type_info) {
         .Pointer => {
