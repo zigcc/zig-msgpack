@@ -3,9 +3,22 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
+
+const current_zig = builtin.zig_version;
 const Allocator = std.mem.Allocator;
 const comptimePrint = std.fmt.comptimePrint;
 const native_endian = builtin.cpu.arch.endian();
+
+const big_endian = switch (current_zig.minor) {
+    11 => std.builtin.Endian.Big,
+    12 => std.builtin.Endian.big,
+    else => @compileError("not support current version zig"),
+};
+const little_endian = switch (current_zig.minor) {
+    11 => std.builtin.Endian.Little,
+    12 => std.builtin.Endian.little,
+    else => @compileError("not support current version zig"),
+};
 
 pub const Str = struct {
     str: []const u8,
@@ -208,7 +221,7 @@ pub fn Pack(
 
         fn write_u16_value(self: Self, val: u16) !void {
             var arr: [2]u8 = undefined;
-            std.mem.writeInt(u16, &arr, val, .big);
+            std.mem.writeInt(u16, &arr, val, big_endian);
 
             try self.write_data(&arr);
         }
@@ -221,7 +234,7 @@ pub fn Pack(
 
         fn write_u32_value(self: Self, val: u32) !void {
             var arr: [4]u8 = undefined;
-            std.mem.writeInt(u32, &arr, val, .big);
+            std.mem.writeInt(u32, &arr, val, big_endian);
 
             try self.write_data(&arr);
         }
@@ -234,7 +247,7 @@ pub fn Pack(
 
         fn write_u64_value(self: Self, val: u64) !void {
             var arr: [8]u8 = undefined;
-            std.mem.writeInt(u64, &arr, val, .big);
+            std.mem.writeInt(u64, &arr, val, big_endian);
 
             try self.write_data(&arr);
         }
@@ -266,7 +279,7 @@ pub fn Pack(
 
         fn write_i16_value(self: Self, val: i16) !void {
             var arr: [2]u8 = undefined;
-            std.mem.writeInt(i16, &arr, val, .big);
+            std.mem.writeInt(i16, &arr, val, big_endian);
 
             try self.write_data(&arr);
         }
@@ -279,7 +292,7 @@ pub fn Pack(
 
         fn write_i32_value(self: Self, val: i32) !void {
             var arr: [4]u8 = undefined;
-            std.mem.writeInt(i32, &arr, val, .big);
+            std.mem.writeInt(i32, &arr, val, big_endian);
 
             try self.write_data(&arr);
         }
@@ -292,7 +305,7 @@ pub fn Pack(
 
         fn write_i64_value(self: Self, val: i64) !void {
             var arr: [8]u8 = undefined;
-            std.mem.writeInt(i64, &arr, val, .big);
+            std.mem.writeInt(i64, &arr, val, big_endian);
 
             try self.write_data(&arr);
         }
@@ -338,7 +351,7 @@ pub fn Pack(
         fn write_f32_value(self: Self, val: f32) !void {
             const int: u32 = @bitCast(val);
             var arr: [4]u8 = undefined;
-            std.mem.writeInt(u32, &arr, int, .big);
+            std.mem.writeInt(u32, &arr, int, big_endian);
 
             try self.write_data(&arr);
         }
@@ -352,7 +365,7 @@ pub fn Pack(
         fn write_f64_value(self: Self, val: f64) !void {
             const int: u64 = @bitCast(val);
             var arr: [8]u8 = undefined;
-            std.mem.writeInt(u64, &arr, int, .big);
+            std.mem.writeInt(u64, &arr, int, big_endian);
 
             try self.write_data(&arr);
         }
@@ -1205,7 +1218,7 @@ pub fn Pack(
             if (len != 2) {
                 return MsGPackError.LENGTH_READING;
             }
-            const val = std.mem.readInt(i16, &buffer, .big);
+            const val = std.mem.readInt(i16, &buffer, big_endian);
             return val;
         }
 
@@ -1215,7 +1228,7 @@ pub fn Pack(
             if (len != 2) {
                 return MsGPackError.LENGTH_READING;
             }
-            const val = std.mem.readInt(u16, &buffer, .big);
+            const val = std.mem.readInt(u16, &buffer, big_endian);
             return val;
         }
 
@@ -1225,7 +1238,7 @@ pub fn Pack(
             if (len != 4) {
                 return MsGPackError.LENGTH_READING;
             }
-            const val = std.mem.readInt(i32, &buffer, .big);
+            const val = std.mem.readInt(i32, &buffer, big_endian);
             return val;
         }
 
@@ -1235,7 +1248,7 @@ pub fn Pack(
             if (len != 4) {
                 return MsGPackError.LENGTH_READING;
             }
-            const val = std.mem.readInt(u32, &buffer, .big);
+            const val = std.mem.readInt(u32, &buffer, big_endian);
             return val;
         }
 
@@ -1245,7 +1258,7 @@ pub fn Pack(
             if (len != 8) {
                 return MsGPackError.LENGTH_READING;
             }
-            const val = std.mem.readInt(i64, &buffer, .big);
+            const val = std.mem.readInt(i64, &buffer, big_endian);
             return val;
         }
 
@@ -1255,7 +1268,7 @@ pub fn Pack(
             if (len != 8) {
                 return MsGPackError.LENGTH_READING;
             }
-            const val = std.mem.readInt(u64, &buffer, .big);
+            const val = std.mem.readInt(u64, &buffer, big_endian);
             return val;
         }
 
@@ -1573,7 +1586,7 @@ pub fn Pack(
             if (len != 4) {
                 return MsGPackError.LENGTH_READING;
             }
-            const val_int = std.mem.readInt(u32, &buffer, .big);
+            const val_int = std.mem.readInt(u32, &buffer, big_endian);
             const val: f32 = @bitCast(val_int);
             return val;
         }
@@ -1584,7 +1597,7 @@ pub fn Pack(
             if (len != 8) {
                 return MsGPackError.LENGTH_READING;
             }
-            const val_int = std.mem.readInt(u64, &buffer, .big);
+            const val_int = std.mem.readInt(u64, &buffer, big_endian);
             const val: f64 = @bitCast(val_int);
             return val;
         }
