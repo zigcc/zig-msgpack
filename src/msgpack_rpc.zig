@@ -66,7 +66,7 @@ const Job = union(enum) {
 const JobQueue = std.fifo.LinearFifo(Job, .Dynamic);
 
 /// Peer to Peer
-pub fn Peer(streamT: type) type {
+pub fn Peer(comptime streamT: type) type {
 
     // TODO: whether add context ?
 
@@ -158,7 +158,7 @@ pub fn Peer(streamT: type) type {
         }
 
         /// get response
-        pub fn getResponse(self: Self, errorType: type, resultType: type) !resultType {
+        pub fn getResponse(self: Self, comptime errorType: type, comptime resultType: type) !resultType {
             if (@typeInfo(errorType) != .Optional) {
                 const err_msg = comptimePrint("errorType ({}) must be optional type!", .{errorType});
                 @compileError(err_msg);
@@ -172,14 +172,14 @@ pub fn Peer(streamT: type) type {
 }
 
 /// Checks whether a type contains a specified declaration
-fn detectDecl(T: type, comptime name: []const u8) void {
+fn detectDecl(comptime T: type, comptime name: []const u8) void {
     if (!@hasDecl(T, name)) {
         @compileError(comptimePrint("sorry, type T  ({}) must have decl called {s}", .{ T, name }));
     }
 }
 
 /// make res tuple type
-fn makeResTupleT(errorType: type, resType: type) type {
+fn makeResTupleT(comptime errorType: type, comptime resType: type) type {
     return @Type(std.builtin.Type.Struct{
         .layout = .Auto,
         .fields = &.{
