@@ -1136,6 +1136,7 @@ pub fn Pack(
         /// read data
         pub fn read_data(self: Self, allocator: Allocator, len: usize) ![]u8 {
             const data = try allocator.alloc(u8, len);
+            errdefer allocator.free(data);
             const data_len = try self.read_fn(data);
 
             if (data_len != len) {
@@ -1756,6 +1757,7 @@ pub fn Pack(
             }
 
             const arr = try allocator.alloc(T, len);
+            errdefer allocator.free(arr);
             for (0..arr.len) |i| {
                 arr[i] = try self.read(T, allocator);
             }
