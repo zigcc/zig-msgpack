@@ -14,3 +14,7 @@ The current protocol implementation has been completed, but it has not been full
 Only limited unit testing has been conducted, which does not cover everything.
 
 now `msgpack-rpc` is under developing!
+
+## Related projects
+
+- [znvim](https://github.com/jinzhongjia/znvim)
