@@ -2356,12 +2356,12 @@ pub fn Pack(
             }
 
             /// read value
-            pub fn read_element(self: MapReader, comptime T: type, allocator: Allocator) !read_type_help(T) {
+            pub fn read(self: MapReader, comptime T: type, allocator: Allocator) !read_type_help(T) {
                 return self.pack.read(T, allocator);
             }
 
             /// read elemet no alloc
-            pub fn read_element_no_alloc(self: MapReader, comptime T: type) !read_type_help_no_alloc(T) {
+            pub fn read_no_alloc(self: MapReader, comptime T: type) !read_type_help_no_alloc(T) {
                 return self.pack.readNoAlloc(T);
             }
         };
