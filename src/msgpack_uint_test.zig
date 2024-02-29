@@ -619,14 +619,14 @@ test "test dynamic map write and read" {
     defer allocator.free(read_key_1.value());
     try expect(std.mem.eql(u8, key_1, read_key_1.value()));
 
-    const read_val_1 = try mapreader.read_element_no_alloc(u8);
+    const read_val_1 = try mapreader.read_no_alloc(u8);
     try expect(val_1 == read_val_1);
 
     const read_key_2 = try mapreader.read_key(allocator);
     defer allocator.free(read_key_2.value());
     try expect(std.mem.eql(u8, key_2, read_key_2.value()));
 
-    const read_val_2 = try mapreader.read_element(msgpack.Str, allocator);
+    const read_val_2 = try mapreader.read(msgpack.Str, allocator);
     defer allocator.free(read_val_2.value());
     try expect(std.mem.eql(u8, val_2, read_val_2.value()));
 }
