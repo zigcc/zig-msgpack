@@ -57,6 +57,21 @@ pub fn wrapEXT(t: i8, data: []u8) EXT {
     };
 }
 
+pub const Payload = union(enum) {
+    nil: void,
+    bool: bool,
+    int: i64,
+    uint: u64,
+    float: f64,
+    str: Str,
+    bin: Bin,
+    arr: []Payload,
+    map: Map,
+    ext: EXT,
+};
+
+pub const Map = std.StringHashMap(Payload);
+
 /// markers
 const Markers = enum(u8) {
     POSITIVE_FIXINT = 0x00,
@@ -1758,7 +1773,7 @@ pub fn Pack(
 
             const arr = try allocator.alloc(T, len);
             errdefer allocator.free(arr);
-            for (0..arr.len) |i| {
+            for (0..len) |i| {
                 arr[i] = try self.read(T, allocator);
             }
             return arr;
@@ -2242,6 +2257,139 @@ pub fn Pack(
             } else {
                 return try self.read_value_no_alloc(marker_u8, T);
             }
+        }
+
+        /// This function will return a payload,
+        /// which is very convenient for reading the type of unknown structure.
+        /// However, it should be noted that
+        /// the map is completed using stringhashmap and requires manual deinit.
+        pub fn read_payload(self: Self, allocator: Allocator) !Payload {
+            var res: Payload = undefined;
+            const marker_u8 = try self.read_type_marker_u8();
+            const marker = self.marker_u8_to(marker_u8);
+            switch (marker) {
+                // read nil
+                .NIL => {
+                    res = Payload{
+                        .nil = void{},
+                    };
+                },
+                // read bool
+                .TRUE, .FALSE => {
+                    const val = try self.read_bool_value(marker);
+                    res = Payload{
+                        .bool = val,
+                    };
+                },
+                // read uint
+                .POSITIVE_FIXINT, .UINT8, .UINT16, .UINT32, .UINT64 => {
+                    const val = try self.read_uint_value(marker_u8);
+                    res = Payload{
+                        .uint = val,
+                    };
+                },
+                // read int
+                .NEGATIVE_FIXINT, .INT8, .INT16, .INT32, .INT64 => {
+                    const val = try self.read_int_value(marker_u8);
+                    res = Payload{
+                        .int = val,
+                    };
+                },
+                // read float
+                .FLOAT32, .FLOAT64 => {
+                    const val = try self.read_float_value(marker);
+                    res = Payload{
+                        .float = val,
+                    };
+                },
+                // read str
+                .FIXSTR, .STR8, .STR16, .STR32 => {
+                    const val = try self.read_str_value(marker_u8, allocator);
+                    res = Payload{
+                        .str = wrapStr(val),
+                    };
+                },
+                // read bin
+                .BIN8, .BIN16, .BIN32 => {
+                    const val = try self.read_bin_value(marker, allocator);
+                    res = Payload{
+                        .bin = wrapBin(val),
+                    };
+                },
+                // read array
+                .FIXARRAY, .ARRAY16, .ARRAY32 => {
+                    var len: usize = 0;
+                    switch (marker) {
+                        .FIXARRAY => {
+                            len = marker_u8 - 0x90;
+                        },
+                        .ARRAY16 => {
+                            len = try self.read_u16_value();
+                        },
+                        .ARRAY32 => {
+                            len = try self.read_u32_value();
+                        },
+                        else => {
+                            return MsGPackError.INVALID_TYPE;
+                        },
+                    }
+
+                    const arr = try allocator.alloc(Payload, len);
+                    errdefer allocator.free(arr);
+
+                    for (0..len) |i| {
+                        arr[i] = try self.read_payload(allocator);
+                    }
+                    res = Payload{
+                        .arr = arr,
+                    };
+                },
+                // read map
+                .FIXMAP, .MAP16, .MAP32 => {
+                    var len: usize = 0;
+                    switch (marker) {
+                        .FIXMAP => {
+                            len = marker_u8 - @intFromEnum(Markers.FIXMAP);
+                        },
+                        .MAP16 => {
+                            len = try self.read_u16_value();
+                        },
+                        .MAP32 => {
+                            len = try self.read_u32_value();
+                        },
+                        else => {
+                            return MsGPackError.INVALID_TYPE;
+                        },
+                    }
+
+                    var map = Map.init(allocator);
+                    for (0..len) |_| {
+                        const key = try self.read_str(allocator);
+                        const val = try self.read_payload(allocator);
+                        try map.put(key.value(), val);
+                    }
+                    res = Payload{
+                        .map = map,
+                    };
+                },
+                // read ext
+                .FIXEXT1,
+                .FIXEXT2,
+                .FIXEXT4,
+                .FIXEXT8,
+                .FIXEXT16,
+                .EXT8,
+                .EXT16,
+                .EXT32,
+                => {
+                    const val = try self.read_ext_value(marker, allocator);
+                    res = Payload{
+                        .ext = val,
+                    };
+                },
+            }
+
+            return res;
         }
 
         /// get the Map read handle

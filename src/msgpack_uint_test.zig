@@ -630,3 +630,100 @@ test "test dynamic map write and read" {
     defer allocator.free(read_val_2.value());
     try expect(std.mem.eql(u8, val_2, read_val_2.value()));
 }
+
+test "read payload of nil" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = std.io.fixedBufferStream(&arr);
+    var read_buffer = std.io.fixedBufferStream(&arr);
+    var p = pack.init(
+        &write_buffer,
+        &read_buffer,
+    );
+
+    try p.write_nil();
+
+    const payload = try p.read_payload(allocator);
+    try expect(payload == .nil);
+}
+
+test "read payload of bool" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = std.io.fixedBufferStream(&arr);
+    var read_buffer = std.io.fixedBufferStream(&arr);
+    var p = pack.init(
+        &write_buffer,
+        &read_buffer,
+    );
+
+    const test_val_1 = false;
+    const test_val_2 = true;
+
+    try p.write(test_val_1);
+    try p.write(test_val_2);
+
+    const val_1 = try p.read_payload(allocator);
+    const val_2 = try p.read_payload(allocator);
+
+    try expect(val_1 == .bool);
+    try expect(val_2 == .bool);
+
+    try expect(val_1.bool == test_val_1);
+    try expect(val_2.bool == test_val_2);
+}
+
+test "read payload of int" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = std.io.fixedBufferStream(&arr);
+    var read_buffer = std.io.fixedBufferStream(&arr);
+    var p = pack.init(
+        &write_buffer,
+        &read_buffer,
+    );
+
+    const test_val: i64 = 0 - 0xffff_ffff_f;
+    try p.write(test_val);
+    const val = try p.read_payload(allocator);
+
+    try expect(val == .int);
+    try expect(val.int == test_val);
+}
+
+test "read payload of uint" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = std.io.fixedBufferStream(&arr);
+    var read_buffer = std.io.fixedBufferStream(&arr);
+    var p = pack.init(
+        &write_buffer,
+        &read_buffer,
+    );
+
+    const test_val: u64 = 0xffff_ffff_f;
+    try p.write(test_val);
+    const val = try p.read_payload(allocator);
+
+    try expect(val == .uint);
+    try expect(val.uint == test_val);
+}
+
+test "read payload of float" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = std.io.fixedBufferStream(&arr);
+    var read_buffer = std.io.fixedBufferStream(&arr);
+    var p = pack.init(
+        &write_buffer,
+        &read_buffer,
+    );
+
+    const test_val: f64 = 3.5e+38;
+    try p.write(test_val);
+    const val = try p.read_payload(allocator);
+
+    try expect(val == .float);
+    try expect(val.float == test_val);
+}
+
+// TODO: should add more test for payload
+// TODO: merge fixint, i8, i16, .. test, fixuint, u8, u16, ... test
+// TODO: merge float test
+// TODO: merge str test
+// TODO: merge bin test
