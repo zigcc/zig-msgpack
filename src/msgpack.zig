@@ -1022,9 +1022,69 @@ pub fn Pack(
                         try self.write_map(val_type, val);
                     }
                 },
+                .Union => {
+                    if (val_type == Payload) {
+                        try self.write_payload(val);
+                    } else {
+                        const err_msg = comptimePrint("type T ({}) is not supported, union only support Payload!", .{val_type});
+                        @compileError(err_msg);
+                    }
+                },
                 else => {
                     const err_msg = comptimePrint("type T ({}) is not supported!", .{val_type});
                     @compileError(err_msg);
+                },
+            }
+        }
+
+        pub fn write_payload(self: Self, payload: Payload) !void {
+            switch (payload) {
+                .nil => {
+                    try self.write_nil();
+                },
+                .bool => |val| {
+                    try self.write_bool(val);
+                },
+                .int => |val| {
+                    try self.write_int(val);
+                },
+                .uint => |val| {
+                    try self.write_uint(val);
+                },
+                .float => |val| {
+                    try self.write_float(val);
+                },
+                .str => |val| {
+                    try self.write_str(val);
+                },
+                .bin => |val| {
+                    try self.write_bin(val);
+                },
+                .arr => |arr| {
+                    for (arr) |val| {
+                        try self.write_payload(val);
+                    }
+                },
+                .map => |map| {
+                    const len = map.count();
+                    if (len <= 0xf) {
+                        const header: u8 = @intFromEnum(Markers.FIXMAP) + @as(u8, @intCast(len));
+                        try self.write_u8_value(header);
+                    } else if (len <= 0xffff) {
+                        try self.write_type_marker(.MAP16);
+                    } else if (len <= 0xffff_ffff) {
+                        try self.write_type_marker(.MAP32);
+                    } else {
+                        return MsGPackError.MAP_LENGTH_TOO_LONG;
+                    }
+                    var itera = map.iterator();
+                    while (itera.next()) |entry| {
+                        try self.write_str(wrapStr(entry.key_ptr.*));
+                        try self.write_payload(entry.value_ptr.*);
+                    }
+                },
+                .ext => |ext| {
+                    try self.write_ext(ext);
                 },
             }
         }
@@ -2138,6 +2198,14 @@ pub fn Pack(
             }
 
             switch (type_info) {
+                .Union => {
+                    if (T == Payload) {
+                        return try self.read_payload_value(marker_u8, allocator);
+                    } else {
+                        const err_msg = comptimePrint("type T ({}) is not supported, union only support Payload!", .{T});
+                        @compileError(err_msg);
+                    }
+                },
                 .Array => {
                     return self.read_array_value(marker_u8, allocator, T);
                 },
@@ -2259,13 +2327,8 @@ pub fn Pack(
             }
         }
 
-        /// This function will return a payload,
-        /// which is very convenient for reading the type of unknown structure.
-        /// However, it should be noted that
-        /// the map is completed using stringhashmap and requires manual deinit.
-        pub fn read_payload(self: Self, allocator: Allocator) !Payload {
+        pub fn read_payload_value(self: Self, marker_u8: u8, allocator: Allocator) !Payload {
             var res: Payload = undefined;
-            const marker_u8 = try self.read_type_marker_u8();
             const marker = self.marker_u8_to(marker_u8);
             switch (marker) {
                 // read nil
@@ -2338,7 +2401,8 @@ pub fn Pack(
                     errdefer allocator.free(arr);
 
                     for (0..len) |i| {
-                        arr[i] = try self.read_payload(allocator);
+                        const i_marker_u8 = try self.read_type_marker_u8();
+                        arr[i] = try self.read_payload_value(i_marker_u8, allocator);
                     }
                     res = Payload{
                         .arr = arr,
@@ -2365,7 +2429,8 @@ pub fn Pack(
                     var map = Map.init(allocator);
                     for (0..len) |_| {
                         const key = try self.read_str(allocator);
-                        const val = try self.read_payload(allocator);
+                        const i_marker_u8 = try self.read_type_marker_u8();
+                        const val = try self.read_payload_value(i_marker_u8, allocator);
                         try map.put(key.value(), val);
                     }
                     res = Payload{
@@ -2388,8 +2453,16 @@ pub fn Pack(
                     };
                 },
             }
-
             return res;
+        }
+
+        /// This function will return a payload,
+        /// which is very convenient for reading the type of unknown structure.
+        /// However, it should be noted that
+        /// the map is completed using stringhashmap and requires manual deinit.
+        pub fn read_payload(self: Self, allocator: Allocator) !Payload {
+            const marker_u8 = try self.read_type_marker_u8();
+            return self.read_payload_value(marker_u8, allocator);
         }
 
         /// get the Map read handle
@@ -2670,6 +2743,10 @@ pub fn typeIfNeedAlloc(comptime T: type) bool {
             return typeIfNeedAlloc(array.child);
         },
         .Union => |u| {
+            // when we meet Payload, directly return true
+            if (T == Payload) {
+                return true;
+            }
             inline for (u.fields) |field| {
                 if (typeIfNeedAlloc(field.type)) {
                     return true;
@@ -2697,7 +2774,6 @@ pub fn typeIfNeedAlloc(comptime T: type) bool {
             @compileError(err_msg);
         },
     }
-
     return true;
 }
 
@@ -2716,7 +2792,6 @@ pub inline fn read_type_help(comptime T: type) type {
             const child_type = optional.child;
             return ?read_type_help(child_type);
         },
-
         else => {
             return T;
         },
@@ -2734,7 +2809,6 @@ pub inline fn read_type_help_no_alloc(comptime T: type) type {
             const child_type = optional.child;
             return ?read_type_help(child_type);
         },
-
         else => {
             return T;
         },

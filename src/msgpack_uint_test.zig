@@ -631,7 +631,7 @@ test "test dynamic map write and read" {
     try expect(std.mem.eql(u8, val_2, read_val_2.value()));
 }
 
-test "read payload of nil" {
+test "write payload of nil" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
     var write_buffer = std.io.fixedBufferStream(&arr);
     var read_buffer = std.io.fixedBufferStream(&arr);
@@ -643,6 +643,24 @@ test "read payload of nil" {
     try p.write_nil();
 
     const payload = try p.read_payload(allocator);
+    try expect(payload == .nil);
+}
+
+test "read payload of nil" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = std.io.fixedBufferStream(&arr);
+    var read_buffer = std.io.fixedBufferStream(&arr);
+    var p = pack.init(
+        &write_buffer,
+        &read_buffer,
+    );
+
+    const val = msgpack.Payload{
+        .nil = void{},
+    };
+    try p.write(val);
+
+    const payload = try p.read(msgpack.Payload,allocator);
     try expect(payload == .nil);
 }
 
