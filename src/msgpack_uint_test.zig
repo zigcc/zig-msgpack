@@ -49,7 +49,7 @@ test "bool write and read" {
     try expect(val_2 == test_val_2);
 }
 
-test "pfix int write and read" {
+test "int/uint write and read" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
     var write_buffer = std.io.fixedBufferStream(&arr);
     var read_buffer = std.io.fixedBufferStream(&arr);
@@ -58,14 +58,68 @@ test "pfix int write and read" {
         &read_buffer,
     );
 
-    const test_val: u8 = 21;
-    try p.write(test_val);
-    const val = try p.read(u8, allocator);
+    // positive fix int
+    const test_val_1: u8 = 21;
+    try p.write(test_val_1);
+    const val_1 = try p.read(u8, allocator);
+    try expect(val_1 == test_val_1);
 
-    try expect(val == test_val);
+    // negative fix int
+    const test_val_2: i8 = -6;
+    try p.write(test_val_2);
+    const val_2 = try p.read(i8, allocator);
+    try expect(val_2 == test_val_2);
+
+    // u8
+    const test_val_3: u8 = 233;
+    try p.write(test_val_3);
+    const val_3 = try p.read(u8, allocator);
+    try expect(val_3 == test_val_3);
+
+    // i8
+    const test_val_4: i8 = -66;
+    try p.write(test_val_4);
+    const val_4 = try p.read(i8, allocator);
+    try expect(val_4 == test_val_4);
+
+    // u16
+    const test_val_5: u16 = 0xfff;
+    try p.write(test_val_5);
+    const val_5 = try p.read(u16, allocator);
+    try expect(val_5 == test_val_5);
+
+    // i16
+    const test_val_6: i16 = -666;
+    try p.write(test_val_6);
+    const val_6 = try p.read(i16, allocator);
+    try expect(val_6 == test_val_6);
+
+    // u32
+    const test_val_7: u32 = 0xffff_f;
+    try p.write(test_val_7);
+    const val_7 = try p.read(u32, allocator);
+    try expect(val_7 == test_val_7);
+
+    // i32
+    const test_val_8: i32 = 0 - 0xffff_f;
+    try p.write(test_val_8);
+    const val_8 = try p.read(i32, allocator);
+    try expect(val_8 == test_val_8);
+
+    // u64
+    const test_val_9: u64 = 0xffff_ffff_f;
+    try p.write(test_val_9);
+    const val_9 = try p.read(u64, allocator);
+    try expect(val_9 == test_val_9);
+
+    // i64
+    const test_val_10: i64 = 0 - 0xffff_ffff_f;
+    try p.write(test_val_10);
+    const val_10 = try p.read(i64, allocator);
+    try expect(val_10 == test_val_10);
 }
 
-test "nfix int write and read" {
+test "float write and read" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
     var write_buffer = std.io.fixedBufferStream(&arr);
     var read_buffer = std.io.fixedBufferStream(&arr);
@@ -74,14 +128,20 @@ test "nfix int write and read" {
         &read_buffer,
     );
 
-    const test_val: i8 = -6;
-    try p.write(test_val);
-    const val = try p.read(i8, allocator);
+    // f32
+    const test_val_1: f32 = 3.14;
+    try p.write(test_val_1);
+    const val_1 = try p.read(f32, allocator);
+    try expect(val_1 == test_val_1);
 
-    try expect(val == test_val);
+    // f64
+    const test_val_2: f64 = 3.5e+38;
+    try p.write(test_val_2);
+    const val_2 = try p.read(f64, allocator);
+    try expect(val_2 == test_val_2);
 }
 
-test "u8 int write and read" {
+test "str write and read" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
     var write_buffer = std.io.fixedBufferStream(&arr);
     var read_buffer = std.io.fixedBufferStream(&arr);
@@ -90,175 +150,32 @@ test "u8 int write and read" {
         &read_buffer,
     );
 
-    const test_val: u8 = 233;
-    try p.write(test_val);
-    const val = try p.read(u8, allocator);
-
-    try expect(val == test_val);
-}
-
-test "i8 int write and read" {
-    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
-    var p = pack.init(
-        &write_buffer,
-        &read_buffer,
-    );
-
-    const test_val: i8 = -66;
-    try p.write(test_val);
-    const val = try p.read(i8, allocator);
-
-    try expect(val == test_val);
-}
-
-test "u16 int write and read" {
-    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
-    var p = pack.init(
-        &write_buffer,
-        &read_buffer,
-    );
-
-    const test_val: u16 = 0xfff;
-    try p.write(test_val);
-    const val = try p.read(u16, allocator);
-
-    try expect(val == test_val);
-}
-
-test "i16 int write and read" {
-    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
-    var p = pack.init(
-        &write_buffer,
-        &read_buffer,
-    );
-
-    const test_val: i16 = -666;
-    try p.write(test_val);
-    const val = try p.read(i16, allocator);
-
-    try expect(val == test_val);
-}
-
-test "u32 int write and read" {
-    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
-    var p = pack.init(
-        &write_buffer,
-        &read_buffer,
-    );
-
-    const test_val: u32 = 0xffff_f;
-    try p.write(test_val);
-    const val = try p.read(u32, allocator);
-
-    try expect(val == test_val);
-}
-
-test "i32 int write and read" {
-    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
-    var p = pack.init(
-        &write_buffer,
-        &read_buffer,
-    );
-
-    const test_val: i32 = 0 - 0xffff_f;
-    try p.write(test_val);
-    const val = try p.read(i32, allocator);
-
-    try expect(val == test_val);
-}
-
-test "u64 int write and read" {
-    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
-    var p = pack.init(
-        &write_buffer,
-        &read_buffer,
-    );
-
-    const test_val: u64 = 0xffff_ffff_f;
-    try p.write(test_val);
-    const val = try p.read(u64, allocator);
-
-    try expect(val == test_val);
-}
-
-test "i64 int write and read" {
-    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
-    var p = pack.init(
-        &write_buffer,
-        &read_buffer,
-    );
-
-    const test_val: i64 = 0 - 0xffff_ffff_f;
-    try p.write(test_val);
-    const val = try p.read(i64, allocator);
-
-    try expect(val == test_val);
-}
-
-test "f32 write and read" {
-    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
-    var p = pack.init(
-        &write_buffer,
-        &read_buffer,
-    );
-
-    const test_val: f32 = 3.14;
-    try p.write(test_val);
-    const val = try p.read(f32, allocator);
-
-    try expect(val == test_val);
-}
-
-test "f64 write and read" {
-    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
-    var p = pack.init(
-        &write_buffer,
-        &read_buffer,
-    );
-
-    const test_val: f64 = 3.5e+38;
-    try p.write(test_val);
-    const val = try p.read(f64, allocator);
-
-    try expect(val == test_val);
-}
-
-test "fix_str write and read" {
-    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
-    var p = pack.init(
-        &write_buffer,
-        &read_buffer,
-    );
-
+    // fix str
     const test_str = "Hello, world!";
-    const test_val = msgpack.wrapStr(test_str);
-    try p.write(test_val);
-    const val: msgpack.Str = try p.read(msgpack.Str, allocator);
-    defer allocator.free(val.value());
-    try expect(std.mem.eql(u8, test_val.value(), val.value()));
+    try p.write(msgpack.wrapStr(test_str));
+    const val_1: msgpack.Str = try p.read(msgpack.Str, allocator);
+    defer allocator.free(val_1.value());
+    try expect(std.mem.eql(u8, test_str, val_1.value()));
+
+    // u8 str
+    const test_str_2 = "This is a string that is more than 32 bytes long.";
+    try p.write(msgpack.wrapStr(test_str_2));
+    const val_2: msgpack.Str = try p.read(msgpack.Str, allocator);
+    defer allocator.free(val_2.value());
+    try expect(std.mem.eql(u8, test_str_2, val_2.value()));
+
+    // u16 str
+    const test_str_3 = "When the zig test tool is building a test runner, only resolved test declarations are included in the build. Initially, only the given Zig source file's top-level declarations are resolved. Unless nested containers are referenced from a top-level test declaration, nested container tests will not be resolved.";
+    try p.write(msgpack.wrapStr(test_str_3));
+    const val_3: msgpack.Str = try p.read(msgpack.Str, allocator);
+    defer allocator.free(val_3.value());
+    try expect(std.mem.eql(u8, test_str_3, val_3.value()));
+
+    // NOTE: maybe we should add u32 str test
 }
 
-test "u8 str write and read" {
+// In fact, the logic implemented by bin and str is basically the same
+test "bin write and read" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
     var write_buffer = std.io.fixedBufferStream(&arr);
     var read_buffer = std.io.fixedBufferStream(&arr);
@@ -267,98 +184,26 @@ test "u8 str write and read" {
         &read_buffer,
     );
 
-    const test_str = "This is a string that is more than 32 bytes long.";
-    const test_val = msgpack.wrapStr(test_str);
-    try p.write(test_val);
-    const val: msgpack.Str = try p.read(msgpack.Str, allocator);
-    defer allocator.free(val.value());
-    try expect(std.mem.eql(u8, test_val.value(), val.value()));
-}
+    // u8 bin
+    var test_bin_1 = "This is a string that is more than 32 bytes long.".*;
+    try p.write(msgpack.wrapBin(&test_bin_1));
+    const val_1: msgpack.Bin = try p.read(msgpack.Bin, allocator);
+    defer allocator.free(val_1.value());
+    try expect(std.mem.eql(u8, &test_bin_1, val_1.value()));
 
-test "u16 str write and read" {
-    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
-    var p = pack.init(
-        &write_buffer,
-        &read_buffer,
-    );
+    // u16 bin
+    var test_bin_2 = "When the zig test tool is building a test runner, only resolved test declarations are included in the build. Initially, only the given Zig source file's top-level declarations are resolved. Unless nested containers are referenced from a top-level test declaration, nested container tests will not be resolved.".*;
+    try p.write(msgpack.wrapBin(&test_bin_2));
+    const val_2: msgpack.Bin = try p.read(msgpack.Bin, allocator);
+    defer allocator.free(val_2.value());
+    try expect(std.mem.eql(u8, &test_bin_2, val_2.value()));
 
-    const test_str = "When the zig test tool is building a test runner, only resolved test declarations are included in the build. Initially, only the given Zig source file's top-level declarations are resolved. Unless nested containers are referenced from a top-level test declaration, nested container tests will not be resolved.";
-    const test_val = msgpack.wrapStr(test_str);
-    try p.write(test_val);
-    const val: msgpack.Str = try p.read(msgpack.Str, allocator);
-    defer allocator.free(val.value());
-    try expect(std.mem.eql(u8, test_val.value(), val.value()));
-}
-
-test "u32 str write and read" {
-    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
-    var p = pack.init(
-        &write_buffer,
-        &read_buffer,
-    );
-
-    const test_str = "0123456789564562";
-
-    const test_val = msgpack.wrapStr(test_str);
-    try p.write(test_val);
-    const val: msgpack.Str = try p.read(msgpack.Str, allocator);
-    defer allocator.free(val.value());
-    try expect(std.mem.eql(u8, test_val.value(), val.value()));
-}
-
-test "bin8 write and read" {
-    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
-    var p = pack.init(
-        &write_buffer,
-        &read_buffer,
-    );
-
-    const test_bin = "This is a string that is more than 32 bytes long.";
-    const test_val = msgpack.wrapBin(@constCast(test_bin));
-    try p.write(test_val);
-    const val: msgpack.Bin = try p.read(msgpack.Bin, allocator);
-    defer allocator.free(val.value());
-    try expect(std.mem.eql(u8, test_val.value(), val.value()));
-}
-
-test "bin16 write and read" {
-    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
-    var p = pack.init(
-        &write_buffer,
-        &read_buffer,
-    );
-
-    const test_bin = "When the zig test tool is building a test runner, only resolved test declarations are included in the build. Initially, only the given Zig source file's top-level declarations are resolved. Unless nested containers are referenced from a top-level test declaration, nested container tests will not be resolved.";
-    const test_val = msgpack.wrapBin(@constCast(test_bin));
-    try p.write(test_val);
-    const val: msgpack.Bin = try p.read(msgpack.Bin, allocator);
-    defer allocator.free(val.value());
-    try expect(std.mem.eql(u8, test_val.value(), val.value()));
-}
-
-test "bin32 write and read" {
-    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
-    var p = pack.init(
-        &write_buffer,
-        &read_buffer,
-    );
-
-    const test_bin = @as([16:0]u8, "0123456789564562".*) ** (0xfff * 2);
-    const test_val = msgpack.wrapBin(@constCast(&test_bin));
-    try p.write_bin(test_val);
-    const val: msgpack.Bin = try p.read(msgpack.Bin, allocator);
-    defer allocator.free(val.value());
-    try expect(std.mem.eql(u8, test_val.value(), val.value()));
+    // u32 bin
+    var test_bin_3 = @as([16:0]u8, "0123456789564562".*) ** (0xfff * 2);
+    try p.write_bin(msgpack.wrapBin(@constCast(&test_bin_3)));
+    const val_3: msgpack.Bin = try p.read(msgpack.Bin, allocator);
+    defer allocator.free(val_3.value());
+    try expect(std.mem.eql(u8, &test_bin_3, val_3.value()));
 }
 
 test "map write and read" {
@@ -504,7 +349,7 @@ test "write and read" {
     try expect(std.mem.eql(u8, &test_val, val));
 }
 
-test "test void" {
+test "void type" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
     var write_buffer = std.io.fixedBufferStream(&arr);
     var read_buffer = std.io.fixedBufferStream(&arr);
@@ -536,22 +381,7 @@ test "optional type write and read" {
     try expect(val == test_val);
 }
 
-test "test something" {
-    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
-    var p = pack.init(
-        &write_buffer,
-        &read_buffer,
-    );
-
-    try p.write(.{ 0, 1, msgpack.wrapStr("nvim_get_api_info"), .{} });
-    const arr1 = [_]u8{ 0x94, 0x00, 0x01, 0xB1, 0x6E, 0x76, 0x69, 0x6D, 0x5F, 0x67, 0x65, 0x74, 0x5F, 0x61, 0x70, 0x69, 0x5F, 0x69, 0x6E, 0x66, 0x6F, 0x90 };
-
-    try expect(std.mem.eql(u8, arr[0..arr1.len], &arr1));
-}
-
-test "test skip" {
+test "skip" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
     var write_buffer = std.io.fixedBufferStream(&arr);
     var read_buffer = std.io.fixedBufferStream(&arr);
@@ -569,7 +399,7 @@ test "test skip" {
     try p.skip();
 }
 
-test "test dynamic array write and read" {
+test "dynamic array write and read" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
     var write_buffer = std.io.fixedBufferStream(&arr);
     var read_buffer = std.io.fixedBufferStream(&arr);
@@ -593,7 +423,7 @@ test "test dynamic array write and read" {
     }
 }
 
-test "test dynamic map write and read" {
+test "dynamic map write and read" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
     var write_buffer = std.io.fixedBufferStream(&arr);
     var read_buffer = std.io.fixedBufferStream(&arr);
@@ -660,7 +490,7 @@ test "read payload of nil" {
     };
     try p.write(val);
 
-    const payload = try p.read(msgpack.Payload,allocator);
+    const payload = try p.read(msgpack.Payload, allocator);
     try expect(payload == .nil);
 }
 
@@ -741,7 +571,3 @@ test "read payload of float" {
 }
 
 // TODO: should add more test for payload
-// TODO: merge fixint, i8, i16, .. test, fixuint, u8, u16, ... test
-// TODO: merge float test
-// TODO: merge str test
-// TODO: merge bin test
