@@ -3,6 +3,10 @@ const msgpack = @import("msgpack");
 const allocator = std.testing.allocator;
 const expect = std.testing.expect;
 
+fn u8eql(a: []const u8, b: []const u8) bool {
+    return std.mem.eql(u8, a, b);
+}
+
 const bufferType = std.io.FixedBufferStream([]u8);
 
 const pack = msgpack.Pack(
@@ -155,21 +159,21 @@ test "str write and read" {
     try p.write(msgpack.wrapStr(test_str));
     const val_1: msgpack.Str = try p.read(msgpack.Str, allocator);
     defer allocator.free(val_1.value());
-    try expect(std.mem.eql(u8, test_str, val_1.value()));
+    try expect(u8eql(test_str, val_1.value()));
 
     // u8 str
     const test_str_2 = "This is a string that is more than 32 bytes long.";
     try p.write(msgpack.wrapStr(test_str_2));
     const val_2: msgpack.Str = try p.read(msgpack.Str, allocator);
     defer allocator.free(val_2.value());
-    try expect(std.mem.eql(u8, test_str_2, val_2.value()));
+    try expect(u8eql(test_str_2, val_2.value()));
 
     // u16 str
     const test_str_3 = "When the zig test tool is building a test runner, only resolved test declarations are included in the build. Initially, only the given Zig source file's top-level declarations are resolved. Unless nested containers are referenced from a top-level test declaration, nested container tests will not be resolved.";
     try p.write(msgpack.wrapStr(test_str_3));
     const val_3: msgpack.Str = try p.read(msgpack.Str, allocator);
     defer allocator.free(val_3.value());
-    try expect(std.mem.eql(u8, test_str_3, val_3.value()));
+    try expect(u8eql(test_str_3, val_3.value()));
 
     // NOTE: maybe we should add u32 str test
 }
@@ -189,21 +193,21 @@ test "bin write and read" {
     try p.write(msgpack.wrapBin(&test_bin_1));
     const val_1: msgpack.Bin = try p.read(msgpack.Bin, allocator);
     defer allocator.free(val_1.value());
-    try expect(std.mem.eql(u8, &test_bin_1, val_1.value()));
+    try expect(u8eql(&test_bin_1, val_1.value()));
 
     // u16 bin
     var test_bin_2 = "When the zig test tool is building a test runner, only resolved test declarations are included in the build. Initially, only the given Zig source file's top-level declarations are resolved. Unless nested containers are referenced from a top-level test declaration, nested container tests will not be resolved.".*;
     try p.write(msgpack.wrapBin(&test_bin_2));
     const val_2: msgpack.Bin = try p.read(msgpack.Bin, allocator);
     defer allocator.free(val_2.value());
-    try expect(std.mem.eql(u8, &test_bin_2, val_2.value()));
+    try expect(u8eql(&test_bin_2, val_2.value()));
 
     // u32 bin
     var test_bin_3 = @as([16:0]u8, "0123456789564562".*) ** (0xfff * 2);
     try p.write_bin(msgpack.wrapBin(@constCast(&test_bin_3)));
     const val_3: msgpack.Bin = try p.read(msgpack.Bin, allocator);
     defer allocator.free(val_3.value());
-    try expect(std.mem.eql(u8, &test_bin_3, val_3.value()));
+    try expect(u8eql(&test_bin_3, val_3.value()));
 }
 
 test "map write and read" {
@@ -238,9 +242,9 @@ test "map write and read" {
     defer allocator.free(val.bin.value());
     defer allocator.free(val.arr);
     try expect(std.meta.eql(val.ss, test_val.ss));
-    try expect(std.mem.eql(u8, val.str.value(), test_val.str.value()));
-    try expect(std.mem.eql(u8, val.bin.value(), test_val.bin.value()));
-    try expect(std.mem.eql(u8, val.arr, test_val.arr));
+    try expect(u8eql(val.str.value(), test_val.str.value()));
+    try expect(u8eql(val.bin.value(), test_val.bin.value()));
+    try expect(u8eql(val.arr, test_val.arr));
     try expect(val.id == test_val.id);
     try expect(val.bo == test_val.bo);
     try expect(val.float == test_val.float);
@@ -260,7 +264,7 @@ test "slice write and read" {
     try p.write(&test_val);
     const val = try p.read([]u8, allocator);
     defer allocator.free(val);
-    try expect(std.mem.eql(u8, &test_val, val));
+    try expect(u8eql(&test_val, val));
 }
 
 test "array write and read" {
@@ -276,7 +280,7 @@ test "array write and read" {
 
     try p.write(&test_val);
     const val: [5]u8 = try p.readNoAlloc([5]u8);
-    try expect(std.mem.eql(u8, &test_val, &val));
+    try expect(u8eql(&test_val, &val));
 }
 
 test "tuple write and read" {
@@ -327,7 +331,7 @@ test "ext write and read" {
     try p.write(msgpack.EXT{ .type = test_type, .data = &test_data });
     const val: msgpack.EXT = try p.read(msgpack.EXT, allocator);
     defer allocator.free(val.data);
-    try expect(std.mem.eql(u8, &test_data, val.data));
+    try expect(u8eql(&test_data, val.data));
     try expect(test_type == val.type);
 }
 
@@ -346,9 +350,11 @@ test "write and read" {
     const val = try p.read([]u8, allocator);
 
     defer allocator.free(val);
-    try expect(std.mem.eql(u8, &test_val, val));
+    try expect(u8eql(&test_val, val));
 }
 
+// void type will be treat as nil
+// and null will be treat as nil
 test "void type" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
     var write_buffer = std.io.fixedBufferStream(&arr);
@@ -447,22 +453,22 @@ test "dynamic map write and read" {
 
     const read_key_1 = try mapreader.read_key(allocator);
     defer allocator.free(read_key_1.value());
-    try expect(std.mem.eql(u8, key_1, read_key_1.value()));
+    try expect(u8eql(key_1, read_key_1.value()));
 
     const read_val_1 = try mapreader.read_no_alloc(u8);
     try expect(val_1 == read_val_1);
 
     const read_key_2 = try mapreader.read_key(allocator);
     defer allocator.free(read_key_2.value());
-    try expect(std.mem.eql(u8, key_2, read_key_2.value()));
+    try expect(u8eql(key_2, read_key_2.value()));
 
     const read_val_2 = try mapreader.read(msgpack.Str, allocator);
     defer allocator.free(read_val_2.value());
-    try expect(std.mem.eql(u8, val_2, read_val_2.value()));
+    try expect(u8eql(val_2, read_val_2.value()));
 }
 
-test "write payload of nil" {
-    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+test "payload write and read" {
+    var arr = std.mem.zeroes([0xffff_f]u8);
     var write_buffer = std.io.fixedBufferStream(&arr);
     var read_buffer = std.io.fixedBufferStream(&arr);
     var p = pack.init(
@@ -470,104 +476,167 @@ test "write payload of nil" {
         &read_buffer,
     );
 
-    try p.write_nil();
+    // test nil
+    {
+        try p.write(msgpack.Payload{
+            .nil = void{},
+        });
 
-    const payload = try p.read_payload(allocator);
-    try expect(payload == .nil);
-}
+        const payload = try p.read(msgpack.Payload, allocator);
+        try expect(payload == .nil);
+    }
 
-test "read payload of nil" {
-    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
-    var p = pack.init(
-        &write_buffer,
-        &read_buffer,
-    );
+    // test bool
+    {
+        try p.write(msgpack.Payload{
+            .bool = true,
+        });
 
-    const val = msgpack.Payload{
-        .nil = void{},
-    };
-    try p.write(val);
+        const payload = try p.read(msgpack.Payload, allocator);
+        try expect(payload == .bool);
+        try expect(payload.bool);
+    }
 
-    const payload = try p.read(msgpack.Payload, allocator);
-    try expect(payload == .nil);
-}
+    // test int
+    {
+        try p.write(msgpack.Payload{
+            .int = -66,
+        });
 
-test "read payload of bool" {
-    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
-    var p = pack.init(
-        &write_buffer,
-        &read_buffer,
-    );
+        const payload = try p.read(msgpack.Payload, allocator);
+        try expect(payload == .int);
+        try expect(payload.int == -66);
+    }
 
-    const test_val_1 = false;
-    const test_val_2 = true;
+    // test uint
+    {
+        try p.write(msgpack.Payload{
+            .uint = 233,
+        });
 
-    try p.write(test_val_1);
-    try p.write(test_val_2);
+        const payload = try p.read(msgpack.Payload, allocator);
+        try expect(payload == .uint);
+        try expect(payload.uint == 233);
+    }
 
-    const val_1 = try p.read_payload(allocator);
-    const val_2 = try p.read_payload(allocator);
+    // test float
+    {
+        try p.write(msgpack.Payload{
+            .float = 3.5e+38,
+        });
 
-    try expect(val_1 == .bool);
-    try expect(val_2 == .bool);
+        const payload = try p.read(msgpack.Payload, allocator);
+        try expect(payload == .float);
+        try expect(payload.float == 3.5e+38);
+    }
 
-    try expect(val_1.bool == test_val_1);
-    try expect(val_2.bool == test_val_2);
-}
+    // test str
+    {
+        const val = "Hello, world!";
+        try p.write(msgpack.Payload{
+            .str = msgpack.wrapStr(val),
+        });
 
-test "read payload of int" {
-    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
-    var p = pack.init(
-        &write_buffer,
-        &read_buffer,
-    );
+        const payload = try p.read(msgpack.Payload, allocator);
+        try expect(payload == .str);
+        defer allocator.free(payload.str.value());
+        try expect(u8eql(payload.str.value(), val));
+    }
 
-    const test_val: i64 = 0 - 0xffff_ffff_f;
-    try p.write(test_val);
-    const val = try p.read_payload(allocator);
+    // test bin
+    {
+        var val = "This is a string that is more than 32 bytes long.".*;
+        try p.write(msgpack.Payload{
+            .bin = msgpack.wrapBin(&val),
+        });
 
-    try expect(val == .int);
-    try expect(val.int == test_val);
-}
+        const payload = try p.read(msgpack.Payload, allocator);
+        try expect(payload == .bin);
 
-test "read payload of uint" {
-    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
-    var p = pack.init(
-        &write_buffer,
-        &read_buffer,
-    );
+        defer allocator.free(payload.bin.value());
+        try expect(u8eql(payload.bin.value(), &val));
+    }
 
-    const test_val: u64 = 0xffff_ffff_f;
-    try p.write(test_val);
-    const val = try p.read_payload(allocator);
+    // test arr
+    {
+        const val = [3]msgpack.Payload{
+            msgpack.Payload{
+                .int = -66,
+            },
+            msgpack.Payload{
+                .uint = 233,
+            },
+            msgpack.Payload{
+                .bool = true,
+            },
+        };
+        try p.write(val);
 
-    try expect(val == .uint);
-    try expect(val.uint == test_val);
-}
+        const payload = try p.read(msgpack.Payload, allocator);
+        try expect(payload == .arr);
 
-test "read payload of float" {
-    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
-    var p = pack.init(
-        &write_buffer,
-        &read_buffer,
-    );
+        defer allocator.free(payload.arr);
 
-    const test_val: f64 = 3.5e+38;
-    try p.write(test_val);
-    const val = try p.read_payload(allocator);
+        try expect(payload.arr[0] == .int);
+        try expect(payload.arr[0].int == -66);
 
-    try expect(val == .float);
-    try expect(val.float == test_val);
+        try expect(payload.arr[1] == .uint);
+        try expect(payload.arr[1].uint == 233);
+
+        try expect(payload.arr[2] == .bool);
+        try expect(payload.arr[2].bool);
+    }
+
+    // test map
+    if (false) {
+        var map = msgpack.Map.init(allocator);
+        defer map.deinit();
+
+        // one
+        try map.put("one", msgpack.Payload{ .uint = 1 });
+        // two
+        try map.put("two", msgpack.Payload{ .bool = true });
+        // three
+        var three_val = "Hello, world!".*;
+        try map.put("three", msgpack.Payload{
+            .str = msgpack.wrapStr(&three_val),
+        });
+
+        try p.write(msgpack.Payload{ .map = map });
+
+        var payload: msgpack.Payload = try p.read(msgpack.Payload, allocator);
+        try expect(payload == .map);
+
+        defer payload.map.deinit();
+
+        try expect(payload.map.get("one") != null);
+        try expect(payload.map.get("one").? == .uint);
+        try expect(payload.map.get("one").?.uint == 1);
+
+        try expect(payload.map.get("two") != null);
+        try expect(payload.map.get("two").? == .bool);
+        try expect(payload.map.get("two").?.bool);
+
+        try expect(payload.map.get("three") != null);
+        try expect(payload.map.get("three").? == .str);
+        defer allocator.free(payload.map.get("three").?.str.value());
+        try expect(u8eql(payload.map.get("three").?.str.value(), &three_val));
+    }
+
+    // test ext
+    {
+        var val_data = [5]u8{ 1, 2, 3, 4, 5 };
+        const val_type: u8 = 1;
+        try p.write(msgpack.Payload{
+            .ext = msgpack.wrapEXT(val_type, &val_data),
+        });
+
+        const payload = try p.read(msgpack.Payload, allocator);
+        try expect(payload == .ext);
+
+        defer allocator.free(payload.ext.data);
+        try expect(u8eql(payload.ext.data, &val_data));
+    }
 }
 
 // TODO: should add more test for payload

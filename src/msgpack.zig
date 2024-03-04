@@ -2368,6 +2368,7 @@ pub fn Pack(
                 // read str
                 .FIXSTR, .STR8, .STR16, .STR32 => {
                     const val = try self.read_str_value(marker_u8, allocator);
+                    errdefer allocator.free(val);
                     res = Payload{
                         .str = wrapStr(val),
                     };
@@ -2375,6 +2376,7 @@ pub fn Pack(
                 // read bin
                 .BIN8, .BIN16, .BIN32 => {
                     const val = try self.read_bin_value(marker, allocator);
+                    errdefer allocator.free(val);
                     res = Payload{
                         .bin = wrapBin(val),
                     };
@@ -2429,6 +2431,7 @@ pub fn Pack(
                     var map = Map.init(allocator);
                     for (0..len) |_| {
                         const key = try self.read_str(allocator);
+                        defer allocator.free(key.value());
                         const i_marker_u8 = try self.read_type_marker_u8();
                         const val = try self.read_payload_value(i_marker_u8, allocator);
                         try map.put(key.value(), val);
