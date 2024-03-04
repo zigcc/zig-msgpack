@@ -588,7 +588,7 @@ test "payload write and read" {
     }
 
     // test map
-    if (false) {
+    {
         var map = msgpack.Map.init(allocator);
         defer map.deinit();
 
