@@ -482,7 +482,9 @@ test "payload write and read" {
             .nil = void{},
         });
 
-        const payload = try p.read(msgpack.Payload, allocator);
+        var payload: msgpack.Payload = try p.read(msgpack.Payload, allocator);
+        defer payload.free(allocator);
+
         try expect(payload == .nil);
     }
 
@@ -492,7 +494,9 @@ test "payload write and read" {
             .bool = true,
         });
 
-        const payload = try p.read(msgpack.Payload, allocator);
+        var payload = try p.read(msgpack.Payload, allocator);
+        defer payload.free(allocator);
+
         try expect(payload == .bool);
         try expect(payload.bool);
     }
@@ -503,7 +507,9 @@ test "payload write and read" {
             .int = -66,
         });
 
-        const payload = try p.read(msgpack.Payload, allocator);
+        var payload = try p.read(msgpack.Payload, allocator);
+        defer payload.free(allocator);
+
         try expect(payload == .int);
         try expect(payload.int == -66);
     }
@@ -514,7 +520,9 @@ test "payload write and read" {
             .uint = 233,
         });
 
-        const payload = try p.read(msgpack.Payload, allocator);
+        var payload = try p.read(msgpack.Payload, allocator);
+        defer payload.free(allocator);
+
         try expect(payload == .uint);
         try expect(payload.uint == 233);
     }
@@ -525,7 +533,8 @@ test "payload write and read" {
             .float = 3.5e+38,
         });
 
-        const payload = try p.read(msgpack.Payload, allocator);
+        var payload = try p.read(msgpack.Payload, allocator);
+        defer payload.free(allocator);
         try expect(payload == .float);
         try expect(payload.float == 3.5e+38);
     }
@@ -537,9 +546,9 @@ test "payload write and read" {
             .str = msgpack.wrapStr(val),
         });
 
-        const payload = try p.read(msgpack.Payload, allocator);
+        var payload = try p.read(msgpack.Payload, allocator);
         try expect(payload == .str);
-        defer allocator.free(payload.str.value());
+        defer payload.free(allocator);
         try expect(u8eql(payload.str.value(), val));
     }
 
@@ -550,10 +559,10 @@ test "payload write and read" {
             .bin = msgpack.wrapBin(&val),
         });
 
-        const payload = try p.read(msgpack.Payload, allocator);
+        var payload = try p.read(msgpack.Payload, allocator);
         try expect(payload == .bin);
 
-        defer allocator.free(payload.bin.value());
+        defer payload.free(allocator);
         try expect(u8eql(payload.bin.value(), &val));
     }
 
@@ -572,10 +581,10 @@ test "payload write and read" {
         };
         try p.write(val);
 
-        const payload = try p.read(msgpack.Payload, allocator);
+        var payload: msgpack.Payload = try p.read(msgpack.Payload, allocator);
         try expect(payload == .arr);
 
-        defer allocator.free(payload.arr);
+        defer payload.free(allocator);
 
         try expect(payload.arr[0] == .int);
         try expect(payload.arr[0].int == -66);
@@ -606,8 +615,7 @@ test "payload write and read" {
 
         var payload: msgpack.Payload = try p.read(msgpack.Payload, allocator);
         try expect(payload == .map);
-
-        defer payload.map.deinit();
+        defer payload.free(allocator);
 
         try expect(payload.map.get("one") != null);
         try expect(payload.map.get("one").? == .uint);
@@ -619,7 +627,7 @@ test "payload write and read" {
 
         try expect(payload.map.get("three") != null);
         try expect(payload.map.get("three").? == .str);
-        defer allocator.free(payload.map.get("three").?.str.value());
+
         try expect(u8eql(payload.map.get("three").?.str.value(), &three_val));
     }
 
@@ -631,12 +639,10 @@ test "payload write and read" {
             .ext = msgpack.wrapEXT(val_type, &val_data),
         });
 
-        const payload = try p.read(msgpack.Payload, allocator);
+        var payload = try p.read(msgpack.Payload, allocator);
         try expect(payload == .ext);
 
-        defer allocator.free(payload.ext.data);
+        defer payload.free(allocator);
         try expect(u8eql(payload.ext.data, &val_data));
     }
 }
-
-// TODO: should add more test for payload

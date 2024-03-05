@@ -68,6 +68,46 @@ pub const Payload = union(enum) {
     arr: []Payload,
     map: Map,
     ext: EXT,
+
+    pub fn free(self: *Payload, allocator: Allocator) void {
+        switch (self.*) {
+            .str => {
+                const str = self.str;
+                allocator.free(str.value());
+            },
+            .bin => {
+                const bin = self.bin;
+                allocator.free(bin.value());
+            },
+            .ext => {
+                const ext = self.ext;
+                allocator.free(ext.data);
+            },
+            .map => {
+                var map = self.map;
+                defer map.deinit();
+                var itera = map.iterator();
+                while (true) {
+                    if (itera.next()) |entry| {
+                        // free the key
+                        // @compileLog(@TypeOf(entry.key_ptr.*));
+                        defer allocator.free(entry.key_ptr.*);
+                        entry.value_ptr.free(allocator);
+                    } else {
+                        break;
+                    }
+                }
+            },
+            .arr => {
+                var arr = self.arr;
+                defer allocator.free(arr);
+                for (0..arr.len) |i| {
+                    arr[i].free(allocator);
+                }
+            },
+            else => {},
+        }
+    }
 };
 
 pub const Map = std.StringHashMap(Payload);
@@ -2431,7 +2471,6 @@ pub fn Pack(
                     var map = Map.init(allocator);
                     for (0..len) |_| {
                         const key = try self.read_str(allocator);
-                        defer allocator.free(key.value());
                         const i_marker_u8 = try self.read_type_marker_u8();
                         const val = try self.read_payload_value(i_marker_u8, allocator);
                         try map.put(key.value(), val);
