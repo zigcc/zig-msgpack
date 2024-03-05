@@ -5,11 +5,11 @@ on:
         branches:
             - "*"
     schedule:
-      - cron: '0 2 * * *'
+        - cron: "0 2 * * *"
     workflow_dispatch:
 
 jobs:
-    build:
+    build_12:
         runs-on: ubuntu-latest
 
         steps:
@@ -20,6 +20,23 @@ jobs:
 
             - name: Set up Zig
               uses: goto-bus-stop/setup-zig@v2
+
+            - name: Build and test with Zig
+              run: zig build test
+
+    build_11:
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v3
+              with:
+                  fetch-depth: 0
+
+            - name: Set up Zig
+              uses: goto-bus-stop/setup-zig@v2
+              with:
+                  version: 0.11.0
 
             - name: Build and test with Zig
               run: zig build test
