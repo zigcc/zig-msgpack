@@ -203,7 +203,7 @@ pub fn Pack(
         }
 
         /// write one byte
-        pub fn write_byte(self: Self, byte: u8) !void {
+        fn write_byte(self: Self, byte: u8) !void {
             const bytes = [_]u8{byte};
             const len = try self.write_fn(&bytes);
             if (len != 1) {
@@ -212,7 +212,7 @@ pub fn Pack(
         }
 
         /// write data
-        pub fn write_data(self: Self, data: []const u8) !void {
+        fn write_data(self: Self, data: []const u8) !void {
             const len = try self.write_fn(data);
             if (len != data.len) {
                 return MsGPackError.LENGTH_WRITING;
@@ -220,7 +220,7 @@ pub fn Pack(
         }
 
         /// write type marker
-        pub fn write_type_marker(self: Self, comptime marker: Markers) !void {
+        fn write_type_marker(self: Self, comptime marker: Markers) !void {
             switch (marker) {
                 .POSITIVE_FIXINT, .FIXMAP, .FIXARRAY, .FIXSTR, .NEGATIVE_FIXINT => {
                     const err_msg = comptimePrint("marker ({}) is wrong, the can not be write directly!", .{marker});
@@ -232,31 +232,21 @@ pub fn Pack(
         }
 
         /// write nil
-        pub fn write_nil(self: Self) !void {
+        fn write_nil(self: Self) !void {
             try self.write_type_marker(Markers.NIL);
         }
 
-        /// write true
-        fn write_true(self: Self) !void {
-            try self.write_type_marker(Markers.TRUE);
-        }
-
-        /// write false
-        fn write_false(self: Self) !void {
-            try self.write_type_marker(Markers.FALSE);
-        }
-
         /// write bool
-        pub fn write_bool(self: Self, val: bool) !void {
+        fn write_bool(self: Self, val: bool) !void {
             if (val) {
-                try self.write_true();
+                try self.write_type_marker(Markers.TRUE);
             } else {
-                try self.write_false();
+                try self.write_type_marker(Markers.FALSE);
             }
         }
 
         /// write positive fix int
-        pub fn write_pfix_int(self: Self, val: u8) !void {
+        fn write_pfix_int(self: Self, val: u8) !void {
             if (val <= 0x7f) {
                 try self.write_byte(val);
             } else {
@@ -269,7 +259,7 @@ pub fn Pack(
         }
 
         /// write u8 int
-        pub fn write_u8(self: Self, val: u8) !void {
+        fn write_u8(self: Self, val: u8) !void {
             try self.write_type_marker(.UINT8);
             try self.write_u8_value(val);
         }
@@ -282,7 +272,7 @@ pub fn Pack(
         }
 
         /// write u16 int
-        pub fn write_u16(self: Self, val: u16) !void {
+        fn write_u16(self: Self, val: u16) !void {
             try self.write_type_marker(.UINT16);
             try self.write_u16_value(val);
         }
@@ -295,7 +285,7 @@ pub fn Pack(
         }
 
         /// write u32 int
-        pub fn write_u32(self: Self, val: u32) !void {
+        fn write_u32(self: Self, val: u32) !void {
             try self.write_type_marker(.UINT32);
             try self.write_u32_value(val);
         }
@@ -308,13 +298,13 @@ pub fn Pack(
         }
 
         /// write u64 int
-        pub fn write_u64(self: Self, val: u64) !void {
+        fn write_u64(self: Self, val: u64) !void {
             try self.write_type_marker(.UINT64);
             try self.write_u64_value(val);
         }
 
         /// write negative fix int
-        pub fn write_nfix_int(self: Self, val: i8) !void {
+        fn write_nfix_int(self: Self, val: i8) !void {
             if (val >= -32 and val <= -1) {
                 try self.write_byte(@bitCast(val));
             } else {
@@ -327,7 +317,7 @@ pub fn Pack(
         }
 
         /// write i8 int
-        pub fn write_i8(self: Self, val: i8) !void {
+        fn write_i8(self: Self, val: i8) !void {
             try self.write_type_marker(.INT8);
             try self.write_i8_value(val);
         }
@@ -340,7 +330,7 @@ pub fn Pack(
         }
 
         /// write i16 int
-        pub fn write_i16(self: Self, val: i16) !void {
+        fn write_i16(self: Self, val: i16) !void {
             try self.write_type_marker(.INT16);
             try self.write_i16_value(val);
         }
@@ -353,7 +343,7 @@ pub fn Pack(
         }
 
         /// write i32 int
-        pub fn write_i32(self: Self, val: i32) !void {
+        fn write_i32(self: Self, val: i32) !void {
             try self.write_type_marker(.INT32);
             try self.write_i32_value(val);
         }
@@ -366,13 +356,13 @@ pub fn Pack(
         }
 
         /// write i64 int
-        pub fn write_i64(self: Self, val: i64) !void {
+        fn write_i64(self: Self, val: i64) !void {
             try self.write_type_marker(.INT64);
             try self.write_i64_value(val);
         }
 
         /// write uint
-        pub fn write_uint(self: Self, val: u64) !void {
+        fn write_uint(self: Self, val: u64) !void {
             if (val <= 0x7f) {
                 try self.write_pfix_int(@intCast(val));
             } else if (val <= 0xff) {
@@ -387,7 +377,7 @@ pub fn Pack(
         }
 
         /// write int
-        pub fn write_int(self: Self, val: i64) !void {
+        fn write_int(self: Self, val: i64) !void {
             if (val >= 0) {
                 try self.write_uint(@intCast(val));
             } else if (val >= -32) {
@@ -412,7 +402,7 @@ pub fn Pack(
         }
 
         /// write f32
-        pub fn write_f32(self: Self, val: f32) !void {
+        fn write_f32(self: Self, val: f32) !void {
             try self.write_type_marker(.FLOAT32);
             try self.write_f32_value(val);
         }
@@ -426,13 +416,13 @@ pub fn Pack(
         }
 
         /// write f64
-        pub fn write_f64(self: Self, val: f64) !void {
+        fn write_f64(self: Self, val: f64) !void {
             try self.write_type_marker(.FLOAT64);
             try self.write_f64_value(val);
         }
 
         /// write float
-        pub fn write_float(self: Self, val: f64) !void {
+        fn write_float(self: Self, val: f64) !void {
             const tmp_val = if (val < 0) 0 - val else val;
             const min_f32 = std.math.floatMin(f32);
             const max_f32 = std.math.floatMax(f32);
@@ -519,7 +509,7 @@ pub fn Pack(
         }
 
         /// write str
-        pub fn write_str(self: Self, str: Str) !void {
+        fn write_str(self: Self, str: Str) !void {
             const len = str.value().len;
             if (len <= 0x1f) {
                 try self.write_fix_str(str.value());
@@ -569,7 +559,7 @@ pub fn Pack(
         }
 
         /// write bin
-        pub fn write_bin(self: Self, bin: Bin) !void {
+        fn write_bin(self: Self, bin: Bin) !void {
             const len = bin.value().len;
             if (len <= 0xff) {
                 try self.write_bin8(bin.value());
@@ -578,313 +568,6 @@ pub fn Pack(
             } else {
                 try self.write_bin32(bin.value());
             }
-        }
-
-        /// write arr value
-        fn write_arr_value(self: Self, comptime T: type, val: []const T) !void {
-            for (val) |value| {
-                try self.write(value);
-            }
-        }
-
-        /// write tuple value
-        fn write_tuple_value(self: Self, comptime T: type, val: T) !void {
-            const tuple_info = @typeInfo(T).Struct;
-            inline for (tuple_info.fields) |field| {
-                const field_name = field.name;
-                const field_value = @field(val, field_name);
-                try self.write(field_value);
-            }
-        }
-
-        /// write fix arr
-        fn write_fix_arr(self: Self, comptime T: type, val: []const T) !void {
-            const arr_len = val.len;
-            const max_len = 0xf;
-
-            if (arr_len > max_len) {
-                return MsGPackError.ARRAY_LENGTH_TOO_LONG;
-            }
-
-            // write marker
-            const header: u8 = @intFromEnum(Markers.FIXARRAY) + @as(u8, @intCast(arr_len));
-            try self.write_u8_value(header);
-
-            // try to write arr value
-            try self.write_arr_value(T, val);
-        }
-
-        fn write_fix_tuple(self: Self, comptime T: type, val: T) !void {
-            const tuple_info = @typeInfo(T).Struct;
-
-            const tuple_len = tuple_info.fields.len;
-            const max_len = 0xf;
-
-            if (tuple_len > max_len) {
-                return MsGPackError.TUPLE_LENGTH_TOO_LONG;
-            }
-
-            // write marker
-            const header: u8 = @intFromEnum(Markers.FIXARRAY) + @as(u8, @intCast(tuple_len));
-            try self.write_u8_value(header);
-
-            // try to write tuple value
-            try self.write_tuple_value(T, val);
-        }
-
-        /// write arr16
-        fn write_arr16(self: Self, comptime T: type, val: []const T) !void {
-            const arr_len = val.len;
-            const max_len = 0xffff;
-
-            if (arr_len > max_len) {
-                return MsGPackError.ARRAY_LENGTH_TOO_LONG;
-            }
-
-            try self.write_type_marker(.ARRAY16);
-
-            // try to write len
-            try self.write_u16_value(@intCast(arr_len));
-
-            // try to write arr value
-            try self.write_arr_value(T, val);
-        }
-
-        /// write tuple16
-        fn write_tuple16(self: Self, comptime T: type, val: T) !void {
-            const tuple_info = @typeInfo(T).Struct;
-
-            const tuple_len = tuple_info.fields.len;
-            const max_len = 0xffff;
-
-            if (tuple_len > max_len) {
-                return MsGPackError.TUPLE_LENGTH_TOO_LONG;
-            }
-
-            // write marker
-            try self.write_type_marker(.ARRAY16);
-
-            // write len
-            try self.write_u16_value(@intCast(tuple_len));
-
-            // write tuple value
-            try self.write_tuple_value(T, val);
-        }
-
-        /// write arr32
-        fn write_arr32(self: Self, comptime T: type, val: []const T) !void {
-            const arr_len = val.len;
-            const max_len = 0xffff_ffff;
-
-            if (arr_len > max_len) {
-                return MsGPackError.ARRAY_LENGTH_TOO_LONG;
-            }
-
-            // try to write marker
-            try self.write_type_marker(.ARRAY32);
-
-            // try to write len
-            try self.write_u32_value(@intCast(arr_len));
-
-            // try to write arr value
-            try self.write_arr_value(T, val);
-        }
-
-        /// write tuple32
-        fn write_tuple32(self: Self, comptime T: type, val: T) !void {
-            const tuple_info = @typeInfo(T).Struct;
-
-            const tuple_len = tuple_info.fields.len;
-            const max_len = 0xffff_ffff;
-
-            if (tuple_len > max_len) {
-                return MsGPackError.TUPLE_LENGTH_TOO_LONG;
-            }
-
-            // write marker
-            try self.write_type_marker(.ARRAY32);
-
-            // write len
-            try self.write_u32_value(@intCast(tuple_len));
-
-            // write tuple value
-            try self.write_tuple_value(T, val);
-        }
-
-        /// write arr
-        pub fn write_arr(self: Self, comptime T: type, val: []const T) !void {
-            const len = val.len;
-            if (len <= 0xf) {
-                try self.write_fix_arr(T, val);
-            } else if (len <= 0xffff) {
-                try self.write_arr16(T, val);
-            } else {
-                try self.write_arr32(T, val);
-            }
-        }
-
-        /// write tuple
-        pub fn write_tuple(self: Self, comptime T: type, val: T) !void {
-            const type_info = @typeInfo(T);
-
-            if (type_info != .Struct or !type_info.Struct.is_tuple) {
-                const err_msg = comptimePrint("type T ({}) is not tuple!", .{T});
-                @compileError(err_msg);
-            }
-
-            const tuple_info = type_info.Struct;
-            const len = tuple_info.fields.len;
-
-            if (len <= 0xf) {
-                try self.write_fix_tuple(T, val);
-            } else if (len <= 0xffff) {
-                try self.write_tuple16(T, val);
-            } else {
-                try self.write_tuple32(T, val);
-            }
-        }
-
-        /// write map value
-        fn write_map_value(self: Self, comptime T: type, val: T, len: usize) !void {
-            const type_info = @typeInfo(T);
-            if (type_info != .Struct or type_info.Struct.is_tuple) {
-                const err_msg = comptimePrint("type T ({}) is not struct, now map is only for struct!", .{T});
-                @compileError(err_msg);
-            }
-
-            const fields_len = type_info.Struct.fields.len;
-            if (fields_len > len) {
-                return MsGPackError.MAP_LENGTH_TOO_LONG;
-            }
-
-            inline for (type_info.Struct.fields) |field| {
-                const field_name = field.name;
-                const field_value = @field(val, field_name);
-
-                // write key
-                try self.write_str(wrapStr(field.name));
-
-                try self.write(field_value);
-            }
-        }
-
-        fn write_fixmap(self: Self, comptime T: type, val: T) !void {
-            const type_info = @typeInfo(T);
-            if (type_info != .Struct or type_info.Struct.is_tuple) {
-                const err_msg = comptimePrint("type T ({}) is not struct, now map is only for struct!", .{T});
-                @compileError(err_msg);
-            }
-
-            const max_len = 0xf;
-
-            const fields_len = type_info.Struct.fields.len;
-            if (fields_len > max_len) {
-                return MsGPackError.MAP_LENGTH_TOO_LONG;
-            }
-
-            // write marker
-            const header: u8 = @intFromEnum(Markers.FIXMAP) + @as(u8, @intCast(fields_len));
-            try self.write_u8_value(header);
-
-            // try to write map value
-            try self.write_map_value(T, val, max_len);
-        }
-
-        fn write_map16(self: Self, comptime T: type, val: T) !void {
-            const type_info = @typeInfo(T);
-            if (type_info != .Struct or type_info.Struct.is_tuple) {
-                const err_msg = comptimePrint("type T ({}) is not struct, now map is only for struct!", .{T});
-                @compileError(err_msg);
-            }
-
-            const max_len = 0xffff;
-
-            const fields_len = type_info.Struct.fields.len;
-            if (fields_len > max_len) {
-                return MsGPackError.MAP_LENGTH_TOO_LONG;
-            }
-
-            // try to write marker
-            try self.write_type_marker(.MAP16);
-
-            // try to write len
-            try self.write_u16_value(@intCast(fields_len));
-
-            // try to write map value
-            try self.write_map_value(T, val, max_len);
-        }
-
-        fn write_map32(self: Self, comptime T: type, val: T) !void {
-            const type_info = @typeInfo(T);
-            if (type_info != .Struct or type_info.Struct.is_tuple) {
-                const err_msg = comptimePrint("type T ({}) is not struct, now map is only for struct!", .{T});
-                @compileError(err_msg);
-            }
-
-            const max_len = 0xffff_ffff;
-
-            const fields_len = type_info.Struct.fields.len;
-            if (fields_len > max_len) {
-                return MsGPackError.MAP_LENGTH_TOO_LONG;
-            }
-
-            // try to write marker
-            try self.write_type_marker(.MAP32);
-
-            // try to write len
-            try self.write_u32_value(@intCast(fields_len));
-
-            // try to write map value
-            try self.write_map_value(T, val, max_len);
-        }
-
-        /// write map
-        pub fn write_map(self: Self, comptime T: type, val: T) !void {
-            const type_info = @typeInfo(T);
-            if (type_info != .Struct or type_info.Struct.is_tuple) {
-                const err_msg = comptimePrint("type T ({}) is not struct, now map is only for struct!", .{T});
-                @compileError(err_msg);
-            }
-            if (T == EXT) {
-                return self.write_ext(@as(EXT, val));
-            } else if (T == Str) {
-                return self.write_str(val);
-            } else if (T == Bin) {
-                return self.write_bin(val);
-            }
-
-            const fields_len = type_info.Struct.fields.len;
-
-            if (fields_len <= 0xf) {
-                try self.write_fixmap(T, val);
-            } else if (fields_len <= 0xffff) {
-                try self.write_map16(T, val);
-            } else if (fields_len <= 0xffff_ffff) {
-                try self.write_map32(T, val);
-            } else {
-                const err_msg = comptimePrint("In map, too many fields for type T ({}), max value is (2^32)-1!", .{T});
-                @compileError(err_msg);
-            }
-        }
-
-        /// write enum value, enum will treated as a number
-        pub fn write_enum(self: Self, comptime T: type, val: T) !void {
-            const type_info = @typeInfo(T);
-            if (type_info != .Enum) {
-                const err_msg = comptimePrint("type T ({}) is not enum type!", .{T});
-                @compileError(err_msg);
-            }
-
-            const enum_info = type_info.Enum;
-            const tag_type = enum_info.tag_type;
-
-            const tag_type_info = @typeInfo(tag_type);
-            if (tag_type_info != .Int) {
-                const err_msg = comptimePrint("enum type T ({})'s tag type({}) must be int!", .{ T, tag_type });
-                @compileError(err_msg);
-            }
-
-            try self.write_uint(@intFromEnum(val));
         }
 
         fn write_ext_value(self: Self, ext: EXT) !void {
@@ -962,7 +645,7 @@ pub fn Pack(
         }
 
         /// write EXT
-        pub fn write_ext(self: Self, ext: EXT) !void {
+        fn write_ext(self: Self, ext: EXT) !void {
             const len = ext.data.len;
             if (len == 1) {
                 try self.write_fix_ext1(ext);
@@ -985,99 +668,7 @@ pub fn Pack(
             }
         }
 
-        /// write
-        pub fn write(self: Self, val: anytype) !void {
-            const val_type = @TypeOf(val);
-            const val_type_info = @typeInfo(val_type);
-
-            switch (val_type_info) {
-                .Void => {
-                    try self.write_nil();
-                },
-                .ComptimeFloat => {
-                    try self.write_float(val);
-                },
-                .ComptimeInt => {
-                    if (val < 0) {
-                        try self.write_int(val);
-                    } else {
-                        try self.write_uint(val);
-                    }
-                },
-                .Optional => {
-                    if (val) |v| {
-                        try self.write(v);
-                    } else {
-                        try self.write_nil();
-                    }
-                },
-                .Enum => {
-                    try self.write_enum(val_type, val);
-                },
-                .Null => {
-                    try self.write_nil();
-                },
-                .Bool => {
-                    try self.write_bool(val);
-                },
-                .Int => |int| {
-                    const int_bits = int.bits;
-                    const is_signed = if (int.signedness == .signed) true else false;
-
-                    if (int_bits > 64) {
-                        const err_msg = comptimePrint("type T ({}) too larger, the max value is 64 bits!", .{val_type});
-                        @compileError(err_msg);
-                    }
-
-                    if (is_signed) {
-                        try self.write_int(val);
-                    } else {
-                        try self.write_uint(val);
-                    }
-                },
-                .Float => |float| {
-                    const float_bits = float.bits;
-                    if (float_bits > 64) {
-                        const err_msg = comptimePrint("type T ({}) too larger, the max value is 64 bits!", .{val_type});
-                        @compileError(err_msg);
-                    }
-                    try self.write_float(val);
-                },
-                .Array => |array| {
-                    const ele_type = array.child;
-                    try self.write_arr(ele_type, &val);
-                },
-                .Pointer => |pointer| {
-                    if (PO.to_slice(pointer)) |ele_type| {
-                        try self.write_arr(ele_type, val);
-                    } else {
-                        const err_msg = comptimePrint("type T ({}) is not supported, now only supports non-slice pointer!", .{val_type});
-                        @compileError(err_msg);
-                    }
-                },
-                .Struct => |ss| {
-                    if (ss.is_tuple) {
-                        try self.write_tuple(val_type, val);
-                    } else {
-                        try self.write_map(val_type, val);
-                    }
-                },
-                .Union => {
-                    if (val_type == Payload) {
-                        try self.write_payload(val);
-                    } else {
-                        const err_msg = comptimePrint("type T ({}) is not supported, union only support Payload!", .{val_type});
-                        @compileError(err_msg);
-                    }
-                },
-                else => {
-                    const err_msg = comptimePrint("type T ({}) is not supported!", .{val_type});
-                    @compileError(err_msg);
-                },
-            }
-        }
-
-        pub fn write_payload(self: Self, payload: Payload) !void {
+        pub fn write(self: Self, payload: Payload) !void {
             switch (payload) {
                 .nil => {
                     try self.write_nil();
@@ -1101,8 +692,19 @@ pub fn Pack(
                     try self.write_bin(val);
                 },
                 .arr => |arr| {
+                    const len = arr.len;
+                    if (len <= 0xf) {
+                        const header: u8 = @intFromEnum(Markers.FIXARRAY) + @as(u8, @intCast(len));
+                        try self.write_u8_value(header);
+                    } else if (len <= 0xffff) {
+                        try self.write_type_marker(.ARRAY16);
+                    } else if (len <= 0xffff_ffff) {
+                        try self.write_type_marker(.ARRAY32);
+                    } else {
+                        return MsGPackError.MAP_LENGTH_TOO_LONG;
+                    }
                     for (arr) |val| {
-                        try self.write_payload(val);
+                        try self.write(val);
                     }
                 },
                 .map => |map| {
@@ -1120,7 +722,7 @@ pub fn Pack(
                     var itera = map.iterator();
                     while (itera.next()) |entry| {
                         try self.write_str(wrapStr(entry.key_ptr.*));
-                        try self.write_payload(entry.value_ptr.*);
+                        try self.write(entry.value_ptr.*);
                     }
                 },
                 .ext => |ext| {
@@ -1128,105 +730,6 @@ pub fn Pack(
                 },
             }
         }
-
-        /// get ArrayWriter
-        pub fn getArrayWriter(self: Self, len: u32) !ArrayWriter {
-            return ArrayWriter.init(self, len);
-        }
-
-        /// this for dynamic array write
-        pub const ArrayWriter = struct {
-            len: u32,
-            pack: Self,
-
-            pub const ArrayWriterErrorSet = error{
-                LENTOOLONG,
-            };
-
-            pub fn subArrayWriter(self: ArrayWriter, len: u32) !ArrayWriter {
-                return self.pack.getArrayWriter(len);
-            }
-
-            pub fn subMapWriter(self: ArrayWriter, len: u32) !MapWriter {
-                return self.pack.getMapWriter(len);
-            }
-
-            fn init(pack: Self, len: u32) !ArrayWriter {
-                if (len <= 0xf) {
-                    const header: u8 = @intCast(@intFromEnum(Markers.FIXARRAY) + len);
-                    try pack.write_byte(header);
-                } else if (len <= 0xffff) {
-                    const header: u8 = @intFromEnum(Markers.ARRAY16);
-                    try pack.write_byte(header);
-                    try pack.write_u16_value(@intCast(len));
-                } else if (len <= 0xffff_ffff) {
-                    const header: u8 = @intFromEnum(Markers.ARRAY32);
-                    try pack.write_byte(header);
-                    try pack.write_u32_value(len);
-                } else {
-                    return ArrayWriterErrorSet.LENTOOLONG;
-                }
-
-                return ArrayWriter{
-                    .len = len,
-                    .pack = pack,
-                };
-            }
-
-            /// write element of array
-            pub fn write_element(self: ArrayWriter, val: anytype) !void {
-                return self.pack.write(val);
-            }
-        };
-
-        pub fn getMapWriter(self: Self, len: u32) !MapWriter {
-            return MapWriter.init(self, len);
-        }
-
-        pub const MapWriter = struct {
-            len: u32,
-            pack: Self,
-
-            pub const MapWriterErrorSet = error{
-                LENTOOLONG,
-            };
-
-            pub fn subMapWriter(self: MapWriter, len: u32) !MapWriter {
-                return self.pack.getMapWriter(len);
-            }
-
-            pub fn subArrayWriter(self: ArrayWriter, len: u32) !ArrayWriter {
-                return self.pack.getArrayWriter(len);
-            }
-
-            fn init(pack: Self, len: u32) !MapWriter {
-                if (len <= 0xf) {
-                    const header: u8 = @intCast(@intFromEnum(Markers.FIXMAP) + len);
-                    try pack.write_byte(header);
-                } else if (len <= 0xffff) {
-                    const header: u8 = @intFromEnum(Markers.MAP16);
-                    try pack.write_byte(header);
-                    try pack.write_u16_value(@intCast(len));
-                } else if (len <= 0xffff_ffff) {
-                    const header: u8 = @intFromEnum(Markers.MAP32);
-                    try pack.write_byte(header);
-                    try pack.write_u32_value(len);
-                } else {
-                    return MapWriterErrorSet.LENTOOLONG;
-                }
-
-                return MapWriter{
-                    .len = len,
-                    .pack = pack,
-                };
-            }
-
-            /// write key and value
-            pub fn write(self: MapWriter, key: Str, val: anytype) !void {
-                try self.pack.write_str(key);
-                try self.pack.write(val);
-            }
-        };
 
         // TODO: add timestamp
 
