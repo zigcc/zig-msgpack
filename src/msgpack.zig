@@ -57,7 +57,14 @@ pub fn wrapEXT(t: i8, data: []u8) EXT {
     };
 }
 
+// the map of payload
+pub const Map = std.StringHashMap(Payload);
+
 pub const Payload = union(enum) {
+    pub const Errors = error{
+        NotMap,
+    };
+
     nil: void,
     bool: bool,
     int: i64,
@@ -68,6 +75,15 @@ pub const Payload = union(enum) {
     arr: []Payload,
     map: Map,
     ext: EXT,
+
+    pub fn mapPut(self: *Payload, key: []const u8, val: Payload) !void {
+        if (self.* != .map) {
+            return Errors.NotMap;
+        }
+        const new_key = try self.map.allocator.alloc(u8, key.len);
+        @memcpy(new_key, key);
+        try self.map.put(new_key, val);
+    }
 
     pub fn nilToPayload() Payload {
         return Payload{
@@ -119,7 +135,19 @@ pub const Payload = union(enum) {
         };
     }
 
-    // TODO: add arr support
+    pub fn arrPayload(len: usize, allocator: Allocator) !Payload {
+        const arr = try allocator.alloc(Payload, len);
+        return Payload{
+            .arr = arr,
+        };
+    }
+
+    pub fn mapPayload(allocator: Allocator) Payload {
+        return Payload{
+            .map = Map.init(allocator),
+        };
+    }
+
     // TODO: add map support
 
     pub fn extToPayload(t: i8, data: []const u8, allocator: Allocator) !Payload {
@@ -171,8 +199,6 @@ pub const Payload = union(enum) {
         }
     }
 };
-
-pub const Map = std.StringHashMap(Payload);
 
 /// markers
 const Markers = enum(u8) {

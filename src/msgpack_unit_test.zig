@@ -2,6 +2,7 @@ const std = @import("std");
 const msgpack = @import("msgpack");
 const allocator = std.testing.allocator;
 const expect = std.testing.expect;
+const Payload = msgpack.Payload;
 
 fn u8eql(a: []const u8, b: []const u8) bool {
     return std.mem.eql(u8, a, b);
@@ -27,7 +28,7 @@ test "nil write and read" {
         &read_buffer,
     );
 
-    try p.write(msgpack.Payload{ .nil = void{} });
+    try p.write(Payload{ .nil = void{} });
     var val = try p.read(allocator);
     defer val.free(allocator);
 }
@@ -131,62 +132,82 @@ test "bin write and read" {
 
 test "map write and read" {
     // TODO: made test
-    return error.SkipZigTest;
-    // var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    // var write_buffer = std.io.fixedBufferStream(&arr);
-    // var read_buffer = std.io.fixedBufferStream(&arr);
-    // var p = pack.init(
-    //     &write_buffer,
-    //     &read_buffer,
-    // );
-    //
-    // const other_type = struct { kk: i8 };
-    // const test_type = struct { id: u8, bo: bool, float: f32, str: msgpack.Str, bin: msgpack.Bin, ss: other_type, arr: []u8 };
-    //
-    // const str = "hello";
-    // var bin = [5]u8{ 1, 2, 3, 4, 5 };
-    // var kkk = [5]u8{ 1, 2, 3, 4, 5 };
-    //
-    // const test_val = test_type{
-    //     .id = 16,
-    //     .bo = true,
-    //     .float = 3.14,
-    //     .str = msgpack.wrapStr(str),
-    //     .bin = msgpack.wrapBin(&bin),
-    //     .ss = .{ .kk = -5 },
-    //     .arr = &kkk,
-    // };
-    //
-    // try p.write(test_val);
-    // const val = try p.read(test_type, allocator);
-    // defer allocator.free(val.str.value());
-    // defer allocator.free(val.bin.value());
-    // defer allocator.free(val.arr);
-    // try expect(std.meta.eql(val.ss, test_val.ss));
-    // try expect(u8eql(val.str.value(), test_val.str.value()));
-    // try expect(u8eql(val.bin.value(), test_val.bin.value()));
-    // try expect(u8eql(val.arr, test_val.arr));
-    // try expect(val.id == test_val.id);
-    // try expect(val.bo == test_val.bo);
-    // try expect(val.float == test_val.float);
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = std.io.fixedBufferStream(&arr);
+    var read_buffer = std.io.fixedBufferStream(&arr);
+    var p = pack.init(
+        &write_buffer,
+        &read_buffer,
+    );
+    const str = "hello";
+
+    var test_val_1 = Payload.mapPayload(allocator);
+    var bin = [5]u8{ 1, 2, 3, 4, 5 };
+
+    try test_val_1.mapPut("id", Payload.uintToPayload(16));
+    try test_val_1.mapPut("bool", Payload.boolToPayload(true));
+    try test_val_1.mapPut("float", Payload.floatToPayload(0.5));
+    try test_val_1.mapPut("str", try Payload.strToPayload(str, allocator));
+    try test_val_1.mapPut("bin", try Payload.binToPayload(&bin, allocator));
+
+    var test_val_2 = Payload.mapPayload(allocator);
+    try test_val_2.mapPut("kk", Payload.intToPayload(-5));
+
+    try test_val_1.mapPut("ss", test_val_2);
+
+    const test_val_3 = try Payload.arrPayload(5, allocator);
+    for (test_val_3.arr, 0..) |*v, i| {
+        v.* = Payload.uintToPayload(i);
+    }
+
+    try test_val_1.mapPut("arr", test_val_3);
+
+    defer test_val_1.free(allocator);
+
+    try p.write(test_val_1);
+
+    var val = try p.read(allocator);
+    defer val.free(allocator);
+
+    try expect(val == .map);
+    try expect(val.map.get("id").?.uint == 16);
+    try expect(val.map.get("bool").?.bool == true);
+    // Additional consideration needs
+    // to be given to the precision of floating point numbers
+    try expect(val.map.get("float").?.float == 0.5);
+    try expect(u8eql(str, val.map.get("str").?.str.value()));
+    try expect(u8eql(&bin, val.map.get("bin").?.bin.value()));
+    try expect(val.map.get("ss").?.map.get("kk").?.int == -5);
+    for (val.map.get("arr").?.arr, 0..) |v, i| {
+        try expect(v.uint == i);
+    }
 }
 
 test "array write and read" {
     // made test
-    return error.SkipZigTest;
-    // var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    // var write_buffer = std.io.fixedBufferStream(&arr);
-    // var read_buffer = std.io.fixedBufferStream(&arr);
-    // var p = pack.init(
-    //     &write_buffer,
-    //     &read_buffer,
-    // );
-    //
-    // const test_val = [5]u8{ 1, 2, 3, 4, 5 };
-    //
-    // try p.write(&test_val);
-    // const val: [5]u8 = try p.readNoAlloc([5]u8);
-    // try expect(u8eql(&test_val, &val));
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = std.io.fixedBufferStream(&arr);
+    var read_buffer = std.io.fixedBufferStream(&arr);
+    var p = pack.init(
+        &write_buffer,
+        &read_buffer,
+    );
+
+    const test_val = [5]u8{ 1, 2, 3, 4, 5 };
+    var test_payload: [5]Payload = undefined;
+    for (test_val, 0..) |v, i| {
+        test_payload[i] = Payload{
+            .uint = v,
+        };
+    }
+
+    try p.write(.{ .arr = &test_payload });
+    var val = try p.read(allocator);
+    defer val.free(allocator);
+
+    for (val.arr, 0..) |v, i| {
+        try expect(v.uint == test_val[i]);
+    }
 }
 
 test "ext write and read" {
@@ -207,183 +228,3 @@ test "ext write and read" {
     try expect(u8eql(&test_data, val.ext.data));
     try expect(test_type == val.ext.type);
 }
-
-// test "payload write and read" {
-//     var arr = std.mem.zeroes([0xffff_f]u8);
-//     var write_buffer = std.io.fixedBufferStream(&arr);
-//     var read_buffer = std.io.fixedBufferStream(&arr);
-//     var p = pack.init(
-//         &write_buffer,
-//         &read_buffer,
-//     );
-//
-//     // test nil
-//     {
-//         try p.write(msgpack.Payload{
-//             .nil = void{},
-//         });
-//
-//         var payload: msgpack.Payload = try p.read(msgpack.Payload, allocator);
-//         defer payload.free(allocator);
-//
-//         try expect(payload == .nil);
-//     }
-//
-//     // test bool
-//     {
-//         try p.write(msgpack.Payload{
-//             .bool = true,
-//         });
-//
-//         var payload = try p.read(msgpack.Payload, allocator);
-//         defer payload.free(allocator);
-//
-//         try expect(payload == .bool);
-//         try expect(payload.bool);
-//     }
-//
-//     // test int
-//     {
-//         try p.write(msgpack.Payload{
-//             .int = -66,
-//         });
-//
-//         var payload = try p.read(msgpack.Payload, allocator);
-//         defer payload.free(allocator);
-//
-//         try expect(payload == .int);
-//         try expect(payload.int == -66);
-//     }
-//
-//     // test uint
-//     {
-//         try p.write(msgpack.Payload{
-//             .uint = 233,
-//         });
-//
-//         var payload = try p.read(msgpack.Payload, allocator);
-//         defer payload.free(allocator);
-//
-//         try expect(payload == .uint);
-//         try expect(payload.uint == 233);
-//     }
-//
-//     // test float
-//     {
-//         try p.write(msgpack.Payload{
-//             .float = 3.5e+38,
-//         });
-//
-//         var payload = try p.read(msgpack.Payload, allocator);
-//         defer payload.free(allocator);
-//         try expect(payload == .float);
-//         try expect(payload.float == 3.5e+38);
-//     }
-//
-//     // test str
-//     {
-//         const val = "Hello, world!";
-//         try p.write(msgpack.Payload{
-//             .str = msgpack.wrapStr(val),
-//         });
-//
-//         var payload = try p.read(msgpack.Payload, allocator);
-//         try expect(payload == .str);
-//         defer payload.free(allocator);
-//         try expect(u8eql(payload.str.value(), val));
-//     }
-//
-//     // test bin
-//     {
-//         var val = "This is a string that is more than 32 bytes long.".*;
-//         try p.write(msgpack.Payload{
-//             .bin = msgpack.wrapBin(&val),
-//         });
-//
-//         var payload = try p.read(msgpack.Payload, allocator);
-//         try expect(payload == .bin);
-//
-//         defer payload.free(allocator);
-//         try expect(u8eql(payload.bin.value(), &val));
-//     }
-//
-//     // test arr
-//     {
-//         var val = [3]msgpack.Payload{
-//             msgpack.Payload{
-//                 .int = -66,
-//             },
-//             msgpack.Payload{
-//                 .uint = 233,
-//             },
-//             msgpack.Payload{
-//                 .bool = true,
-//             },
-//         };
-//         try p.write(.{ .arr = &val });
-//
-//         var payload: msgpack.Payload = try p.read(msgpack.Payload, allocator);
-//         try expect(payload == .arr);
-//
-//         defer payload.free(allocator);
-//
-//         try expect(payload.arr[0] == .int);
-//         try expect(payload.arr[0].int == -66);
-//
-//         try expect(payload.arr[1] == .uint);
-//         try expect(payload.arr[1].uint == 233);
-//
-//         try expect(payload.arr[2] == .bool);
-//         try expect(payload.arr[2].bool);
-//     }
-//
-//     // test map
-//     {
-//         var map = msgpack.Map.init(allocator);
-//         defer map.deinit();
-//
-//         // one
-//         try map.put("one", msgpack.Payload{ .uint = 1 });
-//         // two
-//         try map.put("two", msgpack.Payload{ .bool = true });
-//         // three
-//         var three_val = "Hello, world!".*;
-//         try map.put("three", msgpack.Payload{
-//             .str = msgpack.wrapStr(&three_val),
-//         });
-//
-//         try p.write(msgpack.Payload{ .map = map });
-//
-//         var payload: msgpack.Payload = try p.read(msgpack.Payload, allocator);
-//         try expect(payload == .map);
-//         defer payload.free(allocator);
-//
-//         try expect(payload.map.get("one") != null);
-//         try expect(payload.map.get("one").? == .uint);
-//         try expect(payload.map.get("one").?.uint == 1);
-//
-//         try expect(payload.map.get("two") != null);
-//         try expect(payload.map.get("two").? == .bool);
-//         try expect(payload.map.get("two").?.bool);
-//
-//         try expect(payload.map.get("three") != null);
-//         try expect(payload.map.get("three").? == .str);
-//
-//         try expect(u8eql(payload.map.get("three").?.str.value(), &three_val));
-//     }
-//
-//     // test ext
-//     {
-//         var val_data = [5]u8{ 1, 2, 3, 4, 5 };
-//         const val_type: u8 = 1;
-//         try p.write(msgpack.Payload{
-//             .ext = msgpack.wrapEXT(val_type, &val_data),
-//         });
-//
-//         var payload = try p.read(msgpack.Payload, allocator);
-//         try expect(payload == .ext);
-//
-//         defer payload.free(allocator);
-//         try expect(u8eql(payload.ext.data, &val_data));
-//     }
-// }
