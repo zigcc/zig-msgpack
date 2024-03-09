@@ -144,6 +144,7 @@ test "map write and read" {
     var test_val_1 = Payload.mapPayload(allocator);
     var bin = [5]u8{ 1, 2, 3, 4, 5 };
 
+    try test_val_1.mapPut("nil", Payload.nilToPayload());
     try test_val_1.mapPut("id", Payload.uintToPayload(16));
     try test_val_1.mapPut("bool", Payload.boolToPayload(true));
     try test_val_1.mapPut("float", Payload.floatToPayload(0.5));
@@ -170,6 +171,7 @@ test "map write and read" {
     defer val.free(allocator);
 
     try expect(val == .map);
+    try expect(val.map.get("nil").? == .nil);
     try expect(val.map.get("id").?.uint == 16);
     try expect(val.map.get("bool").?.bool == true);
     // Additional consideration needs
