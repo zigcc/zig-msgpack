@@ -20,8 +20,11 @@ const little_endian = switch (current_zig.minor) {
     else => @compileError("not support current version zig"),
 };
 
+/// the Str Type
 pub const Str = struct {
     str: []const u8,
+
+    /// get Str values
     pub fn value(self: Str) []const u8 {
         return self.str;
     }
@@ -32,8 +35,11 @@ pub fn wrapStr(str: []const u8) Str {
     return Str{ .str = str };
 }
 
+/// the Bin Type
 pub const Bin = struct {
     bin: []u8,
+
+    /// get bin values
     pub fn value(self: Bin) []u8 {
         return self.bin;
     }
@@ -44,6 +50,7 @@ pub fn wrapBin(bin: []u8) Bin {
     return Bin{ .bin = bin };
 }
 
+/// the EXT Type
 pub const EXT = struct {
     type: i8,
     data: []u8,
@@ -57,10 +64,14 @@ pub fn wrapEXT(t: i8, data: []u8) EXT {
     };
 }
 
-// the map of payload
+/// the map of payload
 pub const Map = std.StringHashMap(Payload);
 
+/// Entity to store msgpack
+///
+/// Note: The payload and its subvalues must have the same allocator
 pub const Payload = union(enum) {
+    /// the error for Payload
     pub const Errors = error{
         NotMap,
     };
@@ -76,6 +87,7 @@ pub const Payload = union(enum) {
     map: Map,
     ext: EXT,
 
+    /// put a new element to map payload
     pub fn mapPut(self: *Payload, key: []const u8, val: Payload) !void {
         if (self.* != .map) {
             return Errors.NotMap;
@@ -85,36 +97,42 @@ pub const Payload = union(enum) {
         try self.map.put(new_key, val);
     }
 
+    /// get a NIL payload
     pub fn nilToPayload() Payload {
         return Payload{
             .nil = void{},
         };
     }
 
+    /// get a bool payload
     pub fn boolToPayload(val: bool) Payload {
         return Payload{
             .bool = val,
         };
     }
 
+    /// get a int payload
     pub fn intToPayload(val: i64) Payload {
         return Payload{
             .int = val,
         };
     }
 
+    /// get a uint payload
     pub fn uintToPayload(val: u64) Payload {
         return Payload{
             .uint = val,
         };
     }
 
+    /// get a float payload
     pub fn floatToPayload(val: f64) Payload {
         return Payload{
             .float = val,
         };
     }
 
+    /// get a str payload
     pub fn strToPayload(val: []const u8, allocator: Allocator) !Payload {
         // alloca memory
         const new_str = try allocator.alloc(u8, val.len);
@@ -125,6 +143,7 @@ pub const Payload = union(enum) {
         };
     }
 
+    /// get a bin payload
     pub fn binToPayload(val: []const u8, allocator: Allocator) !Payload {
         // alloca memory
         const new_bin = try allocator.alloc(u8, val.len);
@@ -135,6 +154,7 @@ pub const Payload = union(enum) {
         };
     }
 
+    /// get an array payload
     pub fn arrPayload(len: usize, allocator: Allocator) !Payload {
         const arr = try allocator.alloc(Payload, len);
         return Payload{
@@ -142,14 +162,14 @@ pub const Payload = union(enum) {
         };
     }
 
+    /// get a map payload
     pub fn mapPayload(allocator: Allocator) Payload {
         return Payload{
             .map = Map.init(allocator),
         };
     }
 
-    // TODO: add map support
-
+    /// get an ext payload
     pub fn extToPayload(t: i8, data: []const u8, allocator: Allocator) !Payload {
         // alloca memory
         const new_data = try allocator.alloc(u8, data.len);
@@ -160,6 +180,8 @@ pub const Payload = union(enum) {
         };
     }
 
+    /// free the all memeory for this payload and sub payloads
+    /// the allocator is payload's allocator
     pub fn free(self: *Payload, allocator: Allocator) void {
         switch (self.*) {
             .str => {
@@ -240,7 +262,7 @@ const Markers = enum(u8) {
     NEGATIVE_FIXINT = 0xe0,
 };
 
-/// error set
+/// A collection of errors that may occur when reading the payload
 pub const MsGPackError = error{
     STR_DATA_LENGTH_TOO_LONG,
     BIN_DATA_LENGTH_TOO_LONG,
@@ -262,7 +284,7 @@ pub const MsGPackError = error{
     INTERNAL,
 };
 
-/// main function
+/// Create an instance of msgpack_pack
 pub fn Pack(
     comptime WriteContext: type,
     comptime ReadContext: type,
@@ -728,7 +750,6 @@ pub fn Pack(
             try self.writeExtValue(ext);
         }
 
-        /// write EXT
         fn writeExt(self: Self, ext: EXT) !void {
             const len = ext.data.len;
             if (len == 1) {
@@ -752,6 +773,7 @@ pub fn Pack(
             }
         }
 
+        /// write payload
         pub fn write(self: Self, payload: Payload) !void {
             switch (payload) {
                 .nil => {
@@ -817,13 +839,10 @@ pub fn Pack(
 
         // TODO: add timestamp
 
-        //// read
-
         fn readFrom(self: Self, bytes: []u8) !usize {
             return readFn(self.read_context, bytes);
         }
 
-        /// read one byte
         fn readByte(self: Self) !u8 {
             var res = [1]u8{0};
             const len = try self.readFrom(&res);
@@ -835,7 +854,6 @@ pub fn Pack(
             return res[0];
         }
 
-        /// read data
         fn readData(self: Self, allocator: Allocator, len: usize) ![]u8 {
             const data = try allocator.alloc(u8, len);
             errdefer allocator.free(data);
@@ -848,13 +866,11 @@ pub fn Pack(
             return data;
         }
 
-        /// read type marker u8
         fn readTypeMarkerU8(self: Self) !u8 {
             const val = try self.readByte();
             return val;
         }
 
-        /// convert marker u8 to marker
         fn markerU8To(_: Self, marker_u8: u8) Markers {
             var val = marker_u8;
 
@@ -873,7 +889,6 @@ pub fn Pack(
             return @enumFromInt(val);
         }
 
-        /// read type marker
         fn readTypeMarker(self: Self) !Markers {
             const val = try self.readTypeMarkerU8();
             return self.markerU8To(val);
@@ -887,13 +902,11 @@ pub fn Pack(
             }
         }
 
-        /// read bool
         fn readBool(self: Self) !bool {
             const marker = try self.readTypeMarker();
             return self.readBoolValue(marker);
         }
 
-        /// read positive and negative fixint
         fn readFixintValue(_: Self, marker_u8: u8) i8 {
             return @bitCast(marker_u8);
         }
@@ -1228,6 +1241,7 @@ pub fn Pack(
             }
         }
 
+        /// read a payload, please use payload.free to free the memory
         pub fn read(self: Self, allocator: Allocator) !Payload {
             var res: Payload = undefined;
 
