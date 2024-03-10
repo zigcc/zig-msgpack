@@ -28,7 +28,7 @@ concurrency:
 
 jobs:
     # Build job
-    build:
+    generate_docs:
         runs-on: ubuntu-latest
         steps:
             - name: Checkout
