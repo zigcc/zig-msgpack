@@ -29,7 +29,7 @@ test "nil write and read" {
     );
 
     try p.write(Payload{ .nil = void{} });
-    var val = try p.read(allocator);
+    const val = try p.read(allocator);
     defer val.free(allocator);
 }
 
@@ -48,10 +48,10 @@ test "bool write and read" {
     try p.write(.{ .bool = test_val_1 });
     try p.write(.{ .bool = test_val_2 });
 
-    var val_1 = try p.read(allocator);
+    const val_1 = try p.read(allocator);
     defer val_1.free(allocator);
 
-    var val_2 = try p.read(allocator);
+    const val_2 = try p.read(allocator);
     defer val_2.free(allocator);
 
     try expect(val_1.bool == test_val_1);
@@ -69,13 +69,13 @@ test "int/uint write and read" {
 
     const test_val_1: u8 = 21;
     try p.write(.{ .uint = test_val_1 });
-    var val_1 = try p.read(allocator);
+    const val_1 = try p.read(allocator);
     defer val_1.free(allocator);
     try expect(val_1.uint == test_val_1);
 
     const test_val_2: i8 = -6;
     try p.write(.{ .int = test_val_2 });
-    var val_2 = try p.read(allocator);
+    const val_2 = try p.read(allocator);
     defer val_2.free(allocator);
     try expect(val_2.int == test_val_2);
 }
@@ -91,7 +91,7 @@ test "float write and read" {
 
     const test_val: f64 = 3.5e+38;
     try p.write(.{ .float = test_val });
-    var val = try p.read(allocator);
+    const val = try p.read(allocator);
     defer val.free(allocator);
     try expect(val.float == test_val);
 }
@@ -107,7 +107,7 @@ test "str write and read" {
 
     const test_str = "Hello, world!";
     try p.write(.{ .str = msgpack.wrapStr(test_str) });
-    var val = try p.read(allocator);
+    const val = try p.read(allocator);
     defer val.free(allocator);
     try expect(u8eql(test_str, val.str.value()));
 }
@@ -125,9 +125,9 @@ test "bin write and read" {
     // u8 bin
     var test_bin = "This is a string that is more than 32 bytes long.".*;
     try p.write(.{ .bin = msgpack.wrapBin(&test_bin) });
-    var val_1 = try p.read(allocator);
-    defer val_1.free(allocator);
-    try expect(u8eql(&test_bin, val_1.bin.value()));
+    const val = try p.read(allocator);
+    defer val.free(allocator);
+    try expect(u8eql(&test_bin, val.bin.value()));
 }
 
 test "map write and read" {
@@ -167,7 +167,7 @@ test "map write and read" {
 
     try p.write(test_val_1);
 
-    var val = try p.read(allocator);
+    const val = try p.read(allocator);
     defer val.free(allocator);
 
     try expect(val == .map);
@@ -204,7 +204,7 @@ test "array write and read" {
     }
 
     try p.write(.{ .arr = &test_payload });
-    var val = try p.read(allocator);
+    const val = try p.read(allocator);
     defer val.free(allocator);
 
     for (val.arr, 0..) |v, i| {
@@ -225,7 +225,7 @@ test "ext write and read" {
     const test_type: u8 = 1;
 
     try p.write(.{ .ext = msgpack.EXT{ .type = test_type, .data = &test_data } });
-    var val = try p.read(allocator);
+    const val = try p.read(allocator);
     defer val.free(allocator);
     try expect(u8eql(&test_data, val.ext.data));
     try expect(test_type == val.ext.type);

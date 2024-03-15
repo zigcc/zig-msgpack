@@ -182,8 +182,8 @@ pub const Payload = union(enum) {
 
     /// free the all memeory for this payload and sub payloads
     /// the allocator is payload's allocator
-    pub fn free(self: *Payload, allocator: Allocator) void {
-        switch (self.*) {
+    pub fn free(self: Payload, allocator: Allocator) void {
+        switch (self) {
             .str => {
                 const str = self.str;
                 allocator.free(str.value());
@@ -211,7 +211,7 @@ pub const Payload = union(enum) {
                 }
             },
             .arr => {
-                var arr = self.arr;
+                const arr = self.arr;
                 defer allocator.free(arr);
                 for (0..arr.len) |i| {
                     arr[i].free(allocator);
