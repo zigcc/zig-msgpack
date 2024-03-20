@@ -49,7 +49,7 @@ pub fn build(b: *std.Build) void {
 }
 
 fn generateDocs(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget) void {
-    const lib = b.addStaticLibrary(.{
+    const lib = b.addObject(.{
         .name = "zig-msgpack",
         .root_source_file = .{
             .path = "src/msgpack.zig",
