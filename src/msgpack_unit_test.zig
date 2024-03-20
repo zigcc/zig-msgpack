@@ -131,7 +131,6 @@ test "bin write and read" {
 }
 
 test "map write and read" {
-    // TODO: made test
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
     var write_buffer = std.io.fixedBufferStream(&arr);
     var read_buffer = std.io.fixedBufferStream(&arr);
@@ -171,16 +170,16 @@ test "map write and read" {
     defer val.free(allocator);
 
     try expect(val == .map);
-    try expect(val.map.get("nil").? == .nil);
-    try expect(val.map.get("id").?.uint == 16);
-    try expect(val.map.get("bool").?.bool == true);
+    try expect((try val.mapGet("nil")).? == .nil);
+    try expect((try val.mapGet("id")).?.uint == 16);
+    try expect((try val.mapGet("bool")).?.bool == true);
     // Additional consideration needs
     // to be given to the precision of floating point numbers
-    try expect(val.map.get("float").?.float == 0.5);
-    try expect(u8eql(str, val.map.get("str").?.str.value()));
-    try expect(u8eql(&bin, val.map.get("bin").?.bin.value()));
-    try expect(val.map.get("ss").?.map.get("kk").?.int == -5);
-    for (val.map.get("arr").?.arr, 0..) |v, i| {
+    try expect((try val.mapGet("float")).?.float == 0.5);
+    try expect(u8eql(str, (try val.mapGet("str")).?.str.value()));
+    try expect(u8eql(&bin, (try val.mapGet("bin")).?.bin.value()));
+    try expect((try (try val.mapGet("ss")).?.mapGet("kk")).?.int == -5);
+    for ((try val.mapGet("arr")).?.arr, 0..) |v, i| {
         try expect(v.uint == i);
     }
 }
@@ -196,19 +195,19 @@ test "array write and read" {
     );
 
     const test_val = [5]u8{ 1, 2, 3, 4, 5 };
-    var test_payload: [5]Payload = undefined;
+    var test_payload = try Payload.arrPayload(5, allocator);
+    defer test_payload.free(allocator);
     for (test_val, 0..) |v, i| {
-        test_payload[i] = Payload{
-            .uint = v,
-        };
+        try test_payload.setArrElement(i, Payload.uintToPayload(v));
     }
 
-    try p.write(.{ .arr = &test_payload });
+    try p.write(test_payload);
     const val = try p.read(allocator);
     defer val.free(allocator);
 
-    for (val.arr, 0..) |v, i| {
-        try expect(v.uint == test_val[i]);
+    for (0..try val.getArrLen()) |i| {
+        const element = try val.getArrElement(i);
+        try expect(element.uint == test_val[i]);
     }
 }
 

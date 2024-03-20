@@ -74,6 +74,7 @@ pub const Payload = union(enum) {
     /// the error for Payload
     pub const Errors = error{
         NotMap,
+        NotArr,
     };
 
     nil: void,
@@ -86,6 +87,38 @@ pub const Payload = union(enum) {
     arr: []Payload,
     map: Map,
     ext: EXT,
+
+    /// get array element
+    pub fn getArrElement(self: Payload, index: usize) !Payload {
+        if (self != .arr) {
+            return Errors.NotArr;
+        }
+        return self.arr[index];
+    }
+
+    /// get array length
+    pub fn getArrLen(self: Payload) !usize {
+        if (self != .arr) {
+            return Errors.NotArr;
+        }
+        return self.arr.len;
+    }
+
+    /// get map's element
+    pub fn mapGet(self: Payload, key: []const u8) !?Payload {
+        if (self != .map) {
+            return Errors.NotMap;
+        }
+        return self.map.get(key);
+    }
+
+    /// set array element
+    pub fn setArrElement(self: *Payload, index: usize, val: Payload) !void {
+        if (self.* != .arr) {
+            return Errors.NotArr;
+        }
+        self.arr[index] = val;
+    }
 
     /// put a new element to map payload
     pub fn mapPut(self: *Payload, key: []const u8, val: Payload) !void {
