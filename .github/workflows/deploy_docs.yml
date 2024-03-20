@@ -36,6 +36,8 @@ jobs:
               with:
                   fetch-depth: 0 # Not needed if lastUpdated is not enabled
             - uses: goto-bus-stop/setup-zig@v2
+              with:
+                  cache: false
             - name: Generate Docs
               run: zig build docs
             - name: Deploy
