@@ -1,5 +1,8 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const build_11 = @import("build_11.zig").build;
+const build_12 = @import("build_12.zig").build;
+const build_13 = @import("build_13.zig").build;
 
 const min_zig_string = "0.11.0";
 
@@ -16,8 +19,11 @@ comptime {
     }
 }
 
-pub const build =
-    if (current_zig.minor == 11)
-    @import("build_11.zig").build
-else
-    @import("build_12.zig").build;
+pub fn build(b: *std.Build) void {
+    switch (current_zig.minor) {
+        11 => build_11(b),
+        12 => build_12(b),
+        13 => build_13(b),
+        else => @compileError("unknown version!"),
+    }
+}

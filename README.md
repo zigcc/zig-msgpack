@@ -41,17 +41,19 @@ const msgpack = b.dependency("zig-msgpack", .{
 exe.addModule("msgpack", msgpack.module("msgpack"));
 ```
 
-### `nightly`
+### `0.12` \ `nightly`
 
 1. Add to `build.zig.zon`
 
 ```sh
 zig fetch --save https://github.com/zigcc/zig-msgpack/archive/{commit or branch}.tar.gz
+# Of course, you can also use git+https to fetch this package!
 ```
 
 2. Config `build.zig`
 
 ```zig
+// To standardize development, maybe you should use `lazyDependency()` instead of `dependency()`
 const msgpack = b.dependency("zig-msgpack", .{
     .target = target,
     .optimize = optimize,
