@@ -19,6 +19,8 @@ jobs:
         steps:
             - name: Setup Zig
               uses: goto-bus-stop/setup-zig@v2
+              with:
+                version: ${{ matrix.version }}
             - uses: actions/checkout@v4
               with:
                   fetch-depth: 0
