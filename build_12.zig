@@ -8,15 +8,13 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const msgpack = b.addModule("msgpack", .{
-        .root_source_file = .{
-            .path = "src/msgpack.zig",
-        },
+        .root_source_file = b.path("src/msgpack.zig"),
     });
 
     const test_step = b.step("test", "Run unit tests");
 
     const msgpack_unit_tests = b.addTest(.{
-        .root_source_file = .{ .path = "src/msgpack_unit_test.zig" },
+        .root_source_file = b.path("src/msgpack_unit_test.zig"),
         .target = target,
         .optimize = optimize,
     });
