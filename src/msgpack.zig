@@ -11,12 +11,12 @@ const native_endian = builtin.cpu.arch.endian();
 
 const big_endian = switch (current_zig.minor) {
     11 => std.builtin.Endian.Big,
-    12, 13 => std.builtin.Endian.big,
+    12, 13, 14 => std.builtin.Endian.big,
     else => @compileError("not support current version zig"),
 };
 const little_endian = switch (current_zig.minor) {
     11 => std.builtin.Endian.Little,
-    12, 13 => std.builtin.Endian.little,
+    12, 13, 14 => std.builtin.Endian.little,
     else => @compileError("not support current version zig"),
 };
 
