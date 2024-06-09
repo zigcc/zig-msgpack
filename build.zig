@@ -39,7 +39,7 @@ const version_11 = struct {
 
         const msgpack_unit_tests = b.addTest(.{
             .root_source_file = .{
-                .path = "src/msgpack_unit_test.zig",
+                .path = "src/test.zig",
             },
             .target = target,
             .optimize = optimize,
