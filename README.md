@@ -41,7 +41,7 @@ const msgpack = b.dependency("zig-msgpack", .{
 exe.addModule("msgpack", msgpack.module("msgpack"));
 ```
 
-### `0.12` \ `nightly`
+### `0.12` \ `0.13`  \ `nightly`
 
 1. Add to `build.zig.zon`
 
