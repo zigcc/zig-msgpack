@@ -594,7 +594,7 @@ pub fn Pack(
 
         fn writeStr8Value(self: Self, str: []const u8) !void {
             const len = str.len;
-            try self.writeI8Value(@intCast(len));
+            try self.writeU8Value(@intCast(len));
 
             try self.writeData(str);
         }
