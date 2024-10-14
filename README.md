@@ -2,7 +2,7 @@
 # MessagePack for Zig
 This is an implementation of [MessagePack](https://msgpack.org/index.html) for [Zig](https://ziglang.org/).
 
-an article introducing it: [Zig Msgpack](https://nvimer.org/posts/zig-msgpack/)
+an article introducing it: [Zig Msgpack](https://nvimer.org/blog/zig-msgpack/)
 
 ## Features
 
