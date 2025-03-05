@@ -43,4 +43,5 @@ exe.root_module.addImport("msgpack", msgpack.module("msgpack"));
 
 ## Related projects
 
+- [getty-msgpack](https://git.mzte.de/LordMZTE/getty-msgpack)
 - [znvim](https://github.com/jinzhongjia/znvim)
