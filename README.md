@@ -17,31 +17,9 @@ Only limited unit testing has been conducted, which does not cover everything.
 
 ## Getting Started
 
-### `0.11`
+> About 0.13 and previous versions, please use `0.0.6`
 
-1. Add to `build.zig.zon`
-
-```zig
-.@"zig-msgpack" = .{
-        // It is recommended to replace the following branch with commit id
-        .url = "https://github.com/zigcc/zig-msgpack/archive/{commit or branch}.tar.gz",
-        .hash = <hash value>,
-    },
-```
-
-2. Config `build.zig`
-
-```zig
-const msgpack = b.dependency("zig-msgpack", .{
-    .target = target,
-    .optimize = optimize,
-});
-
-// add module
-exe.addModule("msgpack", msgpack.module("msgpack"));
-```
-
-### `0.12` \ `0.13`  \ `nightly`
+### `0.14.0`  \ `nightly`
 
 1. Add to `build.zig.zon`
 
