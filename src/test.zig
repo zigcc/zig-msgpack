@@ -211,6 +211,33 @@ test "array write and read" {
     }
 }
 
+test "array16 write and read" {
+    var arr: [0xffff]u8 = std.mem.zeroes([0xffff]u8);
+    var write_buffer = std.io.fixedBufferStream(&arr);
+    var read_buffer = std.io.fixedBufferStream(&arr);
+    var p = pack.init(
+        &write_buffer,
+        &read_buffer,
+    );
+    const test_val = [16]u8{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
+    var test_payload = try Payload.arrPayload(16, allocator);
+    defer test_payload.free(allocator);
+
+    for (test_val, 0..) |v, i| {
+        try test_payload.setArrElement(i, Payload.uintToPayload(v));
+    }
+
+    try p.write(test_payload);
+    const val = try p.read(allocator);
+    defer val.free(allocator);
+
+    try expect(arr[0] == 0xdc);
+    for (0..try val.getArrLen()) |i| {
+        const element = try val.getArrElement(i);
+        try expect(element.uint == test_val[i]);
+    }
+}
+
 test "ext write and read" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
     var write_buffer = std.io.fixedBufferStream(&arr);
