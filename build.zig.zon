@@ -1,7 +1,7 @@
 .{
     .name = .zig_msgpack,
     .version = "0.0.7",
-    .fingerprint = 0x14a3e10e78eefb7a,
+    .fingerprint = 0x14a3e10e303fa395,
     .minimum_zig_version = "0.14.0",
     .dependencies = .{},
     .paths = .{
