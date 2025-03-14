@@ -837,8 +837,10 @@ pub fn Pack(
                         try self.writeU8Value(header);
                     } else if (len <= 0xffff) {
                         try self.writeTypeMarker(.ARRAY16);
+                        try self.writeU16Value(@as(u16, @intCast(len)));
                     } else if (len <= 0xffff_ffff) {
                         try self.writeTypeMarker(.ARRAY32);
+                        try self.writeU32Value(@as(u32, @intCast(len)));
                     } else {
                         return MsGPackError.MAP_LENGTH_TOO_LONG;
                     }
