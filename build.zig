@@ -17,10 +17,16 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step("test", "Run unit tests");
 
-    const msgpack_unit_tests = b.addTest(.{
+    const msgpack_unit_tests = if (builtin.zig_version.minor == 14) b.addTest(.{
         .root_source_file = b.path(b.pathJoin(&.{ "src", "test.zig" })),
         .target = target,
         .optimize = optimize,
+    }) else b.addTest(.{
+        .root_module = b.addModule("test", .{
+            .root_source_file = b.path(b.pathJoin(&.{ "src", "test.zig" })),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     msgpack_unit_tests.root_module.addImport("msgpack", msgpack);
     const run_msgpack_tests = b.addRunArtifact(msgpack_unit_tests);
@@ -28,11 +34,18 @@ pub fn build(b: *std.Build) void {
 }
 
 fn generateDocs(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget) void {
-    const lib = b.addObject(.{
+    const lib = if (builtin.zig_version.minor == 14) b.addObject(.{
         .name = "zig-msgpack",
         .root_source_file = b.path(b.pathJoin(&.{ "src", "msgpack.zig" })),
         .target = target,
         .optimize = optimize,
+    }) else b.addObject(.{
+        .name = "zig-msgpack",
+        .root_module = b.addModule("msgpack", .{
+            .root_source_file = b.path(b.pathJoin(&.{ "src", "msgpack.zig" })),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
 
     const docs_step = b.step("docs", "Emit docs");
