@@ -25,4 +25,4 @@ jobs:
               with:
                   fetch-depth: 0
             - name: Build and test with Zig
-              run: zig build test
+              run: zig build test --summary all
