@@ -869,7 +869,7 @@ test "array32 write and read" {
     const test_size = 0x10000;
     var test_payload = try Payload.arrPayload(test_size, allocator);
     defer test_payload.free(allocator);
-    
+
     for (0..test_size) |i| {
         try test_payload.setArrElement(i, Payload.uintToPayload(i % 256));
     }
@@ -959,7 +959,7 @@ test "str16 and str32 write and read" {
     const str32_data = try allocator.alloc(u8, 65536);
     defer allocator.free(str32_data);
     @memset(str32_data, 'A');
-    
+
     const str32_payload = try Payload.strToPayload(str32_data, allocator);
     defer str32_payload.free(allocator);
     try p.write(str32_payload);
@@ -1163,7 +1163,7 @@ test "actual map32 format" {
     // Note: This test would be very memory intensive with 65536+ entries
     // Instead, we test the boundary where map32 format would be used
     // by verifying the implementation handles large maps correctly
-    
+
     var arr: [0xfffff]u8 = std.mem.zeroes([0xfffff]u8);
     var write_buffer = std.io.fixedBufferStream(&arr);
     var read_buffer = std.io.fixedBufferStream(&arr);
@@ -1194,17 +1194,17 @@ test "actual map32 format" {
     defer val.free(allocator);
 
     try expect(val.map.count() == 1000);
-    
+
     // Verify some entries exist and have correct values
     const first_key = try std.fmt.allocPrint(allocator, "key{d:0>10}", .{0});
     defer allocator.free(first_key);
     const last_key = try std.fmt.allocPrint(allocator, "key{d:0>10}", .{999});
     defer allocator.free(last_key);
-    
+
     const first_value = try val.mapGet(first_key);
     try expect(first_value != null);
     try expect(try first_value.?.getInt() == 0);
-    
+
     const last_value = try val.mapGet(last_key);
     try expect(last_value != null);
     try expect(try last_value.?.getInt() == 999);
@@ -1220,7 +1220,7 @@ test "edge cases and error conditions" {
     // Test array index out of bounds
     var test_arr = try Payload.arrPayload(3, allocator);
     defer test_arr.free(allocator);
-    
+
     // This should work
     try test_arr.setArrElement(0, Payload.nilToPayload());
     try test_arr.setArrElement(1, Payload.boolToPayload(true));
@@ -1229,7 +1229,7 @@ test "edge cases and error conditions" {
     try p.write(test_arr);
     const val = try p.read(allocator);
     defer val.free(allocator);
-    
+
     try expect((try val.getArrLen()) == 3);
     try expect((try val.getArrElement(0)) == .nil);
     try expect((try val.getArrElement(1)).bool == true);
@@ -1250,7 +1250,7 @@ test "ext negative type ids" {
     try p.write(.{ .ext = msgpack.wrapEXT(negative_type, &test_data) });
     const val = try p.read(allocator);
     defer val.free(allocator);
-    
+
     try expect(val.ext.type == negative_type);
     try expect(u8eql(&test_data, val.ext.data));
 
@@ -1264,7 +1264,7 @@ test "ext negative type ids" {
     try p.write(.{ .ext = msgpack.wrapEXT(min_type, &test_data) });
     const val2 = try p.read(allocator);
     defer val2.free(allocator);
-    
+
     try expect(val2.ext.type == min_type);
     try expect(u8eql(&test_data, val2.ext.data));
 }
@@ -1287,7 +1287,7 @@ test "format markers verification" {
     // Test bool markers
     try p.write(Payload.boolToPayload(true));
     try expect(arr[0] == 0xc3); // TRUE marker
-    
+
     try p.write(Payload.boolToPayload(false));
     try expect(arr[1] == 0xc2); // FALSE marker
 
@@ -1334,7 +1334,7 @@ test "format markers verification" {
     // Test map16 marker (16+ entries uses map16)
     var test_map = Payload.mapPayload(allocator);
     defer test_map.free(allocator);
-    
+
     var test_keys = std.ArrayList([]u8).init(allocator);
     defer {
         for (test_keys.items) |key| {
@@ -1342,7 +1342,7 @@ test "format markers verification" {
         }
         test_keys.deinit();
     }
-    
+
     for (0..16) |i| {
         const key = try std.fmt.allocPrint(allocator, "k{d}", .{i});
         try test_keys.append(key);
@@ -1361,7 +1361,7 @@ test "positive fixint boundary" {
 
     // Test boundary values for positive fixint (0-127)
     const boundary_values = [_]u64{ 0, 1, 126, 127, 128 };
-    
+
     for (boundary_values) |val| {
         try p.write(.{ .uint = val });
     }
@@ -1386,11 +1386,11 @@ test "fixstr boundary" {
 
     // Test different fixstr lengths
     const test_strings = [_][]const u8{
-        "",           // 0 bytes
-        "a",          // 1 byte
-        "hello",      // 5 bytes
-        "a" ** 31,    // 31 bytes (max fixstr)
-        "b" ** 32,    // 32 bytes (should use str8)
+        "", // 0 bytes
+        "a", // 1 byte
+        "hello", // 5 bytes
+        "a" ** 31, // 31 bytes (max fixstr)
+        "b" ** 32, // 32 bytes (should use str8)
     };
 
     for (test_strings) |test_str| {
@@ -1423,11 +1423,11 @@ test "fixarray boundary" {
     for (test_sizes) |size| {
         var test_payload = try Payload.arrPayload(size, allocator);
         defer test_payload.free(allocator);
-        
+
         for (0..size) |i| {
             try test_payload.setArrElement(i, Payload.uintToPayload(i));
         }
-        
+
         try p.write(test_payload);
     }
 
@@ -1439,7 +1439,7 @@ test "fixarray boundary" {
         const result = try p.read(allocator);
         defer result.free(allocator);
         try expect((try result.getArrLen()) == expected_size);
-        
+
         for (0..expected_size) |i| {
             const element = try result.getArrElement(i);
             try expect(element.uint == i);
@@ -1460,17 +1460,17 @@ test "fixmap boundary" {
     for (test_sizes) |size| {
         var test_map = Payload.mapPayload(allocator);
         defer test_map.free(allocator);
-        
+
         for (0..size) |i| {
             const key = try std.fmt.allocPrint(allocator, "k{d}", .{i});
             defer allocator.free(key);
             try test_map.mapPut(key, Payload.uintToPayload(i));
         }
-        
+
         try p.write(test_map);
     }
 
-    // Reset read buffer  
+    // Reset read buffer
     read_buffer = std.io.fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
@@ -1478,7 +1478,7 @@ test "fixmap boundary" {
         const result = try p.read(allocator);
         defer result.free(allocator);
         try expect(result.map.count() == expected_size);
-        
+
         for (0..expected_size) |i| {
             const key = try std.fmt.allocPrint(allocator, "k{d}", .{i});
             defer allocator.free(key);
