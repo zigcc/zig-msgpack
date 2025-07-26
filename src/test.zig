@@ -1488,3 +1488,381 @@ test "fixmap boundary" {
         }
     }
 }
+
+// Test timestamp write and read
+test "timestamp write and read" {
+    var arr: [0xfffff]u8 = std.mem.zeroes([0xfffff]u8);
+    var write_buffer = std.io.fixedBufferStream(&arr);
+    var read_buffer = std.io.fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Test timestamp 32 (seconds only, nanoseconds = 0)
+    const timestamp32 = Payload.timestampFromSeconds(1234567890);
+    try p.write(timestamp32);
+
+    // Reset read buffer
+    read_buffer = std.io.fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    const val32 = try p.read(allocator);
+    defer val32.free(allocator);
+    try expect(val32 == .timestamp);
+    try expect(val32.timestamp.seconds == 1234567890);
+    try expect(val32.timestamp.nanoseconds == 0);
+
+    // Test timestamp 64 (seconds + nanoseconds)
+    arr = std.mem.zeroes([0xfffff]u8);
+    write_buffer = std.io.fixedBufferStream(&arr);
+    read_buffer = std.io.fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    const timestamp64 = Payload.timestampToPayload(1234567890, 123456789);
+    try p.write(timestamp64);
+
+    read_buffer = std.io.fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    const val64 = try p.read(allocator);
+    defer val64.free(allocator);
+    try expect(val64 == .timestamp);
+    try expect(val64.timestamp.seconds == 1234567890);
+    try expect(val64.timestamp.nanoseconds == 123456789);
+
+    // Test timestamp 96 (negative seconds)
+    arr = std.mem.zeroes([0xfffff]u8);
+    write_buffer = std.io.fixedBufferStream(&arr);
+    read_buffer = std.io.fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    const timestamp96 = Payload.timestampToPayload(-1234567890, 987654321);
+    try p.write(timestamp96);
+
+    read_buffer = std.io.fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    const val96 = try p.read(allocator);
+    defer val96.free(allocator);
+    try expect(val96 == .timestamp);
+    try expect(val96.timestamp.seconds == -1234567890);
+    try expect(val96.timestamp.nanoseconds == 987654321);
+}
+
+// Test timestamp format markers
+test "timestamp format markers" {
+    var arr: [0xfffff]u8 = std.mem.zeroes([0xfffff]u8);
+    var write_buffer = std.io.fixedBufferStream(&arr);
+    var read_buffer = std.io.fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // timestamp 32 should use FIXEXT4 (0xd6) + type(-1) + 4 bytes data
+    const timestamp32 = Payload.timestampFromSeconds(1000000000);
+    try p.write(timestamp32);
+    try expect(arr[0] == 0xd6); // FIXEXT4
+    try expect(@as(i8, @bitCast(arr[1])) == -1); // timestamp type
+
+    // Reset buffer for timestamp 64
+    arr = std.mem.zeroes([0xfffff]u8);
+    write_buffer = std.io.fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    // timestamp 64 should use FIXEXT8 (0xd7) + type(-1) + 8 bytes data
+    const timestamp64 = Payload.timestampToPayload(1000000000, 123456789);
+    try p.write(timestamp64);
+    try expect(arr[0] == 0xd7); // FIXEXT8
+    try expect(@as(i8, @bitCast(arr[1])) == -1); // timestamp type
+
+    // Reset buffer for timestamp 96
+    arr = std.mem.zeroes([0xfffff]u8);
+    write_buffer = std.io.fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    // timestamp 96 should use EXT8 (0xc7) + len(12) + type(-1) + 12 bytes data
+    const timestamp96 = Payload.timestampToPayload(-1000000000, 123456789);
+    try p.write(timestamp96);
+    try expect(arr[0] == 0xc7); // EXT8
+    try expect(arr[1] == 12); // length
+    try expect(@as(i8, @bitCast(arr[2])) == -1); // timestamp type
+}
+
+// Test timestamp utility methods
+test "timestamp utility methods" {
+    // Test Timestamp.new
+    const ts1 = msgpack.Timestamp.new(1234567890, 123456789);
+    try expect(ts1.seconds == 1234567890);
+    try expect(ts1.nanoseconds == 123456789);
+
+    // Test Timestamp.fromSeconds
+    const ts2 = msgpack.Timestamp.fromSeconds(9876543210);
+    try expect(ts2.seconds == 9876543210);
+    try expect(ts2.nanoseconds == 0);
+
+    // Test toFloat
+    const ts3 = msgpack.Timestamp.new(1, 500000000); // 1.5 seconds
+    const float_val = ts3.toFloat();
+    try expect(@abs(float_val - 1.5) < 0.000001);
+
+    // Test payload creation methods
+    const payload1 = Payload.timestampToPayload(1000, 2000);
+    try expect(payload1 == .timestamp);
+    try expect(payload1.timestamp.seconds == 1000);
+    try expect(payload1.timestamp.nanoseconds == 2000);
+
+    const payload2 = Payload.timestampFromSeconds(5000);
+    try expect(payload2 == .timestamp);
+    try expect(payload2.timestamp.seconds == 5000);
+    try expect(payload2.timestamp.nanoseconds == 0);
+}
+
+// Test timestamp edge cases
+test "timestamp edge cases" {
+    var arr: [0xfffff]u8 = std.mem.zeroes([0xfffff]u8);
+    var write_buffer = std.io.fixedBufferStream(&arr);
+    var read_buffer = std.io.fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Test zero timestamp
+    const zero_ts = Payload.timestampFromSeconds(0);
+    try p.write(zero_ts);
+
+    read_buffer = std.io.fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    const val_zero = try p.read(allocator);
+    defer val_zero.free(allocator);
+    try expect(val_zero == .timestamp);
+    try expect(val_zero.timestamp.seconds == 0);
+    try expect(val_zero.timestamp.nanoseconds == 0);
+
+    // Test maximum nanoseconds (999999999)
+    arr = std.mem.zeroes([0xfffff]u8);
+    write_buffer = std.io.fixedBufferStream(&arr);
+    read_buffer = std.io.fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    const max_nano_ts = Payload.timestampToPayload(1000, 999999999);
+    try p.write(max_nano_ts);
+
+    read_buffer = std.io.fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    const val_max_nano = try p.read(allocator);
+    defer val_max_nano.free(allocator);
+    try expect(val_max_nano == .timestamp);
+    try expect(val_max_nano.timestamp.seconds == 1000);
+    try expect(val_max_nano.timestamp.nanoseconds == 999999999);
+
+    // Test large positive seconds (near 32-bit limit)
+    arr = std.mem.zeroes([0xfffff]u8);
+    write_buffer = std.io.fixedBufferStream(&arr);
+    read_buffer = std.io.fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    const large_ts = Payload.timestampFromSeconds(0xffffffff);
+    try p.write(large_ts);
+
+    read_buffer = std.io.fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    const val_large = try p.read(allocator);
+    defer val_large.free(allocator);
+    try expect(val_large == .timestamp);
+    try expect(val_large.timestamp.seconds == 0xffffffff);
+    try expect(val_large.timestamp.nanoseconds == 0);
+}
+
+// Test timestamp boundary values
+test "timestamp boundary values" {
+    var arr: [0xfffff]u8 = std.mem.zeroes([0xfffff]u8);
+    var write_buffer = std.io.fixedBufferStream(&arr);
+    var read_buffer = std.io.fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Test 34-bit boundary for timestamp 64 format
+    // 2^34 - 1 = 17179869183
+    const boundary_34bit = (1 << 34) - 1;
+    const ts_34bit = Payload.timestampToPayload(boundary_34bit, 123456789);
+    try p.write(ts_34bit);
+
+    read_buffer = std.io.fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    const val_34bit = try p.read(allocator);
+    defer val_34bit.free(allocator);
+    try expect(val_34bit == .timestamp);
+    try expect(val_34bit.timestamp.seconds == boundary_34bit);
+    try expect(val_34bit.timestamp.nanoseconds == 123456789);
+
+    // Test seconds just over 34-bit boundary (should use timestamp 96)
+    arr = std.mem.zeroes([0xfffff]u8);
+    write_buffer = std.io.fixedBufferStream(&arr);
+    read_buffer = std.io.fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    const over_34bit = (1 << 34);
+    const ts_over_34bit = Payload.timestampToPayload(over_34bit, 123456789);
+    try p.write(ts_over_34bit);
+
+    read_buffer = std.io.fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    const val_over_34bit = try p.read(allocator);
+    defer val_over_34bit.free(allocator);
+    try expect(val_over_34bit == .timestamp);
+    try expect(val_over_34bit.timestamp.seconds == over_34bit);
+    try expect(val_over_34bit.timestamp.nanoseconds == 123456789);
+
+    // Test very large negative seconds
+    arr = std.mem.zeroes([0xfffff]u8);
+    write_buffer = std.io.fixedBufferStream(&arr);
+    read_buffer = std.io.fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    const large_negative = -9223372036854775808; // i64 min
+    const ts_large_neg = Payload.timestampToPayload(large_negative, 999999999);
+    try p.write(ts_large_neg);
+
+    read_buffer = std.io.fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    const val_large_neg = try p.read(allocator);
+    defer val_large_neg.free(allocator);
+    try expect(val_large_neg == .timestamp);
+    try expect(val_large_neg.timestamp.seconds == large_negative);
+    try expect(val_large_neg.timestamp.nanoseconds == 999999999);
+}
+
+// Test timestamp and EXT compatibility
+test "timestamp and EXT compatibility" {
+    var arr: [0xfffff]u8 = std.mem.zeroes([0xfffff]u8);
+    var write_buffer = std.io.fixedBufferStream(&arr);
+    var read_buffer = std.io.fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Test mixed timestamp and EXT data
+    const timestamp = Payload.timestampFromSeconds(1000000000);
+    try p.write(timestamp);
+
+    // Write a regular EXT with type -1 but different length (should be treated as EXT, not timestamp)
+    var ext_data = [_]u8{ 0x01, 0x02, 0x03 };
+    const ext_payload = try Payload.extToPayload(-1, &ext_data, allocator);
+    defer ext_payload.free(allocator);
+    try p.write(ext_payload);
+
+    // Write another timestamp
+    const timestamp2 = Payload.timestampToPayload(2000000000, 500000000);
+    try p.write(timestamp2);
+
+    // Read back and verify
+    read_buffer = std.io.fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    const val1 = try p.read(allocator);
+    defer val1.free(allocator);
+    try expect(val1 == .timestamp);
+    try expect(val1.timestamp.seconds == 1000000000);
+    try expect(val1.timestamp.nanoseconds == 0);
+
+    const val2 = try p.read(allocator);
+    defer val2.free(allocator);
+    try expect(val2 == .ext);
+    try expect(val2.ext.type == -1);
+    try expect(val2.ext.data.len == 3);
+    try expect(val2.ext.data[0] == 0x01);
+    try expect(val2.ext.data[1] == 0x02);
+    try expect(val2.ext.data[2] == 0x03);
+
+    const val3 = try p.read(allocator);
+    defer val3.free(allocator);
+    try expect(val3 == .timestamp);
+    try expect(val3.timestamp.seconds == 2000000000);
+    try expect(val3.timestamp.nanoseconds == 500000000);
+}
+
+// Test timestamp error handling
+test "timestamp error handling" {
+    // Test invalid nanoseconds (> 999999999) - should return INVALID_TYPE
+    const invalid_nano_ts = msgpack.Timestamp.new(1000, 1000000000); // 1 billion nanoseconds
+
+    var arr: [0xfffff]u8 = std.mem.zeroes([0xfffff]u8);
+    var write_buffer = std.io.fixedBufferStream(&arr);
+    var read_buffer = std.io.fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // This should fail to write
+    const result = p.write(Payload{ .timestamp = invalid_nano_ts });
+    try std.testing.expectError(msgpack.MsGPackError.INVALID_TYPE, result);
+}
+
+// Test timestamp format selection logic
+test "timestamp format selection" {
+    var arr: [0xfffff]u8 = std.mem.zeroes([0xfffff]u8);
+    var write_buffer = std.io.fixedBufferStream(&arr);
+    var read_buffer = std.io.fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Test format 32: seconds <= 0xffffffff and nanoseconds == 0
+    const ts32_max = Payload.timestampFromSeconds(0xffffffff);
+    try p.write(ts32_max);
+    try expect(arr[0] == 0xd6); // FIXEXT4
+    try expect(@as(i8, @bitCast(arr[1])) == -1); // timestamp type
+
+    // Reset buffer
+    arr = std.mem.zeroes([0xfffff]u8);
+    write_buffer = std.io.fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    // Test format 32 boundary: seconds = 0xffffffff + 1 should use format 64
+    const ts64_min = Payload.timestampToPayload(0x100000000, 0);
+    try p.write(ts64_min);
+    try expect(arr[0] == 0xd7); // FIXEXT8
+    try expect(@as(i8, @bitCast(arr[1])) == -1); // timestamp type
+
+    // Reset buffer
+    arr = std.mem.zeroes([0xfffff]u8);
+    write_buffer = std.io.fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    // Test format 64: nanoseconds != 0 but seconds fits in 34-bit
+    const ts64_nano = Payload.timestampToPayload(1000000000, 1);
+    try p.write(ts64_nano);
+    try expect(arr[0] == 0xd7); // FIXEXT8
+    try expect(@as(i8, @bitCast(arr[1])) == -1); // timestamp type
+
+    // Reset buffer
+    arr = std.mem.zeroes([0xfffff]u8);
+    write_buffer = std.io.fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    // Test format 96: negative seconds
+    const ts96_neg = Payload.timestampToPayload(-1, 123456789);
+    try p.write(ts96_neg);
+    try expect(arr[0] == 0xc7); // EXT8
+    try expect(arr[1] == 12); // length
+    try expect(@as(i8, @bitCast(arr[2])) == -1); // timestamp type
+}
+
+// Test timestamp precision and conversion
+test "timestamp precision and conversion" {
+    // Test toFloat method precision
+    const ts1 = msgpack.Timestamp.new(1234567890, 123456789);
+    const float_val1 = ts1.toFloat();
+    const expected1 = 1234567890.123456789;
+    try expect(@abs(float_val1 - expected1) < 0.000000001);
+
+    // Test toFloat with zero nanoseconds
+    const ts2 = msgpack.Timestamp.new(1000, 0);
+    const float_val2 = ts2.toFloat();
+    try expect(float_val2 == 1000.0);
+
+    // Test toFloat with maximum nanoseconds
+    const ts3 = msgpack.Timestamp.new(0, 999999999);
+    const float_val3 = ts3.toFloat();
+    const expected3 = 0.999999999;
+    try expect(@abs(float_val3 - expected3) < 0.000000001);
+
+    // Test negative seconds with nanoseconds
+    const ts4 = msgpack.Timestamp.new(-1, 500000000);
+    const float_val4 = ts4.toFloat();
+    const expected4 = -0.5;
+    try expect(@abs(float_val4 - expected4) < 0.000000001);
+}
