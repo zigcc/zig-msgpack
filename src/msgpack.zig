@@ -125,6 +125,12 @@ pub const Payload = union(enum) {
         if (self.* != .map) {
             return Errors.NotMap;
         }
+        // TODO: This maybe memory leak
+        const old_key = self.map.getKey(key);
+        if (old_key) |old_key_ptr| {
+            // if the key is already in map, free the old key
+            self.map.allocator.free(old_key_ptr);
+        }
         const new_key = try self.map.allocator.alloc(u8, key.len);
         @memcpy(new_key, key);
         try self.map.put(new_key, val);
@@ -190,6 +196,9 @@ pub const Payload = union(enum) {
     /// get an array payload
     pub fn arrPayload(len: usize, allocator: Allocator) !Payload {
         const arr = try allocator.alloc(Payload, len);
+        for (0..len) |i| {
+            arr[i] = Payload.nilToPayload();
+        }
         return Payload{
             .arr = arr,
         };
@@ -252,6 +261,38 @@ pub const Payload = union(enum) {
             },
             else => {},
         }
+    }
+
+    /// get a i64 value from payload
+    /// Note: if the payload is not a int or the value is too large, it will return MsGPackError.INVALID_TYPE
+    pub fn getInt(self: Payload) !i64 {
+        return switch (self) {
+            .int => |val| val,
+            .uint => |val| {
+                if (val <= std.math.maxInt(i64)) {
+                    return @intCast(val);
+                }
+                // TODO: we can not return this error
+                return MsGPackError.INVALID_TYPE;
+            },
+            else => return MsGPackError.INVALID_TYPE,
+        };
+    }
+
+    /// get a u64 value from payload
+    /// Note: if the payload is not a uint or the value is negative, it will return MsGPackError.INVALID_TYPE
+    pub fn getUint(self: Payload) !u64 {
+        return switch (self) {
+            .int => |val| {
+                if (val >= 0) {
+                    return @intCast(val);
+                }
+                // TODO: we can not return this error
+                return MsGPackError.INVALID_TYPE;
+            },
+            .uint => |val| val,
+            else => return MsGPackError.INVALID_TYPE,
+        };
     }
 };
 
@@ -855,8 +896,10 @@ pub fn Pack(
                         try self.writeU8Value(header);
                     } else if (len <= 0xffff) {
                         try self.writeTypeMarker(.MAP16);
+                        try self.writeU16Value(@intCast(len));
                     } else if (len <= 0xffff_ffff) {
                         try self.writeTypeMarker(.MAP32);
+                        try self.writeU32Value(@intCast(len));
                     } else {
                         return MsGPackError.MAP_LENGTH_TOO_LONG;
                     }
