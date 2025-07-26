@@ -855,3 +855,395 @@ test "large maps" {
     try expect(value19 != null);
     try expect(try value19.?.getInt() == 19);
 }
+
+// Test array32 format
+test "array32 write and read" {
+    // Create an array larger than 65535 elements would be too memory intensive
+    // Instead test the boundary where array32 format kicks in
+    var arr: [0xfffff]u8 = std.mem.zeroes([0xfffff]u8);
+    var write_buffer = std.io.fixedBufferStream(&arr);
+    var read_buffer = std.io.fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Test with 65536 elements (0x10000), which should use array32
+    const test_size = 0x10000;
+    var test_payload = try Payload.arrPayload(test_size, allocator);
+    defer test_payload.free(allocator);
+    
+    for (0..test_size) |i| {
+        try test_payload.setArrElement(i, Payload.uintToPayload(i % 256));
+    }
+
+    try p.write(test_payload);
+    const val = try p.read(allocator);
+    defer val.free(allocator);
+
+    try expect((try val.getArrLen()) == test_size);
+    // Check first and last elements
+    try expect((try val.getArrElement(0)).uint == 0);
+    try expect((try val.getArrElement(test_size - 1)).uint == (test_size - 1) % 256);
+}
+
+// Test bin16 and bin32
+test "bin16 and bin32 write and read" {
+    var arr: [0xfffff]u8 = std.mem.zeroes([0xfffff]u8);
+    var write_buffer = std.io.fixedBufferStream(&arr);
+    var read_buffer = std.io.fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Test bin16 (256 bytes)
+    const test_bin16 = try allocator.alloc(u8, 256);
+    defer allocator.free(test_bin16);
+    for (test_bin16, 0..) |*byte, i| {
+        byte.* = @intCast(i % 256);
+    }
+
+    try p.write(.{ .bin = msgpack.wrapBin(test_bin16) });
+    {
+        const val = try p.read(allocator);
+        defer val.free(allocator);
+        try expect(val.bin.value().len == 256);
+        try expect(val.bin.value()[0] == 0);
+        try expect(val.bin.value()[255] == 255);
+    }
+
+    // Reset buffers for bin32 test
+    arr = std.mem.zeroes([0xfffff]u8);
+    write_buffer = std.io.fixedBufferStream(&arr);
+    read_buffer = std.io.fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    // Test bin32 (65536 bytes)
+    const test_bin32 = try allocator.alloc(u8, 65536);
+    defer allocator.free(test_bin32);
+    for (test_bin32, 0..) |*byte, i| {
+        byte.* = @intCast(i % 256);
+    }
+
+    try p.write(.{ .bin = msgpack.wrapBin(test_bin32) });
+    {
+        const val = try p.read(allocator);
+        defer val.free(allocator);
+        try expect(val.bin.value().len == 65536);
+        try expect(val.bin.value()[0] == 0);
+        try expect(val.bin.value()[65535] == 255);
+    }
+}
+
+// Test str16 and str32
+test "str16 and str32 write and read" {
+    var arr: [0xfffff]u8 = std.mem.zeroes([0xfffff]u8);
+    var write_buffer = std.io.fixedBufferStream(&arr);
+    var read_buffer = std.io.fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Test str16 (256 characters)
+    const str16_data = "x" ** 256;
+    const str16_payload = try Payload.strToPayload(str16_data, allocator);
+    defer str16_payload.free(allocator);
+    try p.write(str16_payload);
+    {
+        const val = try p.read(allocator);
+        defer val.free(allocator);
+        try expect(val.str.value().len == 256);
+        try expect(u8eql(str16_data, val.str.value()));
+    }
+
+    // Reset buffers for str32 test
+    arr = std.mem.zeroes([0xfffff]u8);
+    write_buffer = std.io.fixedBufferStream(&arr);
+    read_buffer = std.io.fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    // Test str32 (65536 characters)
+    const str32_data = try allocator.alloc(u8, 65536);
+    defer allocator.free(str32_data);
+    @memset(str32_data, 'A');
+    
+    const str32_payload = try Payload.strToPayload(str32_data, allocator);
+    defer str32_payload.free(allocator);
+    try p.write(str32_payload);
+    {
+        const val = try p.read(allocator);
+        defer val.free(allocator);
+        try expect(val.str.value().len == 65536);
+        try expect(u8eql(str32_data, val.str.value()));
+    }
+}
+
+// Test int64 and uint64 boundary values
+test "int64 uint64 boundary values" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = std.io.fixedBufferStream(&arr);
+    var read_buffer = std.io.fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Test max int64
+    const max_i64: i64 = std.math.maxInt(i64);
+    try p.write(.{ .int = max_i64 });
+    {
+        const val = try p.read(allocator);
+        defer val.free(allocator);
+        try expect(try val.getInt() == max_i64);
+    }
+
+    // Reset buffers
+    arr = std.mem.zeroes([0xffff_f]u8);
+    write_buffer = std.io.fixedBufferStream(&arr);
+    read_buffer = std.io.fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    // Test min int64
+    const min_i64: i64 = std.math.minInt(i64);
+    try p.write(.{ .int = min_i64 });
+    {
+        const val = try p.read(allocator);
+        defer val.free(allocator);
+        try expect(val.int == min_i64);
+    }
+
+    // Reset buffers
+    arr = std.mem.zeroes([0xffff_f]u8);
+    write_buffer = std.io.fixedBufferStream(&arr);
+    read_buffer = std.io.fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    // Test max uint64
+    const max_u64: u64 = std.math.maxInt(u64);
+    try p.write(.{ .uint = max_u64 });
+    {
+        const val = try p.read(allocator);
+        defer val.free(allocator);
+        try expect(val.uint == max_u64);
+    }
+}
+
+// Test getUint method
+test "getUint method" {
+    // Test uint payload
+    const uint_payload = Payload.uintToPayload(42);
+    try expect(try uint_payload.getUint() == 42);
+
+    // Test positive int payload converted to uint
+    const pos_int_payload = Payload.intToPayload(24);
+    try expect(try pos_int_payload.getUint() == 24);
+
+    // Test negative int payload should fail
+    const neg_int_payload = Payload.intToPayload(-5);
+    const result = neg_int_payload.getUint();
+    try expect(result == msgpack.MsGPackError.INVALID_TYPE);
+
+    // Test non-numeric payload should fail
+    const nil_payload = Payload.nilToPayload();
+    const nil_result = nil_payload.getUint();
+    try expect(nil_result == msgpack.MsGPackError.INVALID_TYPE);
+}
+
+// Test NaN and Infinity float values
+test "nan and infinity float values" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = std.io.fixedBufferStream(&arr);
+    var read_buffer = std.io.fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Test positive infinity
+    try p.write(.{ .float = std.math.inf(f64) });
+    {
+        const val = try p.read(allocator);
+        defer val.free(allocator);
+        try expect(std.math.isInf(val.float));
+        try expect(val.float > 0);
+    }
+
+    // Reset buffers
+    arr = std.mem.zeroes([0xffff_f]u8);
+    write_buffer = std.io.fixedBufferStream(&arr);
+    read_buffer = std.io.fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    // Test negative infinity
+    try p.write(.{ .float = -std.math.inf(f64) });
+    {
+        const val = try p.read(allocator);
+        defer val.free(allocator);
+        try expect(std.math.isInf(val.float));
+        try expect(val.float < 0);
+    }
+
+    // Reset buffers
+    arr = std.mem.zeroes([0xffff_f]u8);
+    write_buffer = std.io.fixedBufferStream(&arr);
+    read_buffer = std.io.fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    // Test NaN
+    try p.write(.{ .float = std.math.nan(f64) });
+    {
+        const val = try p.read(allocator);
+        defer val.free(allocator);
+        try expect(std.math.isNan(val.float));
+    }
+}
+
+// Test edge cases and error conditions
+test "edge cases and error conditions" {
+    var arr: [100]u8 = std.mem.zeroes([100]u8);
+    var write_buffer = std.io.fixedBufferStream(&arr);
+    var read_buffer = std.io.fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Test array index out of bounds
+    var test_arr = try Payload.arrPayload(3, allocator);
+    defer test_arr.free(allocator);
+    
+    // This should work
+    try test_arr.setArrElement(0, Payload.nilToPayload());
+    try test_arr.setArrElement(1, Payload.boolToPayload(true));
+    try test_arr.setArrElement(2, Payload.intToPayload(42));
+
+    try p.write(test_arr);
+    const val = try p.read(allocator);
+    defer val.free(allocator);
+    
+    try expect((try val.getArrLen()) == 3);
+    try expect((try val.getArrElement(0)) == .nil);
+    try expect((try val.getArrElement(1)).bool == true);
+    try expect(try (try val.getArrElement(2)).getInt() == 42);
+}
+
+// Test positive fixint boundary (0-127)
+test "positive fixint boundary" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = std.io.fixedBufferStream(&arr);
+    var read_buffer = std.io.fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Test boundary values for positive fixint (0-127)
+    const boundary_values = [_]u64{ 0, 1, 126, 127, 128 };
+    
+    for (boundary_values) |val| {
+        try p.write(.{ .uint = val });
+    }
+
+    // Reset read buffer
+    read_buffer = std.io.fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    for (boundary_values) |expected| {
+        const result = try p.read(allocator);
+        defer result.free(allocator);
+        try expect(result.uint == expected);
+    }
+}
+
+// Test fixstr boundary (0-31 bytes)
+test "fixstr boundary" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = std.io.fixedBufferStream(&arr);
+    var read_buffer = std.io.fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Test different fixstr lengths
+    const test_strings = [_][]const u8{
+        "",           // 0 bytes
+        "a",          // 1 byte
+        "hello",      // 5 bytes
+        "a" ** 31,    // 31 bytes (max fixstr)
+        "b" ** 32,    // 32 bytes (should use str8)
+    };
+
+    for (test_strings) |test_str| {
+        const str_payload = try Payload.strToPayload(test_str, allocator);
+        defer str_payload.free(allocator);
+        try p.write(str_payload);
+    }
+
+    // Reset read buffer
+    read_buffer = std.io.fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    for (test_strings) |expected| {
+        const result = try p.read(allocator);
+        defer result.free(allocator);
+        try expect(u8eql(expected, result.str.value()));
+    }
+}
+
+// Test fixarray boundary (0-15 elements)
+test "fixarray boundary" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = std.io.fixedBufferStream(&arr);
+    var read_buffer = std.io.fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Test different fixarray sizes
+    const test_sizes = [_]usize{ 0, 1, 5, 15, 16 };
+
+    for (test_sizes) |size| {
+        var test_payload = try Payload.arrPayload(size, allocator);
+        defer test_payload.free(allocator);
+        
+        for (0..size) |i| {
+            try test_payload.setArrElement(i, Payload.uintToPayload(i));
+        }
+        
+        try p.write(test_payload);
+    }
+
+    // Reset read buffer
+    read_buffer = std.io.fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    for (test_sizes) |expected_size| {
+        const result = try p.read(allocator);
+        defer result.free(allocator);
+        try expect((try result.getArrLen()) == expected_size);
+        
+        for (0..expected_size) |i| {
+            const element = try result.getArrElement(i);
+            try expect(element.uint == i);
+        }
+    }
+}
+
+// Test fixmap boundary (0-15 elements)
+test "fixmap boundary" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = std.io.fixedBufferStream(&arr);
+    var read_buffer = std.io.fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Test different fixmap sizes
+    const test_sizes = [_]usize{ 0, 1, 5, 15, 16 };
+
+    for (test_sizes) |size| {
+        var test_map = Payload.mapPayload(allocator);
+        defer test_map.free(allocator);
+        
+        for (0..size) |i| {
+            const key = try std.fmt.allocPrint(allocator, "k{d}", .{i});
+            defer allocator.free(key);
+            try test_map.mapPut(key, Payload.uintToPayload(i));
+        }
+        
+        try p.write(test_map);
+    }
+
+    // Reset read buffer  
+    read_buffer = std.io.fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    for (test_sizes) |expected_size| {
+        const result = try p.read(allocator);
+        defer result.free(allocator);
+        try expect(result.map.count() == expected_size);
+        
+        for (0..expected_size) |i| {
+            const key = try std.fmt.allocPrint(allocator, "k{d}", .{i});
+            defer allocator.free(key);
+            const value = try result.mapGet(key);
+            try expect(value != null);
+            try expect(value.?.uint == i);
+        }
+    }
+}
