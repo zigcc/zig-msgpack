@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const msgpack = @import("msgpack");
 const allocator = std.testing.allocator;
 const expect = std.testing.expect;
@@ -825,18 +826,21 @@ test "large maps" {
     defer large_map.free(allocator);
 
     // Store allocated keys to free them later
-    var keys = std.ArrayList([]u8).init(allocator);
+     var keys = if (builtin.zig_version.minor == 14) 
+         std.ArrayList([]u8).init(allocator) 
+     else 
+         std.ArrayList([]u8){};
     defer {
         for (keys.items) |key| {
             allocator.free(key);
         }
-        keys.deinit();
+         if (builtin.zig_version.minor == 14) keys.deinit() else keys.deinit(allocator);
     }
 
     // Create a map with 20 entries (more than fixmap limit of 15)
     for (0..20) |i| {
         const key = try std.fmt.allocPrint(allocator, "key{d}", .{i});
-        try keys.append(key);
+         if (builtin.zig_version.minor == 14) try keys.append(key) else try keys.append(allocator, key);
         try large_map.mapPut(key, Payload.intToPayload(@intCast(i)));
     }
 
@@ -1174,18 +1178,21 @@ test "actual map32 format" {
     defer large_map.free(allocator);
 
     // Store allocated keys to free them later
-    var keys = std.ArrayList([]u8).init(allocator);
+     var keys = if (builtin.zig_version.minor == 14) 
+         std.ArrayList([]u8).init(allocator) 
+     else 
+         std.ArrayList([]u8){};
     defer {
         for (keys.items) |key| {
             allocator.free(key);
         }
-        keys.deinit();
+         if (builtin.zig_version.minor == 14) keys.deinit() else keys.deinit(allocator);
     }
 
     // Create a map with 1000 entries (more than map16 threshold of 65535 would be too memory intensive)
     for (0..1000) |i| {
         const key = try std.fmt.allocPrint(allocator, "key{d:0>10}", .{i});
-        try keys.append(key);
+         if (builtin.zig_version.minor == 14) try keys.append(key) else try keys.append(allocator, key);
         try large_map.mapPut(key, Payload.intToPayload(@intCast(i)));
     }
 
@@ -1335,17 +1342,20 @@ test "format markers verification" {
     var test_map = Payload.mapPayload(allocator);
     defer test_map.free(allocator);
 
-    var test_keys = std.ArrayList([]u8).init(allocator);
+     var test_keys = if (builtin.zig_version.minor == 14) 
+         std.ArrayList([]u8).init(allocator) 
+     else 
+         std.ArrayList([]u8){};
     defer {
         for (test_keys.items) |key| {
             allocator.free(key);
         }
-        test_keys.deinit();
+         if (builtin.zig_version.minor == 14) test_keys.deinit() else test_keys.deinit(allocator);
     }
 
     for (0..16) |i| {
         const key = try std.fmt.allocPrint(allocator, "k{d}", .{i});
-        try test_keys.append(key);
+         if (builtin.zig_version.minor == 14) try test_keys.append(key) else try test_keys.append(allocator, key);
         try test_map.mapPut(key, Payload.nilToPayload());
     }
     try p.write(test_map);
