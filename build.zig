@@ -21,6 +21,12 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path(b.pathJoin(&.{ "src", "test.zig" })),
         .target = target,
         .optimize = optimize,
+    }) else if (builtin.zig_version.minor >= 16) b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path(b.pathJoin(&.{ "src", "test.zig" })),
+            .target = target,
+            .optimize = optimize,
+        }),
     }) else b.addTest(.{
         .root_module = b.addModule("test", .{
             .root_source_file = b.path(b.pathJoin(&.{ "src", "test.zig" })),
@@ -39,6 +45,13 @@ fn generateDocs(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget)
         .root_source_file = b.path(b.pathJoin(&.{ "src", "msgpack.zig" })),
         .target = target,
         .optimize = optimize,
+    }) else if (builtin.zig_version.minor >= 16) b.addObject(.{
+        .name = "zig-msgpack",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path(b.pathJoin(&.{ "src", "msgpack.zig" })),
+            .target = target,
+            .optimize = optimize,
+        }),
     }) else b.addObject(.{
         .name = "zig-msgpack",
         .root_module = b.addModule("msgpack", .{
