@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const msgpack = @import("msgpack");
+const compat = @import("compat.zig");
 const allocator = std.testing.allocator;
 const expect = std.testing.expect;
 const Payload = msgpack.Payload;
@@ -9,7 +10,8 @@ fn u8eql(a: []const u8, b: []const u8) bool {
     return std.mem.eql(u8, a, b);
 }
 
-const bufferType = std.io.FixedBufferStream([]u8);
+const bufferType = compat.BufferStream;
+const fixedBufferStream = compat.fixedBufferStream;
 
 const pack = msgpack.Pack(
     *bufferType,
@@ -22,8 +24,8 @@ const pack = msgpack.Pack(
 
 test "nil write and read" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(
         &write_buffer,
         &read_buffer,
@@ -36,8 +38,8 @@ test "nil write and read" {
 
 test "bool write and read" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(
         &write_buffer,
         &read_buffer,
@@ -61,8 +63,8 @@ test "bool write and read" {
 
 test "int/uint write and read" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(
         &write_buffer,
         &read_buffer,
@@ -83,8 +85,8 @@ test "int/uint write and read" {
 
 test "float write and read" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(
         &write_buffer,
         &read_buffer,
@@ -99,8 +101,8 @@ test "float write and read" {
 
 test "str write and read" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(
         &write_buffer,
         &read_buffer,
@@ -118,8 +120,8 @@ test "str write and read" {
 // In fact, the logic implemented by bin and str is basically the same
 test "bin write and read" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(
         &write_buffer,
         &read_buffer,
@@ -135,8 +137,8 @@ test "bin write and read" {
 
 test "map write and read" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(
         &write_buffer,
         &read_buffer,
@@ -190,8 +192,8 @@ test "map write and read" {
 test "array write and read" {
     // made test
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(
         &write_buffer,
         &read_buffer,
@@ -216,8 +218,8 @@ test "array write and read" {
 
 test "array16 write and read" {
     var arr: [0xffff]u8 = std.mem.zeroes([0xffff]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(
         &write_buffer,
         &read_buffer,
@@ -243,8 +245,8 @@ test "array16 write and read" {
 
 test "ext write and read" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(
         &write_buffer,
         &read_buffer,
@@ -287,8 +289,8 @@ test "payload error handling" {
 // Test boundary values for integers
 test "integer boundary values" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
     // Test maximum positive values
@@ -302,8 +304,8 @@ test "integer boundary values" {
 
     // Reset buffers
     arr = std.mem.zeroes([0xffff_f]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
-    read_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     const max_u16: u64 = 0xffff;
@@ -316,8 +318,8 @@ test "integer boundary values" {
 
     // Reset buffers
     arr = std.mem.zeroes([0xffff_f]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
-    read_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     const max_u32: u64 = 0xffffffff;
@@ -330,8 +332,8 @@ test "integer boundary values" {
 
     // Test minimum negative values
     arr = std.mem.zeroes([0xffff_f]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
-    read_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     const min_i8: i64 = -128;
@@ -344,8 +346,8 @@ test "integer boundary values" {
 
     // Reset buffers
     arr = std.mem.zeroes([0xffff_f]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
-    read_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     const min_i16: i64 = -32768;
@@ -358,8 +360,8 @@ test "integer boundary values" {
 
     // Reset buffers
     arr = std.mem.zeroes([0xffff_f]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
-    read_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     const min_i32: i64 = -2147483648;
@@ -374,8 +376,8 @@ test "integer boundary values" {
 // Test different string sizes
 test "string size boundaries" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
     // Test fixstr (31 bytes)
@@ -391,8 +393,8 @@ test "string size boundaries" {
 
     // Reset buffers
     arr = std.mem.zeroes([0xffff_f]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
-    read_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     // Test str8 (255 bytes)
@@ -410,8 +412,8 @@ test "string size boundaries" {
 // Test empty containers
 test "empty containers" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
     // Test empty array
@@ -426,8 +428,8 @@ test "empty containers" {
 
     // Reset buffers
     arr = std.mem.zeroes([0xffff_f]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
-    read_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     // Test empty map
@@ -442,8 +444,8 @@ test "empty containers" {
 
     // Reset buffers
     arr = std.mem.zeroes([0xffff_f]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
-    read_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     // Test empty string
@@ -460,8 +462,8 @@ test "empty containers" {
 // Test different EXT sizes
 test "ext different sizes" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
     // Test fixext1
@@ -476,8 +478,8 @@ test "ext different sizes" {
 
     // Reset buffers
     arr = std.mem.zeroes([0xffff_f]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
-    read_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     // Test fixext2
@@ -492,8 +494,8 @@ test "ext different sizes" {
 
     // Reset buffers
     arr = std.mem.zeroes([0xffff_f]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
-    read_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     // Test fixext4
@@ -508,8 +510,8 @@ test "ext different sizes" {
 
     // Reset buffers
     arr = std.mem.zeroes([0xffff_f]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
-    read_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     // Test fixext8
@@ -524,8 +526,8 @@ test "ext different sizes" {
 
     // Reset buffers
     arr = std.mem.zeroes([0xffff_f]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
-    read_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     // Test fixext16
@@ -542,8 +544,8 @@ test "ext different sizes" {
 // Test float precision
 test "float precision" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
     // Test f32 range value
@@ -558,8 +560,8 @@ test "float precision" {
 
     // Reset buffers
     arr = std.mem.zeroes([0xffff_f]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
-    read_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     // Test f64 value that exceeds f32 range
@@ -606,8 +608,8 @@ test "payload utility methods" {
 // Test negative fixint range
 test "negative fixint range" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
     // Test all values in negative fixint range (-32 to -1)
@@ -617,7 +619,7 @@ test "negative fixint range" {
     }
 
     // Reset read buffer
-    read_buffer = std.io.fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     for (1..33) |i| {
@@ -673,8 +675,8 @@ test "array operations" {
 // Test special float values
 test "special float values" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
     // Test zero
@@ -685,8 +687,8 @@ test "special float values" {
 
     // Reset buffers
     arr = std.mem.zeroes([0xffff_f]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
-    read_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     // Test negative zero
@@ -697,8 +699,8 @@ test "special float values" {
 
     // Reset buffers
     arr = std.mem.zeroes([0xffff_f]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
-    read_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     // Test very small positive number
@@ -710,8 +712,8 @@ test "special float values" {
 
     // Reset buffers
     arr = std.mem.zeroes([0xffff_f]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
-    read_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     // Test very small negative number
@@ -725,8 +727,8 @@ test "special float values" {
 // Test Unicode strings
 test "unicode strings" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
     // Test various Unicode strings
@@ -745,7 +747,7 @@ test "unicode strings" {
     }
 
     // Reset read buffer
-    read_buffer = std.io.fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     for (unicode_strings) |expected| {
@@ -758,8 +760,8 @@ test "unicode strings" {
 // Test nested structures
 test "deeply nested structures" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
     // Create deeply nested array [[[42]]]
@@ -788,8 +790,8 @@ test "deeply nested structures" {
 // Test mixed type arrays
 test "mixed type arrays" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
     var mixed_arr = try Payload.arrPayload(6, allocator);
@@ -818,29 +820,29 @@ test "mixed type arrays" {
 // Test large maps
 test "large maps" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
     var large_map = Payload.mapPayload(allocator);
     defer large_map.free(allocator);
 
     // Store allocated keys to free them later
-     var keys = if (builtin.zig_version.minor == 14) 
-         std.ArrayList([]u8).init(allocator) 
-     else 
-         std.ArrayList([]u8){};
+    var keys = if (builtin.zig_version.minor == 14)
+        std.ArrayList([]u8).init(allocator)
+    else
+        std.ArrayList([]u8){};
     defer {
         for (keys.items) |key| {
             allocator.free(key);
         }
-         if (builtin.zig_version.minor == 14) keys.deinit() else keys.deinit(allocator);
+        if (builtin.zig_version.minor == 14) keys.deinit() else keys.deinit(allocator);
     }
 
     // Create a map with 20 entries (more than fixmap limit of 15)
     for (0..20) |i| {
         const key = try std.fmt.allocPrint(allocator, "key{d}", .{i});
-         if (builtin.zig_version.minor == 14) try keys.append(key) else try keys.append(allocator, key);
+        if (builtin.zig_version.minor == 14) try keys.append(key) else try keys.append(allocator, key);
         try large_map.mapPut(key, Payload.intToPayload(@intCast(i)));
     }
 
@@ -865,8 +867,8 @@ test "array32 write and read" {
     // Create an array larger than 65535 elements would be too memory intensive
     // Instead test the boundary where array32 format kicks in
     var arr: [0xfffff]u8 = std.mem.zeroes([0xfffff]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
     // Test with 65536 elements (0x10000), which should use array32
@@ -891,8 +893,8 @@ test "array32 write and read" {
 // Test bin16 and bin32
 test "bin16 and bin32 write and read" {
     var arr: [0xfffff]u8 = std.mem.zeroes([0xfffff]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
     // Test bin16 (256 bytes)
@@ -913,8 +915,8 @@ test "bin16 and bin32 write and read" {
 
     // Reset buffers for bin32 test
     arr = std.mem.zeroes([0xfffff]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
-    read_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     // Test bin32 (65536 bytes)
@@ -937,8 +939,8 @@ test "bin16 and bin32 write and read" {
 // Test str16 and str32
 test "str16 and str32 write and read" {
     var arr: [0xfffff]u8 = std.mem.zeroes([0xfffff]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
     // Test str16 (256 characters)
@@ -955,8 +957,8 @@ test "str16 and str32 write and read" {
 
     // Reset buffers for str32 test
     arr = std.mem.zeroes([0xfffff]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
-    read_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     // Test str32 (65536 characters)
@@ -978,8 +980,8 @@ test "str16 and str32 write and read" {
 // Test int64 and uint64 boundary values
 test "int64 uint64 boundary values" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
     // Test max int64
@@ -993,8 +995,8 @@ test "int64 uint64 boundary values" {
 
     // Reset buffers
     arr = std.mem.zeroes([0xffff_f]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
-    read_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     // Test min int64
@@ -1008,8 +1010,8 @@ test "int64 uint64 boundary values" {
 
     // Reset buffers
     arr = std.mem.zeroes([0xffff_f]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
-    read_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     // Test max uint64
@@ -1046,8 +1048,8 @@ test "getUint method" {
 // Test NaN and Infinity float values
 test "nan and infinity float values" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
     // Test positive infinity
@@ -1061,8 +1063,8 @@ test "nan and infinity float values" {
 
     // Reset buffers
     arr = std.mem.zeroes([0xffff_f]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
-    read_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     // Test negative infinity
@@ -1076,8 +1078,8 @@ test "nan and infinity float values" {
 
     // Reset buffers
     arr = std.mem.zeroes([0xffff_f]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
-    read_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     // Test NaN
@@ -1092,8 +1094,8 @@ test "nan and infinity float values" {
 // Test EXT8, EXT16, EXT32 formats
 test "ext8 ext16 ext32 formats" {
     var arr: [0xfffff]u8 = std.mem.zeroes([0xfffff]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
     // Test EXT8 (more than 16 bytes, up to 255)
@@ -1115,8 +1117,8 @@ test "ext8 ext16 ext32 formats" {
 
     // Reset buffers for EXT16 test
     arr = std.mem.zeroes([0xfffff]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
-    read_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     // Test EXT16 (more than 255 bytes, up to 65535)
@@ -1138,8 +1140,8 @@ test "ext8 ext16 ext32 formats" {
 
     // Reset buffers for EXT32 test
     arr = std.mem.zeroes([0xfffff]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
-    read_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     // Test EXT32 (more than 65535 bytes, up to 4294967295)
@@ -1169,8 +1171,8 @@ test "actual map32 format" {
     // by verifying the implementation handles large maps correctly
 
     var arr: [0xfffff]u8 = std.mem.zeroes([0xfffff]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
     // Test with a moderately large map (1000 entries) to ensure scalability
@@ -1178,21 +1180,21 @@ test "actual map32 format" {
     defer large_map.free(allocator);
 
     // Store allocated keys to free them later
-     var keys = if (builtin.zig_version.minor == 14) 
-         std.ArrayList([]u8).init(allocator) 
-     else 
-         std.ArrayList([]u8){};
+    var keys = if (builtin.zig_version.minor == 14)
+        std.ArrayList([]u8).init(allocator)
+    else
+        std.ArrayList([]u8){};
     defer {
         for (keys.items) |key| {
             allocator.free(key);
         }
-         if (builtin.zig_version.minor == 14) keys.deinit() else keys.deinit(allocator);
+        if (builtin.zig_version.minor == 14) keys.deinit() else keys.deinit(allocator);
     }
 
     // Create a map with 1000 entries (more than map16 threshold of 65535 would be too memory intensive)
     for (0..1000) |i| {
         const key = try std.fmt.allocPrint(allocator, "key{d:0>10}", .{i});
-         if (builtin.zig_version.minor == 14) try keys.append(key) else try keys.append(allocator, key);
+        if (builtin.zig_version.minor == 14) try keys.append(key) else try keys.append(allocator, key);
         try large_map.mapPut(key, Payload.intToPayload(@intCast(i)));
     }
 
@@ -1220,8 +1222,8 @@ test "actual map32 format" {
 // Test edge cases and error conditions
 test "edge cases and error conditions" {
     var arr: [100]u8 = std.mem.zeroes([100]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
     // Test array index out of bounds
@@ -1246,8 +1248,8 @@ test "edge cases and error conditions" {
 // Test EXT with negative type IDs
 test "ext negative type ids" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
     // Test negative type ID (MessagePack spec allows -128 to 127)
@@ -1263,8 +1265,8 @@ test "ext negative type ids" {
 
     // Reset buffer and test minimum negative type ID
     arr = std.mem.zeroes([0xffff_f]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
-    read_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     const min_type: i8 = -128;
@@ -1279,8 +1281,8 @@ test "ext negative type ids" {
 // Test format markers verification
 test "format markers verification" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
     // Test nil marker
@@ -1289,7 +1291,7 @@ test "format markers verification" {
 
     // Reset buffer
     arr = std.mem.zeroes([0xffff_f]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
 
     // Test bool markers
     try p.write(Payload.boolToPayload(true));
@@ -1300,7 +1302,7 @@ test "format markers verification" {
 
     // Reset buffer
     arr = std.mem.zeroes([0xffff_f]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     // Test uint8 marker
@@ -1309,7 +1311,7 @@ test "format markers verification" {
 
     // Reset buffer
     arr = std.mem.zeroes([0xffff_f]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     // Test str8 marker (32+ bytes string uses str8)
@@ -1321,7 +1323,7 @@ test "format markers verification" {
 
     // Reset buffer
     arr = std.mem.zeroes([0xffff_f]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     // Test array16 marker (16+ elements uses array16)
@@ -1335,27 +1337,27 @@ test "format markers verification" {
 
     // Reset buffer
     arr = std.mem.zeroes([0xffff_f]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     // Test map16 marker (16+ entries uses map16)
     var test_map = Payload.mapPayload(allocator);
     defer test_map.free(allocator);
 
-     var test_keys = if (builtin.zig_version.minor == 14) 
-         std.ArrayList([]u8).init(allocator) 
-     else 
-         std.ArrayList([]u8){};
+    var test_keys = if (builtin.zig_version.minor == 14)
+        std.ArrayList([]u8).init(allocator)
+    else
+        std.ArrayList([]u8){};
     defer {
         for (test_keys.items) |key| {
             allocator.free(key);
         }
-         if (builtin.zig_version.minor == 14) test_keys.deinit() else test_keys.deinit(allocator);
+        if (builtin.zig_version.minor == 14) test_keys.deinit() else test_keys.deinit(allocator);
     }
 
     for (0..16) |i| {
         const key = try std.fmt.allocPrint(allocator, "k{d}", .{i});
-         if (builtin.zig_version.minor == 14) try test_keys.append(key) else try test_keys.append(allocator, key);
+        if (builtin.zig_version.minor == 14) try test_keys.append(key) else try test_keys.append(allocator, key);
         try test_map.mapPut(key, Payload.nilToPayload());
     }
     try p.write(test_map);
@@ -1365,8 +1367,8 @@ test "format markers verification" {
 // Test positive fixint boundary (0-127)
 test "positive fixint boundary" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
     // Test boundary values for positive fixint (0-127)
@@ -1377,7 +1379,7 @@ test "positive fixint boundary" {
     }
 
     // Reset read buffer
-    read_buffer = std.io.fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     for (boundary_values) |expected| {
@@ -1390,8 +1392,8 @@ test "positive fixint boundary" {
 // Test fixstr boundary (0-31 bytes)
 test "fixstr boundary" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
     // Test different fixstr lengths
@@ -1410,7 +1412,7 @@ test "fixstr boundary" {
     }
 
     // Reset read buffer
-    read_buffer = std.io.fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     for (test_strings) |expected| {
@@ -1423,8 +1425,8 @@ test "fixstr boundary" {
 // Test fixarray boundary (0-15 elements)
 test "fixarray boundary" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
     // Test different fixarray sizes
@@ -1442,7 +1444,7 @@ test "fixarray boundary" {
     }
 
     // Reset read buffer
-    read_buffer = std.io.fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     for (test_sizes) |expected_size| {
@@ -1460,8 +1462,8 @@ test "fixarray boundary" {
 // Test fixmap boundary (0-15 elements)
 test "fixmap boundary" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
     // Test different fixmap sizes
@@ -1481,7 +1483,7 @@ test "fixmap boundary" {
     }
 
     // Reset read buffer
-    read_buffer = std.io.fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     for (test_sizes) |expected_size| {
@@ -1502,8 +1504,8 @@ test "fixmap boundary" {
 // Test timestamp write and read
 test "timestamp write and read" {
     var arr: [0xfffff]u8 = std.mem.zeroes([0xfffff]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
     // Test timestamp 32 (seconds only, nanoseconds = 0)
@@ -1511,7 +1513,7 @@ test "timestamp write and read" {
     try p.write(timestamp32);
 
     // Reset read buffer
-    read_buffer = std.io.fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     const val32 = try p.read(allocator);
@@ -1522,14 +1524,14 @@ test "timestamp write and read" {
 
     // Test timestamp 64 (seconds + nanoseconds)
     arr = std.mem.zeroes([0xfffff]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
-    read_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     const timestamp64 = Payload.timestampToPayload(1234567890, 123456789);
     try p.write(timestamp64);
 
-    read_buffer = std.io.fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     const val64 = try p.read(allocator);
@@ -1540,14 +1542,14 @@ test "timestamp write and read" {
 
     // Test timestamp 96 (negative seconds)
     arr = std.mem.zeroes([0xfffff]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
-    read_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     const timestamp96 = Payload.timestampToPayload(-1234567890, 987654321);
     try p.write(timestamp96);
 
-    read_buffer = std.io.fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     const val96 = try p.read(allocator);
@@ -1560,8 +1562,8 @@ test "timestamp write and read" {
 // Test timestamp format markers
 test "timestamp format markers" {
     var arr: [0xfffff]u8 = std.mem.zeroes([0xfffff]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
     // timestamp 32 should use FIXEXT4 (0xd6) + type(-1) + 4 bytes data
@@ -1572,7 +1574,7 @@ test "timestamp format markers" {
 
     // Reset buffer for timestamp 64
     arr = std.mem.zeroes([0xfffff]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     // timestamp 64 should use FIXEXT8 (0xd7) + type(-1) + 8 bytes data
@@ -1583,7 +1585,7 @@ test "timestamp format markers" {
 
     // Reset buffer for timestamp 96
     arr = std.mem.zeroes([0xfffff]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     // timestamp 96 should use EXT8 (0xc7) + len(12) + type(-1) + 12 bytes data
@@ -1626,15 +1628,15 @@ test "timestamp utility methods" {
 // Test timestamp edge cases
 test "timestamp edge cases" {
     var arr: [0xfffff]u8 = std.mem.zeroes([0xfffff]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
     // Test zero timestamp
     const zero_ts = Payload.timestampFromSeconds(0);
     try p.write(zero_ts);
 
-    read_buffer = std.io.fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     const val_zero = try p.read(allocator);
@@ -1645,14 +1647,14 @@ test "timestamp edge cases" {
 
     // Test maximum nanoseconds (999999999)
     arr = std.mem.zeroes([0xfffff]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
-    read_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     const max_nano_ts = Payload.timestampToPayload(1000, 999999999);
     try p.write(max_nano_ts);
 
-    read_buffer = std.io.fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     const val_max_nano = try p.read(allocator);
@@ -1663,14 +1665,14 @@ test "timestamp edge cases" {
 
     // Test large positive seconds (near 32-bit limit)
     arr = std.mem.zeroes([0xfffff]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
-    read_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     const large_ts = Payload.timestampFromSeconds(0xffffffff);
     try p.write(large_ts);
 
-    read_buffer = std.io.fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     const val_large = try p.read(allocator);
@@ -1683,8 +1685,8 @@ test "timestamp edge cases" {
 // Test timestamp boundary values
 test "timestamp boundary values" {
     var arr: [0xfffff]u8 = std.mem.zeroes([0xfffff]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
     // Test 34-bit boundary for timestamp 64 format
@@ -1693,7 +1695,7 @@ test "timestamp boundary values" {
     const ts_34bit = Payload.timestampToPayload(boundary_34bit, 123456789);
     try p.write(ts_34bit);
 
-    read_buffer = std.io.fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     const val_34bit = try p.read(allocator);
@@ -1704,15 +1706,15 @@ test "timestamp boundary values" {
 
     // Test seconds just over 34-bit boundary (should use timestamp 96)
     arr = std.mem.zeroes([0xfffff]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
-    read_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     const over_34bit = (1 << 34);
     const ts_over_34bit = Payload.timestampToPayload(over_34bit, 123456789);
     try p.write(ts_over_34bit);
 
-    read_buffer = std.io.fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     const val_over_34bit = try p.read(allocator);
@@ -1723,15 +1725,15 @@ test "timestamp boundary values" {
 
     // Test very large negative seconds
     arr = std.mem.zeroes([0xfffff]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
-    read_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     const large_negative = -9223372036854775808; // i64 min
     const ts_large_neg = Payload.timestampToPayload(large_negative, 999999999);
     try p.write(ts_large_neg);
 
-    read_buffer = std.io.fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     const val_large_neg = try p.read(allocator);
@@ -1744,8 +1746,8 @@ test "timestamp boundary values" {
 // Test timestamp and EXT compatibility
 test "timestamp and EXT compatibility" {
     var arr: [0xfffff]u8 = std.mem.zeroes([0xfffff]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
     // Test mixed timestamp and EXT data
@@ -1763,7 +1765,7 @@ test "timestamp and EXT compatibility" {
     try p.write(timestamp2);
 
     // Read back and verify
-    read_buffer = std.io.fixedBufferStream(&arr);
+    read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     const val1 = try p.read(allocator);
@@ -1794,8 +1796,8 @@ test "timestamp error handling" {
     const invalid_nano_ts = msgpack.Timestamp.new(1000, 1000000000); // 1 billion nanoseconds
 
     var arr: [0xfffff]u8 = std.mem.zeroes([0xfffff]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
     // This should fail to write
@@ -1806,8 +1808,8 @@ test "timestamp error handling" {
 // Test timestamp format selection logic
 test "timestamp format selection" {
     var arr: [0xfffff]u8 = std.mem.zeroes([0xfffff]u8);
-    var write_buffer = std.io.fixedBufferStream(&arr);
-    var read_buffer = std.io.fixedBufferStream(&arr);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
     // Test format 32: seconds <= 0xffffffff and nanoseconds == 0
@@ -1818,7 +1820,7 @@ test "timestamp format selection" {
 
     // Reset buffer
     arr = std.mem.zeroes([0xfffff]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     // Test format 32 boundary: seconds = 0xffffffff + 1 should use format 64
@@ -1829,7 +1831,7 @@ test "timestamp format selection" {
 
     // Reset buffer
     arr = std.mem.zeroes([0xfffff]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     // Test format 64: nanoseconds != 0 but seconds fits in 34-bit
@@ -1840,7 +1842,7 @@ test "timestamp format selection" {
 
     // Reset buffer
     arr = std.mem.zeroes([0xfffff]u8);
-    write_buffer = std.io.fixedBufferStream(&arr);
+    write_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     // Test format 96: negative seconds

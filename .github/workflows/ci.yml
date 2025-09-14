@@ -13,7 +13,7 @@ jobs:
         strategy:
             matrix:
                 os: [ubuntu-latest]
-                version: [0.14.0, 0.15.1, ""]
+                version: [0.14.1, 0.15.1, master]
             fail-fast: false
         runs-on: ${{ matrix.os }}
         steps:
