@@ -16,9 +16,18 @@ An article introducing it: [Zig Msgpack](https://blog.nvimer.org/2025/05/03/zig-
 
 ## Installation
 
-> For Zig 0.13 and older versions, please use version `0.0.6` of this library.
+### Version Compatibility
 
-For Zig `0.14.0` and `nightly`, follow these steps:
+| Zig Version | Library Version | Status |
+|-------------|----------------|---------|
+| 0.13 and older | 0.0.6 | Legacy support |
+| 0.14.0 | Current | ✅ Fully supported |
+| 0.15.x | Current | ✅ Fully supported |
+| 0.16.0-dev (nightly) | Current | ✅ Fully supported |
+
+> **Note:** For Zig 0.13 and older versions, please use version `0.0.6` of this library.
+
+For Zig `0.14.0`, `0.15.x`, and `0.16.0-dev`, follow these steps:
 
 1.  **Add as a dependency:**
     Add the library to your `build.zig.zon` file. You can fetch a specific commit or branch.
@@ -151,6 +160,18 @@ const uint_result = int_payload.getUint() catch |err| switch (err) {
 
 - **`msgpack.Pack`**: The main struct for packing and unpacking MessagePack data. It is initialized with read and write contexts.
 - **`msgpack.Payload`**: A union that represents any MessagePack type. It provides methods for creating and interacting with different data types (e.g., `mapPayload`, `strToPayload`, `mapGet`).
+
+## Implementation Notes
+
+### Zig 0.16 Compatibility
+
+Starting from Zig 0.16, the standard library underwent significant changes to the I/O subsystem. The `std.io.FixedBufferStream` was removed as part of a broader redesign. This library includes a compatibility layer (`src/compat.zig`) that:
+
+- Provides a `BufferStream` implementation for Zig 0.16+ that mimics the behavior of the old `FixedBufferStream`
+- Uses conditional compilation to maintain backward compatibility with Zig 0.14 and 0.15
+- Ensures all existing functionality works seamlessly across different Zig versions
+
+This means you can use the same API regardless of your Zig version, and the library will handle the differences internally.
 
 ## Testing
 
