@@ -4,7 +4,7 @@
 
 Zig 编程语言的 MessagePack 实现。此库提供了一种简单高效的方式来使用 MessagePack 格式序列化和反序列化数据。
 
-相关介绍文章: [Zig Msgpack](https://blog.nvimer.org/2025/05/03/zig-msgpack/)
+相关介绍文章: [Zig Msgpack](https://blog.nvimer.org/2025/09/20/zig-msgpack/)
 
 ## 特性
 
