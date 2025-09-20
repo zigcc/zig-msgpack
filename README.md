@@ -4,7 +4,7 @@
 
 A MessagePack implementation for the Zig programming language. This library provides a simple and efficient way to serialize and deserialize data using the MessagePack format.
 
-An article introducing it: [Zig Msgpack](https://blog.nvimer.org/2025/05/03/zig-msgpack/)
+An article introducing it: [Zig Msgpack](https://blog.nvimer.org/2025/09/20/zig-msgpack/)
 
 ## Features
 
