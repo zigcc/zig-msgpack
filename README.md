@@ -23,7 +23,7 @@ An article introducing it: [Zig Msgpack](https://blog.nvimer.org/2025/09/20/zig-
 | 0.13 and older | 0.0.6 | Legacy support |
 | 0.14.0 | Current | ✅ Fully supported |
 | 0.15.x | Current | ✅ Fully supported |
-| 0.16.0-dev (nightly) | Current | ⚠️ Supported with compatibility layer |
+| 0.16.0-dev (nightly) | Current | ✅ Supported with compatibility layer |
 
 > **Note:** For Zig 0.13 and older versions, please use version `0.0.6` of this library.
 > **Note:** Zig 0.16+ removes `std.io.FixedBufferStream`, but this library provides a compatibility layer to maintain the same API across all supported versions.
