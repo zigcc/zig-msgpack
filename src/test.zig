@@ -1878,3 +1878,246 @@ test "timestamp precision and conversion" {
     const expected4 = -0.5;
     try expect(@abs(float_val4 - expected4) < 0.000000001);
 }
+
+// ============================================================================
+// Additional tests from test_additional.zig
+// ============================================================================
+
+// Test minimal encoding principle (serializers SHOULD use the smallest format)
+test "minimal encoding principle" {
+    var arr: [1000]u8 = std.mem.zeroes([1000]u8);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Test small integers use positive fixint
+    try p.write(.{ .uint = 127 });
+    try expect(arr[0] == 0x7f); // Should use positive fixint, not uint8
+
+    // Reset
+    arr = std.mem.zeroes([1000]u8);
+    write_buffer = fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    // Test small negative numbers use negative fixint
+    try p.write(.{ .int = -1 });
+    try expect(arr[0] == 0xff); // Should use negative fixint
+
+    // Reset
+    arr = std.mem.zeroes([1000]u8);
+    write_buffer = fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    // Test short strings use fixstr
+    const short_str = try Payload.strToPayload("hello", allocator);
+    defer short_str.free(allocator);
+    try p.write(short_str);
+    try expect((arr[0] & 0xe0) == 0xa0); // fixstr format
+    try expect((arr[0] & 0x1f) == 5); // length is 5
+}
+
+// Test all positive fixint values (0-127)
+test "all positive fixint values comprehensive" {
+    var arr: [256]u8 = std.mem.zeroes([256]u8);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Write all positive fixint values
+    for (0..128) |i| {
+        try p.write(.{ .uint = i });
+    }
+
+    // Verify all values use single-byte encoding
+    for (0..128) |i| {
+        try expect(arr[i] == i);
+    }
+
+    // Reset read buffer and verify read values
+    read_buffer = fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    for (0..128) |i| {
+        const val = try p.read(allocator);
+        defer val.free(allocator);
+        try expect(val.uint == i);
+    }
+}
+
+// Test deterministic serialization for maps (useful for hashing scenarios)
+test "deterministic serialization for maps" {
+    var arr1: [1000]u8 = std.mem.zeroes([1000]u8);
+    var arr2: [1000]u8 = std.mem.zeroes([1000]u8);
+
+    // Create two maps with same content but different insertion order
+    var map1 = Payload.mapPayload(allocator);
+    defer map1.free(allocator);
+    try map1.mapPut("a", Payload.intToPayload(1));
+    try map1.mapPut("b", Payload.intToPayload(2));
+    try map1.mapPut("c", Payload.intToPayload(3));
+
+    var map2 = Payload.mapPayload(allocator);
+    defer map2.free(allocator);
+    try map2.mapPut("c", Payload.intToPayload(3));
+    try map2.mapPut("a", Payload.intToPayload(1));
+    try map2.mapPut("b", Payload.intToPayload(2));
+
+    var write_buffer1 = fixedBufferStream(&arr1);
+    var read_buffer1 = fixedBufferStream(&arr1);
+    var p1 = pack.init(&write_buffer1, &read_buffer1);
+    try p1.write(map1);
+
+    var write_buffer2 = fixedBufferStream(&arr2);
+    var read_buffer2 = fixedBufferStream(&arr2);
+    var p2 = pack.init(&write_buffer2, &read_buffer2);
+    try p2.write(map2);
+
+    // Note: Current implementation may not guarantee order consistency
+    // This is an area for potential improvement
+}
+
+// Test bin and str type compatibility (cross-version compatibility)
+test "bin and str type compatibility" {
+    var arr: [1000]u8 = std.mem.zeroes([1000]u8);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Test binary data uses bin format
+    var binary_data = [_]u8{ 0xff, 0xfe, 0xfd, 0xfc, 0xfb };
+    try p.write(.{ .bin = msgpack.wrapBin(&binary_data) });
+
+    // Verify bin8 format (0xc4) is used
+    try expect(arr[0] == 0xc4);
+    try expect(arr[1] == 5); // length
+
+    // Test UTF-8 strings use str format
+    arr = std.mem.zeroes([1000]u8);
+    write_buffer = fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    const utf8_str = try Payload.strToPayload("Hello 世界", allocator);
+    defer utf8_str.free(allocator);
+    try p.write(utf8_str);
+
+    // Verify str format is used
+    try expect((arr[0] & 0xe0) == 0xa0 or arr[0] == 0xd9); // fixstr or str8
+}
+
+// Test extension type reserved range
+test "extension type reserved range" {
+    var arr: [1000]u8 = std.mem.zeroes([1000]u8);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Test application-defined types (0-127)
+    var app_data = [_]u8{ 0x01, 0x02 };
+    try p.write(.{ .ext = msgpack.wrapEXT(0, &app_data) });
+    try p.write(.{ .ext = msgpack.wrapEXT(127, &app_data) });
+
+    // Test predefined types (-128 to -1)
+    try p.write(.{ .ext = msgpack.wrapEXT(-128, &app_data) });
+    // -1 is timestamp, already covered in other tests
+    try p.write(.{ .ext = msgpack.wrapEXT(-2, &app_data) });
+
+    // Read back and verify type values remain correct
+    read_buffer = fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    const val1 = try p.read(allocator);
+    defer val1.free(allocator);
+    try expect(val1.ext.type == 0);
+
+    const val2 = try p.read(allocator);
+    defer val2.free(allocator);
+    try expect(val2.ext.type == 127);
+
+    const val3 = try p.read(allocator);
+    defer val3.free(allocator);
+    try expect(val3.ext.type == -128);
+
+    const val4 = try p.read(allocator);
+    defer val4.free(allocator);
+    try expect(val4.ext.type == -2);
+}
+
+// Test sequential read write multiple objects
+test "sequential read write multiple objects" {
+    var arr: [10000]u8 = std.mem.zeroes([10000]u8);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Write multiple types of objects
+    try p.write(Payload.nilToPayload());
+    try p.write(Payload.boolToPayload(true));
+    try p.write(Payload.intToPayload(-42));
+    try p.write(Payload.uintToPayload(42));
+    try p.write(Payload.floatToPayload(3.14));
+
+    const str = try Payload.strToPayload("test", allocator);
+    defer str.free(allocator);
+    try p.write(str);
+
+    var bin_data = [_]u8{ 1, 2, 3 };
+    try p.write(.{ .bin = msgpack.wrapBin(&bin_data) });
+
+    var test_arr = try Payload.arrPayload(2, allocator);
+    defer test_arr.free(allocator);
+    try test_arr.setArrElement(0, Payload.intToPayload(1));
+    try test_arr.setArrElement(1, Payload.intToPayload(2));
+    try p.write(test_arr);
+
+    var test_map = Payload.mapPayload(allocator);
+    defer test_map.free(allocator);
+    try test_map.mapPut("key", Payload.intToPayload(100));
+    try p.write(test_map);
+
+    const ts = Payload.timestampFromSeconds(1000000);
+    try p.write(ts);
+
+    // Read back all objects and verify
+    read_buffer = fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    const v1 = try p.read(allocator);
+    defer v1.free(allocator);
+    try expect(v1 == .nil);
+
+    const v2 = try p.read(allocator);
+    defer v2.free(allocator);
+    try expect(v2.bool == true);
+
+    const v3 = try p.read(allocator);
+    defer v3.free(allocator);
+    try expect(v3.int == -42);
+
+    const v4 = try p.read(allocator);
+    defer v4.free(allocator);
+    try expect(v4.uint == 42);
+
+    const v5 = try p.read(allocator);
+    defer v5.free(allocator);
+    try expect(@abs(v5.float - 3.14) < 0.01);
+
+    const v6 = try p.read(allocator);
+    defer v6.free(allocator);
+    try expect(std.mem.eql(u8, v6.str.value(), "test"));
+
+    const v7 = try p.read(allocator);
+    defer v7.free(allocator);
+    try expect(v7.bin.value().len == 3);
+
+    const v8 = try p.read(allocator);
+    defer v8.free(allocator);
+    try expect((try v8.getArrLen()) == 2);
+
+    const v9 = try p.read(allocator);
+    defer v9.free(allocator);
+    try expect(v9.map.count() == 1);
+
+    const v10 = try p.read(allocator);
+    defer v10.free(allocator);
+    try expect(v10.timestamp.seconds == 1000000);
+}

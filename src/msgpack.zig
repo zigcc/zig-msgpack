@@ -20,6 +20,14 @@ const little_endian = switch (current_zig.minor) {
      else => @compileError("not support current version zig"),
 };
 
+// Constants for improved code readability
+const MAX_POSITIVE_FIXINT: u8 = 0x7f;
+const MIN_NEGATIVE_FIXINT: i8 = -32;
+const MAX_FIXSTR_LEN: u8 = 31;
+const MAX_FIXARRAY_LEN: u8 = 15;
+const MAX_FIXMAP_LEN: u8 = 15;
+const TIMESTAMP_EXT_TYPE: i8 = -1;
+
 /// the Str Type
 pub const Str = struct {
     str: []const u8,
@@ -158,15 +166,17 @@ pub const Payload = union(enum) {
         if (self.* != .map) {
             return Errors.NotMap;
         }
-        // TODO: This maybe memory leak
-        const old_key = self.map.getKey(key);
-        if (old_key) |old_key_ptr| {
-            // if the key is already in map, free the old key
-            self.map.allocator.free(old_key_ptr);
+        
+        // Check if the key already exists using getKeyPtr
+        if (self.map.getKeyPtr(key)) |existing_key| {
+            // Key exists, use the existing allocated key
+            try self.map.put(existing_key.*, val);
+        } else {
+            // Key doesn't exist, create a new key
+            const new_key = try self.map.allocator.alloc(u8, key.len);
+            @memcpy(new_key, key);
+            try self.map.put(new_key, val);
         }
-        const new_key = try self.map.allocator.alloc(u8, key.len);
-        @memcpy(new_key, key);
-        try self.map.put(new_key, val);
     }
 
     /// get a NIL payload
@@ -206,9 +216,9 @@ pub const Payload = union(enum) {
 
     /// get a str payload
     pub fn strToPayload(val: []const u8, allocator: Allocator) !Payload {
-        // alloca memory
+        // allocate memory
         const new_str = try allocator.alloc(u8, val.len);
-        // copy the val
+        // copy the value
         @memcpy(new_str, val);
         return Payload{
             .str = wrapStr(new_str),
@@ -217,9 +227,9 @@ pub const Payload = union(enum) {
 
     /// get a bin payload
     pub fn binToPayload(val: []const u8, allocator: Allocator) !Payload {
-        // alloca memory
+        // allocate memory
         const new_bin = try allocator.alloc(u8, val.len);
-        // copy the val
+        // copy the value
         @memcpy(new_bin, val);
         return Payload{
             .bin = wrapBin(new_bin),
@@ -246,9 +256,9 @@ pub const Payload = union(enum) {
 
     /// get an ext payload
     pub fn extToPayload(t: i8, data: []const u8, allocator: Allocator) !Payload {
-        // alloca memory
+        // allocate memory
         const new_data = try allocator.alloc(u8, data.len);
-        // copy the val
+        // copy the value
         @memcpy(new_data, data);
         return Payload{
             .ext = wrapEXT(t, new_data),
@@ -269,7 +279,7 @@ pub const Payload = union(enum) {
         };
     }
 
-    /// free the all memeory for this payload and sub payloads
+    /// free all memory for this payload and sub payloads
     /// the allocator is payload's allocator
     pub fn free(self: Payload, allocator: Allocator) void {
         switch (self) {
@@ -310,8 +320,8 @@ pub const Payload = union(enum) {
         }
     }
 
-    /// get a i64 value from payload
-    /// Note: if the payload is not a int or the value is too large, it will return MsGPackError.INVALID_TYPE
+    /// get an i64 value from payload
+    /// Note: if the payload is not an int or the value is too large, it will return MsGPackError.INVALID_TYPE
     pub fn getInt(self: Payload) !i64 {
         return switch (self) {
             .int => |val| val,
@@ -319,14 +329,14 @@ pub const Payload = union(enum) {
                 if (val <= std.math.maxInt(i64)) {
                     return @intCast(val);
                 }
-                // TODO: we can not return this error
+                // Value exceeds i64 range
                 return MsGPackError.INVALID_TYPE;
             },
             else => return MsGPackError.INVALID_TYPE,
         };
     }
 
-    /// get a u64 value from payload
+    /// get an u64 value from payload
     /// Note: if the payload is not a uint or the value is negative, it will return MsGPackError.INVALID_TYPE
     pub fn getUint(self: Payload) !u64 {
         return switch (self) {
@@ -334,7 +344,7 @@ pub const Payload = union(enum) {
                 if (val >= 0) {
                     return @intCast(val);
                 }
-                // TODO: we can not return this error
+                // Negative values cannot be converted to u64
                 return MsGPackError.INVALID_TYPE;
             },
             .uint => |val| val,
@@ -478,7 +488,7 @@ pub fn Pack(
 
         /// write positive fix int
         fn writePfixInt(self: Self, val: u8) !void {
-            if (val <= 0x7f) {
+            if (val <= MAX_POSITIVE_FIXINT) {
                 try self.writeByte(val);
             } else {
                 return MsGPackError.INPUT_VALUE_TOO_LARGE;
@@ -536,7 +546,7 @@ pub fn Pack(
 
         /// write negative fix int
         fn writeNfixInt(self: Self, val: i8) !void {
-            if (val >= -32 and val <= -1) {
+            if (val >= MIN_NEGATIVE_FIXINT and val <= -1) {
                 try self.writeByte(@bitCast(val));
             } else {
                 return MsGPackError.INPUT_VALUE_TOO_LARGE;
@@ -594,7 +604,7 @@ pub fn Pack(
 
         /// write uint
         fn writeUint(self: Self, val: u64) !void {
-            if (val <= 0x7f) {
+            if (val <= MAX_POSITIVE_FIXINT) {
                 try self.writePfixInt(@intCast(val));
             } else if (val <= 0xff) {
                 try self.writeU8(@intCast(val));
@@ -611,7 +621,7 @@ pub fn Pack(
         fn writeInt(self: Self, val: i64) !void {
             if (val >= 0) {
                 try self.writeUint(@intCast(val));
-            } else if (val >= -32) {
+            } else if (val >= MIN_NEGATIVE_FIXINT) {
                 try self.writeNfixInt(@intCast(val));
             } else if (val >= -128) {
                 try self.writeI8(@intCast(val));
@@ -672,7 +682,7 @@ pub fn Pack(
         /// write fix str
         fn writeFixStr(self: Self, str: []const u8) !void {
             const len = str.len;
-            if (len > 0x1f) {
+            if (len > MAX_FIXSTR_LEN) {
                 return MsGPackError.STR_DATA_LENGTH_TOO_LONG;
             }
             const header: u8 = @intFromEnum(Markers.FIXSTR) + @as(u8, @intCast(len));
@@ -738,7 +748,7 @@ pub fn Pack(
         /// write str
         fn writeStr(self: Self, str: Str) !void {
             const len = str.value().len;
-            if (len <= 0x1f) {
+            if (len <= MAX_FIXSTR_LEN) {
                 try self.writeFixStr(str.value());
             } else if (len <= 0xff) {
                 try self.writeStr8(str.value());
@@ -897,13 +907,12 @@ pub fn Pack(
         /// write timestamp
         fn writeTimestamp(self: Self, timestamp: Timestamp) !void {
             // According to MessagePack spec, timestamp uses extension type -1
-            const TIMESTAMP_TYPE: i8 = -1;
 
             // timestamp 32 format: seconds fit in 32-bit unsigned int and nanoseconds is 0
             if (timestamp.nanoseconds == 0 and timestamp.seconds >= 0 and timestamp.seconds <= 0xffffffff) {
                 var data: [4]u8 = undefined;
                 std.mem.writeInt(u32, &data, @intCast(timestamp.seconds), big_endian);
-                const ext = EXT{ .type = TIMESTAMP_TYPE, .data = &data };
+                const ext = EXT{ .type = TIMESTAMP_EXT_TYPE, .data = &data };
                 try self.writeExt(ext);
                 return;
             }
@@ -913,7 +922,7 @@ pub fn Pack(
                 const data64: u64 = (@as(u64, timestamp.nanoseconds) << 34) | @as(u64, @intCast(timestamp.seconds));
                 var data: [8]u8 = undefined;
                 std.mem.writeInt(u64, &data, data64, big_endian);
-                const ext = EXT{ .type = TIMESTAMP_TYPE, .data = &data };
+                const ext = EXT{ .type = TIMESTAMP_EXT_TYPE, .data = &data };
                 try self.writeExt(ext);
                 return;
             }
@@ -923,7 +932,7 @@ pub fn Pack(
                 var data: [12]u8 = undefined;
                 std.mem.writeInt(u32, data[0..4], timestamp.nanoseconds, big_endian);
                 std.mem.writeInt(i64, data[4..12], timestamp.seconds, big_endian);
-                const ext = EXT{ .type = TIMESTAMP_TYPE, .data = &data };
+                const ext = EXT{ .type = TIMESTAMP_EXT_TYPE, .data = &data };
                 try self.writeExt(ext);
                 return;
             }
@@ -957,7 +966,7 @@ pub fn Pack(
                 },
                 .arr => |arr| {
                     const len = arr.len;
-                    if (len <= 0xf) {
+                    if (len <= MAX_FIXARRAY_LEN) {
                         const header: u8 = @intFromEnum(Markers.FIXARRAY) + @as(u8, @intCast(len));
                         try self.writeU8Value(header);
                     } else if (len <= 0xffff) {
@@ -975,7 +984,7 @@ pub fn Pack(
                 },
                 .map => |map| {
                     const len = map.count();
-                    if (len <= 0xf) {
+                    if (len <= MAX_FIXMAP_LEN) {
                         const header: u8 = @intFromEnum(Markers.FIXMAP) + @as(u8, @intCast(len));
                         try self.writeU8Value(header);
                     } else if (len <= 0xffff) {
@@ -1373,8 +1382,6 @@ pub fn Pack(
 
         /// read ext value or timestamp if it's timestamp type (-1)
         fn readExtValueOrTimestamp(self: Self, marker: Markers, allocator: Allocator) !Payload {
-            const TIMESTAMP_TYPE: i8 = -1;
-
             // First, check if this could be a timestamp format
             if (marker == .FIXEXT4 or marker == .FIXEXT8 or marker == .EXT8) {
                 // Read and check length for EXT8
@@ -1397,7 +1404,7 @@ pub fn Pack(
                 // Read the type
                 const ext_type = try self.readI8Value();
 
-                if (ext_type == TIMESTAMP_TYPE) {
+                if (ext_type == TIMESTAMP_EXT_TYPE) {
                     // This is a timestamp
                     if (marker == .FIXEXT4) {
                         // timestamp 32
@@ -1430,13 +1437,11 @@ pub fn Pack(
 
         /// try to read timestamp from ext data, return error if not timestamp
         fn tryReadTimestamp(self: Self, marker: Markers, _: Allocator) !Timestamp {
-            const TIMESTAMP_TYPE: i8 = -1;
-
             switch (marker) {
                 .FIXEXT4 => {
                     // timestamp 32 format
                     const ext_type = try self.readI8Value();
-                    if (ext_type != TIMESTAMP_TYPE) {
+                    if (ext_type != TIMESTAMP_EXT_TYPE) {
                         return MsGPackError.INVALID_TYPE;
                     }
                     const seconds = try self.readU32Value();
@@ -1445,7 +1450,7 @@ pub fn Pack(
                 .FIXEXT8 => {
                     // timestamp 64 format
                     const ext_type = try self.readI8Value();
-                    if (ext_type != TIMESTAMP_TYPE) {
+                    if (ext_type != TIMESTAMP_EXT_TYPE) {
                         return MsGPackError.INVALID_TYPE;
                     }
                     const data64 = try self.readU64Value();
@@ -1460,7 +1465,7 @@ pub fn Pack(
                         return MsGPackError.INVALID_TYPE;
                     }
                     const ext_type = try self.readI8Value();
-                    if (ext_type != TIMESTAMP_TYPE) {
+                    if (ext_type != TIMESTAMP_EXT_TYPE) {
                         return MsGPackError.INVALID_TYPE;
                     }
                     const nanoseconds = try self.readU32Value();
@@ -1475,13 +1480,11 @@ pub fn Pack(
 
         /// read timestamp from ext data
         fn readTimestamp(self: Self, marker: Markers, _: Allocator) !Timestamp {
-            const TIMESTAMP_TYPE: i8 = -1;
-
             switch (marker) {
                 .FIXEXT4 => {
                     // timestamp 32 format
                     const ext_type = try self.readI8Value();
-                    if (ext_type != TIMESTAMP_TYPE) {
+                    if (ext_type != TIMESTAMP_EXT_TYPE) {
                         return MsGPackError.INVALID_TYPE;
                     }
                     const seconds = try self.readU32Value();
@@ -1490,7 +1493,7 @@ pub fn Pack(
                 .FIXEXT8 => {
                     // timestamp 64 format
                     const ext_type = try self.readI8Value();
-                    if (ext_type != TIMESTAMP_TYPE) {
+                    if (ext_type != TIMESTAMP_EXT_TYPE) {
                         return MsGPackError.INVALID_TYPE;
                     }
                     const data64 = try self.readU64Value();
@@ -1505,7 +1508,7 @@ pub fn Pack(
                         return MsGPackError.INVALID_TYPE;
                     }
                     const ext_type = try self.readI8Value();
-                    if (ext_type != TIMESTAMP_TYPE) {
+                    if (ext_type != TIMESTAMP_EXT_TYPE) {
                         return MsGPackError.INVALID_TYPE;
                     }
                     const nanoseconds = try self.readU32Value();
