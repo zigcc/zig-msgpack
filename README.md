@@ -23,9 +23,10 @@ An article introducing it: [Zig Msgpack](https://blog.nvimer.org/2025/09/20/zig-
 | 0.13 and older | 0.0.6 | Legacy support |
 | 0.14.0 | Current | ✅ Fully supported |
 | 0.15.x | Current | ✅ Fully supported |
-| 0.16.0-dev (nightly) | Current | ✅ Fully supported |
+| 0.16.0-dev (nightly) | Current | ⚠️ Supported with compatibility layer |
 
 > **Note:** For Zig 0.13 and older versions, please use version `0.0.6` of this library.
+> **Note:** Zig 0.16+ removes `std.io.FixedBufferStream`, but this library provides a compatibility layer to maintain the same API across all supported versions.
 
 For Zig `0.14.0`, `0.15.x`, and `0.16.0-dev`, follow these steps:
 
@@ -75,13 +76,18 @@ const msgpack = @import("msgpack");
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
     var buffer: [1024]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
+    
+    // Use the compatibility layer for cross-version support
+    const compat = msgpack.compat;
+    var write_buffer = compat.fixedBufferStream(&buffer);
+    var read_buffer = compat.fixedBufferStream(&buffer);
 
+    const BufferType = compat.BufferStream;
     var packer = msgpack.Pack(
-        *std.io.FixedBufferStream([]u8), *std.io.FixedBufferStream([]u8),
-        std.io.FixedBufferStream([]u8).WriteError, std.io.FixedBufferStream([]u8).ReadError,
-        std.io.FixedBufferStream([]u8).write, std.io.FixedBufferStream([]u8).read,
-    ).init(&stream, &stream);
+        *BufferType, *BufferType,
+        BufferType.WriteError, BufferType.ReadError,
+        BufferType.write, BufferType.read,
+    ).init(&write_buffer, &read_buffer);
 
     // Create and encode data
     var map = msgpack.Payload.mapPayload(allocator);
@@ -91,7 +97,7 @@ pub fn main() !void {
     try packer.write(map);
 
     // Decode
-    stream.pos = 0;
+    read_buffer.pos = 0;
     const decoded = try packer.read(allocator);
     defer decoded.free(allocator);
     
@@ -133,7 +139,7 @@ const ts2 = msgpack.Payload.timestampToPayload(1234567890, 123456789);
 
 // Write and read timestamp
 try packer.write(ts2);
-stream.pos = 0;
+read_buffer.pos = 0;
 const decoded_ts = try packer.read(allocator);
 defer decoded_ts.free(allocator);
 
@@ -179,6 +185,17 @@ To run the unit tests for this library, use the following command:
 
 ```sh
 zig build test
+
+# For more detailed test output
+zig build test --summary all
+```
+
+## Documentation
+
+To generate documentation for this library:
+
+```sh
+zig build docs
 ```
 
 ## Contributing

@@ -1691,3 +1691,6 @@ pub fn Pack(
         }
     };
 }
+
+// Export compatibility layer for cross-version support
+pub const compat = @import("compat.zig");

@@ -23,9 +23,10 @@ Zig 编程语言的 MessagePack 实现。此库提供了一种简单高效的方
 | 0.13 及更早版本 | 0.0.6 | 旧版支持 |
 | 0.14.0 | 当前版本 | ✅ 完全支持 |
 | 0.15.x | 当前版本 | ✅ 完全支持 |
-| 0.16.0-dev (nightly) | 当前版本 | ✅ 完全支持 |
+| 0.16.0-dev (nightly) | 当前版本 | ⚠️ 通过兼容层支持 |
 
 > **注意**: 对于 Zig 0.13 及更早版本，请使用本库的 `0.0.6` 版本。
+> **注意**: Zig 0.16+ 移除了 `std.io.FixedBufferStream`，但本库提供了兼容层以在所有支持的版本中维持相同的 API。
 
 对于 Zig `0.14.0`、`0.15.x` 和 `0.16.0-dev` 版本，请按以下步骤操作：
 
@@ -75,13 +76,18 @@ const msgpack = @import("msgpack");
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
     var buffer: [1024]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
+    
+    // 使用兼容层实现跨版本支持
+    const compat = msgpack.compat;
+    var write_buffer = compat.fixedBufferStream(&buffer);
+    var read_buffer = compat.fixedBufferStream(&buffer);
 
+    const BufferType = compat.BufferStream;
     var packer = msgpack.Pack(
-        *std.io.FixedBufferStream([]u8), *std.io.FixedBufferStream([]u8),
-        std.io.FixedBufferStream([]u8).WriteError, std.io.FixedBufferStream([]u8).ReadError,
-        std.io.FixedBufferStream([]u8).write, std.io.FixedBufferStream([]u8).read,
-    ).init(&stream, &stream);
+        *BufferType, *BufferType,
+        BufferType.WriteError, BufferType.ReadError,
+        BufferType.write, BufferType.read,
+    ).init(&write_buffer, &read_buffer);
 
     // 创建和编码数据
     var map = msgpack.Payload.mapPayload(allocator);
@@ -91,7 +97,7 @@ pub fn main() !void {
     try packer.write(map);
 
     // 解码
-    stream.pos = 0;
+    read_buffer.pos = 0;
     const decoded = try packer.read(allocator);
     defer decoded.free(allocator);
     
@@ -133,7 +139,7 @@ const ts2 = msgpack.Payload.timestampToPayload(1234567890, 123456789);
 
 // 写入和读取时间戳
 try packer.write(ts2);
-stream.pos = 0;
+read_buffer.pos = 0;
 const decoded_ts = try packer.read(allocator);
 defer decoded_ts.free(allocator);
 
@@ -179,6 +185,17 @@ const uint_result = int_payload.getUint() catch |err| switch (err) {
 
 ```sh
 zig build test
+
+# 获取更详细的测试输出
+zig build test --summary all
+```
+
+## 文档
+
+要生成此库的文档：
+
+```sh
+zig build docs
 ```
 
 ## 贡献
