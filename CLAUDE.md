@@ -21,9 +21,8 @@ zig build docs
 ```
 
 ### Zig Version Compatibility
-- **Currently supports**: Zig 0.14.0 and 0.15.x
+- **Currently supports**: Zig 0.14.x and 0.15.x
 - **Partial support**: Zig 0.16 (nightly) - may have compatibility issues
-- **Legacy support**: Zig 0.11-0.13 (use library version 0.0.6 for Zig 0.13 and older)
 - Code uses version detection (`builtin.zig_version.minor`) to handle API differences:
   - Endianness enum changes (`.Big`/`.Little` vs `.big`/`.little`)
   - ArrayList API changes in Zig 0.15+ (allocator parameter required for methods)

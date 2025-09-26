@@ -5,20 +5,15 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 const current_zig = builtin.zig_version;
+
+comptime {
+    if (current_zig.minor < 14) {
+        @compileError("zig-msgpack requires Zig 0.14 or newer");
+    }
+}
 const Allocator = std.mem.Allocator;
 const comptimePrint = std.fmt.comptimePrint;
-const native_endian = builtin.cpu.arch.endian();
-
-const big_endian = switch (current_zig.minor) {
-     11 => std.builtin.Endian.Big,
-     12, 13, 14, 15, 16 => std.builtin.Endian.big,
-     else => @compileError("not support current version zig"),
-};
-const little_endian = switch (current_zig.minor) {
-     11 => std.builtin.Endian.Little,
-     12, 13, 14, 15, 16 => std.builtin.Endian.little,
-     else => @compileError("not support current version zig"),
-};
+const big_endian = std.builtin.Endian.big;
 
 // Constants for improved code readability
 const MAX_POSITIVE_FIXINT: u8 = 0x7f;
@@ -166,17 +161,17 @@ pub const Payload = union(enum) {
         if (self.* != .map) {
             return Errors.NotMap;
         }
-        
-        // Check if the key already exists using getKeyPtr
-        if (self.map.getKeyPtr(key)) |existing_key| {
-            // Key exists, use the existing allocated key
-            try self.map.put(existing_key.*, val);
+
+        var entry = try self.map.getOrPut(key);
+        if (entry.found_existing) {
+            entry.value_ptr.free(self.map.allocator);
         } else {
-            // Key doesn't exist, create a new key
             const new_key = try self.map.allocator.alloc(u8, key.len);
             @memcpy(new_key, key);
-            try self.map.put(new_key, val);
+            entry.key_ptr.* = new_key;
         }
+
+        entry.value_ptr.* = val;
     }
 
     /// get a NIL payload
@@ -1391,8 +1386,7 @@ pub fn Pack(
                     if (actual_len != 12) {
                         // Not timestamp 96, read as regular EXT
                         const ext_type = try self.readI8Value();
-                        const ext_data = try allocator.alloc(u8, actual_len);
-                        _ = try self.readFrom(ext_data);
+                        const ext_data = try self.readData(allocator, actual_len);
                         return Payload{ .ext = EXT{ .type = ext_type, .data = ext_data } };
                     }
                 } else if (marker == .FIXEXT4) {
@@ -1424,8 +1418,7 @@ pub fn Pack(
                     }
                 } else {
                     // Not a timestamp, read as regular EXT
-                    const ext_data = try allocator.alloc(u8, actual_len);
-                    _ = try self.readFrom(ext_data);
+                    const ext_data = try self.readData(allocator, actual_len);
                     return Payload{ .ext = EXT{ .type = ext_type, .data = ext_data } };
                 }
             }
@@ -1433,92 +1426,6 @@ pub fn Pack(
             // Regular EXT processing
             const val = try self.readExtValue(marker, allocator);
             return Payload{ .ext = val };
-        }
-
-        /// try to read timestamp from ext data, return error if not timestamp
-        fn tryReadTimestamp(self: Self, marker: Markers, _: Allocator) !Timestamp {
-            switch (marker) {
-                .FIXEXT4 => {
-                    // timestamp 32 format
-                    const ext_type = try self.readI8Value();
-                    if (ext_type != TIMESTAMP_EXT_TYPE) {
-                        return MsGPackError.INVALID_TYPE;
-                    }
-                    const seconds = try self.readU32Value();
-                    return Timestamp.new(@intCast(seconds), 0);
-                },
-                .FIXEXT8 => {
-                    // timestamp 64 format
-                    const ext_type = try self.readI8Value();
-                    if (ext_type != TIMESTAMP_EXT_TYPE) {
-                        return MsGPackError.INVALID_TYPE;
-                    }
-                    const data64 = try self.readU64Value();
-                    const nanoseconds: u32 = @intCast(data64 >> 34);
-                    const seconds: i64 = @intCast(data64 & 0x3ffffffff);
-                    return Timestamp.new(seconds, nanoseconds);
-                },
-                .EXT8 => {
-                    // timestamp 96 format (length should be 12)
-                    const len = try self.readV8Value();
-                    if (len != 12) {
-                        return MsGPackError.INVALID_TYPE;
-                    }
-                    const ext_type = try self.readI8Value();
-                    if (ext_type != TIMESTAMP_EXT_TYPE) {
-                        return MsGPackError.INVALID_TYPE;
-                    }
-                    const nanoseconds = try self.readU32Value();
-                    const seconds = try self.readI64Value();
-                    return Timestamp.new(seconds, nanoseconds);
-                },
-                else => {
-                    return MsGPackError.INVALID_TYPE;
-                },
-            }
-        }
-
-        /// read timestamp from ext data
-        fn readTimestamp(self: Self, marker: Markers, _: Allocator) !Timestamp {
-            switch (marker) {
-                .FIXEXT4 => {
-                    // timestamp 32 format
-                    const ext_type = try self.readI8Value();
-                    if (ext_type != TIMESTAMP_EXT_TYPE) {
-                        return MsGPackError.INVALID_TYPE;
-                    }
-                    const seconds = try self.readU32Value();
-                    return Timestamp.new(@intCast(seconds), 0);
-                },
-                .FIXEXT8 => {
-                    // timestamp 64 format
-                    const ext_type = try self.readI8Value();
-                    if (ext_type != TIMESTAMP_EXT_TYPE) {
-                        return MsGPackError.INVALID_TYPE;
-                    }
-                    const data64 = try self.readU64Value();
-                    const nanoseconds: u32 = @intCast(data64 >> 34);
-                    const seconds: i64 = @intCast(data64 & 0x3ffffffff);
-                    return Timestamp.new(seconds, nanoseconds);
-                },
-                .EXT8 => {
-                    // timestamp 96 format (length should be 12)
-                    const len = try self.readV8Value();
-                    if (len != 12) {
-                        return MsGPackError.INVALID_TYPE;
-                    }
-                    const ext_type = try self.readI8Value();
-                    if (ext_type != TIMESTAMP_EXT_TYPE) {
-                        return MsGPackError.INVALID_TYPE;
-                    }
-                    const nanoseconds = try self.readU32Value();
-                    const seconds = try self.readI64Value();
-                    return Timestamp.new(seconds, nanoseconds);
-                },
-                else => {
-                    return MsGPackError.INVALID_TYPE;
-                },
-            }
         }
 
         fn readExtValue(self: Self, marker: Markers, allocator: Allocator) !EXT {

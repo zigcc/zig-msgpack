@@ -5,6 +5,7 @@ const compat = msgpack.compat;
 const allocator = std.testing.allocator;
 const expect = std.testing.expect;
 const Payload = msgpack.Payload;
+const expectError = std.testing.expectError;
 
 fn u8eql(a: []const u8, b: []const u8) bool {
     return std.mem.eql(u8, a, b);
@@ -652,6 +653,21 @@ test "map operations" {
     try expect(new_value.?.int == 100);
 }
 
+test "mapPut replaces value without leaking" {
+    var test_map = Payload.mapPayload(allocator);
+    defer test_map.free(allocator);
+
+    const first_value = try Payload.strToPayload("hello", allocator);
+    errdefer first_value.free(allocator);
+    try test_map.mapPut("key", first_value);
+
+    try test_map.mapPut("key", Payload.intToPayload(42));
+
+    const value = try test_map.mapGet("key");
+    try expect(value != null);
+    try expect(value.?.int == 42);
+}
+
 // Test array operations
 test "array operations" {
     var test_arr = try Payload.arrPayload(3, allocator);
@@ -1243,6 +1259,26 @@ test "edge cases and error conditions" {
     try expect((try val.getArrElement(0)) == .nil);
     try expect((try val.getArrElement(1)).bool == true);
     try expect(try (try val.getArrElement(2)).getInt() == 42);
+}
+
+test "truncated string read returns error" {
+    var read_bytes = [_]u8{ 0xd9, 0x04, 0x61, 0x62 };
+    var write_storage = std.mem.zeroes([1]u8);
+    var write_buffer = fixedBufferStream(&write_storage);
+    var read_buffer = fixedBufferStream(&read_bytes);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    try expectError(msgpack.MsGPackError.LENGTH_READING, p.read(allocator));
+}
+
+test "truncated ext read returns error" {
+    var read_bytes = [_]u8{ 0xd6, 0x01, 0xaa, 0xbb };
+    var write_storage = std.mem.zeroes([1]u8);
+    var write_buffer = fixedBufferStream(&write_storage);
+    var read_buffer = fixedBufferStream(&read_bytes);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    try expectError(msgpack.MsGPackError.LENGTH_READING, p.read(allocator));
 }
 
 // Test EXT with negative type IDs

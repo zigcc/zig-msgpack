@@ -20,12 +20,11 @@ An article introducing it: [Zig Msgpack](https://blog.nvimer.org/2025/09/20/zig-
 
 | Zig Version | Library Version | Status |
 |-------------|----------------|---------|
-| 0.13 and older | 0.0.6 | Legacy support |
-| 0.14.0 | Current | ✅ Fully supported |
+| 0.14.x | Current | ✅ Fully supported |
 | 0.15.x | Current | ✅ Fully supported |
 | 0.16.0-dev (nightly) | Current | ✅ Supported with compatibility layer |
 
-> **Note:** For Zig 0.13 and older versions, please use version `0.0.6` of this library.
+> **Note:** zig-msgpack requires Zig 0.14 or newer.
 > **Note:** Zig 0.16+ removes `std.io.FixedBufferStream`, but this library provides a compatibility layer to maintain the same API across all supported versions.
 
 For Zig `0.14.0`, `0.15.x`, and `0.16.0-dev`, follow these steps:
@@ -189,6 +188,8 @@ zig build test
 # For more detailed test output
 zig build test --summary all
 ```
+
+> **Note:** Running `zig test src/test.zig` directly is not supported because the module graph is wired through the build system. Always use the `zig build test` command above.
 
 ## Documentation
 
