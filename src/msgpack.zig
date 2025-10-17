@@ -12,13 +12,44 @@ const native_endian = builtin.cpu.arch.endian();
 const big_endian = std.builtin.Endian.big;
 const little_endian = std.builtin.Endian.little;
 
-// Constants for improved code readability
+// Basic format boundary constants
 const MAX_POSITIVE_FIXINT: u8 = 0x7f;
 const MIN_NEGATIVE_FIXINT: i8 = -32;
 const MAX_FIXSTR_LEN: u8 = 31;
 const MAX_FIXARRAY_LEN: u8 = 15;
 const MAX_FIXMAP_LEN: u8 = 15;
 const TIMESTAMP_EXT_TYPE: i8 = -1;
+
+// Integer boundary constants
+const MAX_UINT8: u64 = 0xff;
+const MAX_UINT16: u64 = 0xffff;
+const MAX_UINT32: u64 = 0xffff_ffff;
+const MIN_INT8: i64 = -128;
+const MIN_INT16: i64 = -32768;
+const MIN_INT32: i64 = -2147483648;
+
+// Fixed extension type lengths
+const FIXEXT1_LEN: usize = 1;
+const FIXEXT2_LEN: usize = 2;
+const FIXEXT4_LEN: usize = 4;
+const FIXEXT8_LEN: usize = 8;
+const FIXEXT16_LEN: usize = 16;
+
+// Timestamp format constants
+const TIMESTAMP32_DATA_LEN: usize = 4;
+const TIMESTAMP64_DATA_LEN: usize = 8;
+const TIMESTAMP96_DATA_LEN: usize = 12;
+const TIMESTAMP64_SECONDS_BITS: u6 = 34;
+const TIMESTAMP64_SECONDS_MASK: u64 = 0x3ffffffff;
+const MAX_NANOSECONDS: u32 = 999_999_999;
+const NANOSECONDS_PER_SECOND: f64 = 1_000_000_000.0;
+
+// Marker value offsets and masks
+const FIXARRAY_BASE: u8 = 0x90;
+const FIXMAP_BASE: u8 = 0x80;
+const FIXSTR_BASE: u8 = 0xa0;
+const FIXSTR_MASK: u8 = 0x1f;
+const FIXSTR_TYPE_MASK: u8 = 0xe0;
 
 /// the Str Type
 pub const Str = struct {
@@ -92,7 +123,7 @@ pub const Timestamp = struct {
 
     /// Get total seconds as f64 (including fractional nanoseconds)
     pub fn toFloat(self: Timestamp) f64 {
-        return @as(f64, @floatFromInt(self.seconds)) + @as(f64, @floatFromInt(self.nanoseconds)) / 1_000_000_000.0;
+        return @as(f64, @floatFromInt(self.seconds)) + @as(f64, @floatFromInt(self.nanoseconds)) / NANOSECONDS_PER_SECOND;
     }
 };
 
@@ -598,11 +629,11 @@ pub fn Pack(
         fn writeUint(self: Self, val: u64) !void {
             if (val <= MAX_POSITIVE_FIXINT) {
                 try self.writePfixInt(@intCast(val));
-            } else if (val <= 0xff) {
+            } else if (val <= MAX_UINT8) {
                 try self.writeU8(@intCast(val));
-            } else if (val <= 0xffff) {
+            } else if (val <= MAX_UINT16) {
                 try self.writeU16(@intCast(val));
-            } else if (val <= 0xffffffff) {
+            } else if (val <= MAX_UINT32) {
                 try self.writeU32(@intCast(val));
             } else {
                 try self.writeU64(val);
@@ -615,11 +646,11 @@ pub fn Pack(
                 try self.writeUint(@intCast(val));
             } else if (val >= MIN_NEGATIVE_FIXINT) {
                 try self.writeNfixInt(@intCast(val));
-            } else if (val >= -128) {
+            } else if (val >= MIN_INT8) {
                 try self.writeI8(@intCast(val));
-            } else if (val >= -32768) {
+            } else if (val >= MIN_INT16) {
                 try self.writeI16(@intCast(val));
-            } else if (val >= -2147483648) {
+            } else if (val >= MIN_INT32) {
                 try self.writeI32(@intCast(val));
             } else {
                 try self.writeI64(val);
@@ -692,7 +723,7 @@ pub fn Pack(
         /// write str8
         fn writeStr8(self: Self, str: []const u8) !void {
             const len = str.len;
-            if (len > 0xff) {
+            if (len > MAX_UINT8) {
                 return MsGPackError.STR_DATA_LENGTH_TOO_LONG;
             }
 
@@ -710,7 +741,7 @@ pub fn Pack(
         /// write str16
         fn writeStr16(self: Self, str: []const u8) !void {
             const len = str.len;
-            if (len > 0xffff) {
+            if (len > MAX_UINT16) {
                 return MsGPackError.STR_DATA_LENGTH_TOO_LONG;
             }
 
@@ -729,7 +760,7 @@ pub fn Pack(
         /// write str32
         fn writeStr32(self: Self, str: []const u8) !void {
             const len = str.len;
-            if (len > 0xffff_ffff) {
+            if (len > MAX_UINT32) {
                 return MsGPackError.STR_DATA_LENGTH_TOO_LONG;
             }
 
@@ -742,9 +773,9 @@ pub fn Pack(
             const len = str.value().len;
             if (len <= MAX_FIXSTR_LEN) {
                 try self.writeFixStr(str.value());
-            } else if (len <= 0xff) {
+            } else if (len <= MAX_UINT8) {
                 try self.writeStr8(str.value());
-            } else if (len <= 0xffff) {
+            } else if (len <= MAX_UINT16) {
                 try self.writeStr16(str.value());
             } else {
                 try self.writeStr32(str.value());
@@ -754,7 +785,7 @@ pub fn Pack(
         /// write bin8
         fn writeBin8(self: Self, bin: []const u8) !void {
             const len = bin.len;
-            if (len > 0xff) {
+            if (len > MAX_UINT8) {
                 return MsGPackError.BIN_DATA_LENGTH_TOO_LONG;
             }
 
@@ -766,7 +797,7 @@ pub fn Pack(
         /// write bin16
         fn writeBin16(self: Self, bin: []const u8) !void {
             const len = bin.len;
-            if (len > 0xffff) {
+            if (len > MAX_UINT16) {
                 return MsGPackError.BIN_DATA_LENGTH_TOO_LONG;
             }
 
@@ -778,7 +809,7 @@ pub fn Pack(
         /// write bin32
         fn writeBin32(self: Self, bin: []const u8) !void {
             const len = bin.len;
-            if (len > 0xffff_ffff) {
+            if (len > MAX_UINT32) {
                 return MsGPackError.BIN_DATA_LENGTH_TOO_LONG;
             }
 
@@ -790,9 +821,9 @@ pub fn Pack(
         /// write bin
         fn writeBin(self: Self, bin: Bin) !void {
             const len = bin.value().len;
-            if (len <= 0xff) {
+            if (len <= MAX_UINT8) {
                 try self.writeBin8(bin.value());
-            } else if (len <= 0xffff) {
+            } else if (len <= MAX_UINT16) {
                 try self.writeBin16(bin.value());
             } else {
                 try self.writeBin32(bin.value());
@@ -805,7 +836,7 @@ pub fn Pack(
         }
 
         fn writeFixExt1(self: Self, ext: EXT) !void {
-            if (ext.data.len != 1) {
+            if (ext.data.len != FIXEXT1_LEN) {
                 return MsGPackError.EXT_TYPE_LENGTH;
             }
             try self.writeTypeMarker(.FIXEXT1);
@@ -814,7 +845,7 @@ pub fn Pack(
         }
 
         fn writeFixExt2(self: Self, ext: EXT) !void {
-            if (ext.data.len != 2) {
+            if (ext.data.len != FIXEXT2_LEN) {
                 return MsGPackError.EXT_TYPE_LENGTH;
             }
             try self.writeTypeMarker(.FIXEXT2);
@@ -822,7 +853,7 @@ pub fn Pack(
         }
 
         fn writeFixExt4(self: Self, ext: EXT) !void {
-            if (ext.data.len != 4) {
+            if (ext.data.len != FIXEXT4_LEN) {
                 return MsGPackError.EXT_TYPE_LENGTH;
             }
             try self.writeTypeMarker(.FIXEXT4);
@@ -830,7 +861,7 @@ pub fn Pack(
         }
 
         fn writeFixExt8(self: Self, ext: EXT) !void {
-            if (ext.data.len != 8) {
+            if (ext.data.len != FIXEXT8_LEN) {
                 return MsGPackError.EXT_TYPE_LENGTH;
             }
             try self.writeTypeMarker(.FIXEXT8);
@@ -838,7 +869,7 @@ pub fn Pack(
         }
 
         fn writeFixExt16(self: Self, ext: EXT) !void {
-            if (ext.data.len != 16) {
+            if (ext.data.len != FIXEXT16_LEN) {
                 return MsGPackError.EXT_TYPE_LENGTH;
             }
             try self.writeTypeMarker(.FIXEXT16);
@@ -875,15 +906,15 @@ pub fn Pack(
 
         fn writeExt(self: Self, ext: EXT) !void {
             const len = ext.data.len;
-            if (len == 1) {
+            if (len == FIXEXT1_LEN) {
                 try self.writeFixExt1(ext);
-            } else if (len == 2) {
+            } else if (len == FIXEXT2_LEN) {
                 try self.writeFixExt2(ext);
-            } else if (len == 4) {
+            } else if (len == FIXEXT4_LEN) {
                 try self.writeFixExt4(ext);
-            } else if (len == 8) {
+            } else if (len == FIXEXT8_LEN) {
                 try self.writeFixExt8(ext);
-            } else if (len == 16) {
+            } else if (len == FIXEXT16_LEN) {
                 try self.writeFixExt16(ext);
             } else if (len <= std.math.maxInt(u8)) {
                 try self.writeExt8(ext);
@@ -901,8 +932,8 @@ pub fn Pack(
             // According to MessagePack spec, timestamp uses extension type -1
 
             // timestamp 32 format: seconds fit in 32-bit unsigned int and nanoseconds is 0
-            if (timestamp.nanoseconds == 0 and timestamp.seconds >= 0 and timestamp.seconds <= 0xffffffff) {
-                var data: [4]u8 = undefined;
+            if (timestamp.nanoseconds == 0 and timestamp.seconds >= 0 and timestamp.seconds <= MAX_UINT32) {
+                var data: [TIMESTAMP32_DATA_LEN]u8 = undefined;
                 std.mem.writeInt(u32, &data, @intCast(timestamp.seconds), big_endian);
                 const ext = EXT{ .type = TIMESTAMP_EXT_TYPE, .data = &data };
                 try self.writeExt(ext);
@@ -910,9 +941,9 @@ pub fn Pack(
             }
 
             // timestamp 64 format: seconds fit in 34-bit and nanoseconds <= 999999999
-            if (timestamp.seconds >= 0 and (timestamp.seconds >> 34) == 0 and timestamp.nanoseconds <= 999999999) {
-                const data64: u64 = (@as(u64, timestamp.nanoseconds) << 34) | @as(u64, @intCast(timestamp.seconds));
-                var data: [8]u8 = undefined;
+            if (timestamp.seconds >= 0 and (timestamp.seconds >> TIMESTAMP64_SECONDS_BITS) == 0 and timestamp.nanoseconds <= MAX_NANOSECONDS) {
+                const data64: u64 = (@as(u64, timestamp.nanoseconds) << TIMESTAMP64_SECONDS_BITS) | @as(u64, @intCast(timestamp.seconds));
+                var data: [TIMESTAMP64_DATA_LEN]u8 = undefined;
                 std.mem.writeInt(u64, &data, data64, big_endian);
                 const ext = EXT{ .type = TIMESTAMP_EXT_TYPE, .data = &data };
                 try self.writeExt(ext);
@@ -920,8 +951,8 @@ pub fn Pack(
             }
 
             // timestamp 96 format: full range with signed 64-bit seconds and 32-bit nanoseconds
-            if (timestamp.nanoseconds <= 999999999) {
-                var data: [12]u8 = undefined;
+            if (timestamp.nanoseconds <= MAX_NANOSECONDS) {
+                var data: [TIMESTAMP96_DATA_LEN]u8 = undefined;
                 std.mem.writeInt(u32, data[0..4], timestamp.nanoseconds, big_endian);
                 std.mem.writeInt(i64, data[4..12], timestamp.seconds, big_endian);
                 const ext = EXT{ .type = TIMESTAMP_EXT_TYPE, .data = &data };
@@ -961,10 +992,10 @@ pub fn Pack(
                     if (len <= MAX_FIXARRAY_LEN) {
                         const header: u8 = @intFromEnum(Markers.FIXARRAY) + @as(u8, @intCast(len));
                         try self.writeU8Value(header);
-                    } else if (len <= 0xffff) {
+                    } else if (len <= MAX_UINT16) {
                         try self.writeTypeMarker(.ARRAY16);
                         try self.writeU16Value(@as(u16, @intCast(len)));
-                    } else if (len <= 0xffff_ffff) {
+                    } else if (len <= MAX_UINT32) {
                         try self.writeTypeMarker(.ARRAY32);
                         try self.writeU32Value(@as(u32, @intCast(len)));
                     } else {
@@ -979,10 +1010,10 @@ pub fn Pack(
                     if (len <= MAX_FIXMAP_LEN) {
                         const header: u8 = @intFromEnum(Markers.FIXMAP) + @as(u8, @intCast(len));
                         try self.writeU8Value(header);
-                    } else if (len <= 0xffff) {
+                    } else if (len <= MAX_UINT16) {
                         try self.writeTypeMarker(.MAP16);
                         try self.writeU16Value(@intCast(len));
-                    } else if (len <= 0xffff_ffff) {
+                    } else if (len <= MAX_UINT32) {
                         try self.writeTypeMarker(.MAP32);
                         try self.writeU32Value(@intCast(len));
                     } else {
@@ -1038,16 +1069,16 @@ pub fn Pack(
         fn markerU8To(_: Self, marker_u8: u8) Markers {
             var val = marker_u8;
 
-            if (val <= 0x7f) {
-                val = 0x00;
-            } else if (0x80 <= val and val <= 0x8f) {
-                val = 0x80;
-            } else if (0x90 <= val and val <= 0x9f) {
-                val = 0x90;
-            } else if (0xa0 <= val and val <= 0xbf) {
-                val = 0xa0;
-            } else if (0xe0 <= val and val <= 0xff) {
-                val = 0xe0;
+            if (val <= MAX_POSITIVE_FIXINT) {
+                val = @intFromEnum(Markers.POSITIVE_FIXINT);
+            } else if (FIXMAP_BASE <= val and val <= 0x8f) {
+                val = FIXMAP_BASE;
+            } else if (FIXARRAY_BASE <= val and val <= 0x9f) {
+                val = FIXARRAY_BASE;
+            } else if (FIXSTR_BASE <= val and val <= 0xbf) {
+                val = FIXSTR_BASE;
+            } else if (@intFromEnum(Markers.NEGATIVE_FIXINT) <= val and val <= MAX_UINT8) {
+                val = @intFromEnum(Markers.NEGATIVE_FIXINT);
             }
 
             return @enumFromInt(val);
@@ -1378,7 +1409,7 @@ pub fn Pack(
                 var actual_len: usize = 0;
                 if (marker == .EXT8) {
                     actual_len = try self.readV8Value();
-                    if (actual_len != 12) {
+                    if (actual_len != TIMESTAMP96_DATA_LEN) {
                         // Not timestamp 96, read as regular EXT
                         const ext_type = try self.readI8Value();
                         const ext_data = try allocator.alloc(u8, actual_len);
@@ -1386,9 +1417,9 @@ pub fn Pack(
                         return Payload{ .ext = EXT{ .type = ext_type, .data = ext_data } };
                     }
                 } else if (marker == .FIXEXT4) {
-                    actual_len = 4;
+                    actual_len = FIXEXT4_LEN;
                 } else if (marker == .FIXEXT8) {
-                    actual_len = 8;
+                    actual_len = FIXEXT8_LEN;
                 }
 
                 // Read the type
@@ -1403,8 +1434,8 @@ pub fn Pack(
                     } else if (marker == .FIXEXT8) {
                         // timestamp 64
                         const data64 = try self.readU64Value();
-                        const nanoseconds: u32 = @intCast(data64 >> 34);
-                        const seconds: i64 = @intCast(data64 & 0x3ffffffff);
+                        const nanoseconds: u32 = @intCast(data64 >> TIMESTAMP64_SECONDS_BITS);
+                        const seconds: i64 = @intCast(data64 & TIMESTAMP64_SECONDS_MASK);
                         return Payload{ .timestamp = Timestamp.new(seconds, nanoseconds) };
                     } else if (marker == .EXT8) {
                         // timestamp 96
@@ -1444,14 +1475,14 @@ pub fn Pack(
                         return MsGPackError.INVALID_TYPE;
                     }
                     const data64 = try self.readU64Value();
-                    const nanoseconds: u32 = @intCast(data64 >> 34);
-                    const seconds: i64 = @intCast(data64 & 0x3ffffffff);
+                    const nanoseconds: u32 = @intCast(data64 >> TIMESTAMP64_SECONDS_BITS);
+                    const seconds: i64 = @intCast(data64 & TIMESTAMP64_SECONDS_MASK);
                     return Timestamp.new(seconds, nanoseconds);
                 },
                 .EXT8 => {
                     // timestamp 96 format (length should be 12)
                     const len = try self.readV8Value();
-                    if (len != 12) {
+                    if (len != TIMESTAMP96_DATA_LEN) {
                         return MsGPackError.INVALID_TYPE;
                     }
                     const ext_type = try self.readI8Value();
@@ -1487,14 +1518,14 @@ pub fn Pack(
                         return MsGPackError.INVALID_TYPE;
                     }
                     const data64 = try self.readU64Value();
-                    const nanoseconds: u32 = @intCast(data64 >> 34);
-                    const seconds: i64 = @intCast(data64 & 0x3ffffffff);
+                    const nanoseconds: u32 = @intCast(data64 >> TIMESTAMP64_SECONDS_BITS);
+                    const seconds: i64 = @intCast(data64 & TIMESTAMP64_SECONDS_MASK);
                     return Timestamp.new(seconds, nanoseconds);
                 },
                 .EXT8 => {
                     // timestamp 96 format (length should be 12)
                     const len = try self.readV8Value();
-                    if (len != 12) {
+                    if (len != TIMESTAMP96_DATA_LEN) {
                         return MsGPackError.INVALID_TYPE;
                     }
                     const ext_type = try self.readI8Value();
@@ -1514,19 +1545,19 @@ pub fn Pack(
         fn readExtValue(self: Self, marker: Markers, allocator: Allocator) !EXT {
             switch (marker) {
                 .FIXEXT1 => {
-                    return self.readExtData(allocator, 1);
+                    return self.readExtData(allocator, FIXEXT1_LEN);
                 },
                 .FIXEXT2 => {
-                    return self.readExtData(allocator, 2);
+                    return self.readExtData(allocator, FIXEXT2_LEN);
                 },
                 .FIXEXT4 => {
-                    return self.readExtData(allocator, 4);
+                    return self.readExtData(allocator, FIXEXT4_LEN);
                 },
                 .FIXEXT8 => {
-                    return self.readExtData(allocator, 8);
+                    return self.readExtData(allocator, FIXEXT8_LEN);
                 },
                 .FIXEXT16 => {
-                    return self.readExtData(allocator, 16);
+                    return self.readExtData(allocator, FIXEXT16_LEN);
                 },
                 .EXT8 => {
                     const len = try self.readV8Value();
@@ -1609,7 +1640,7 @@ pub fn Pack(
                     var len: usize = 0;
                     switch (marker) {
                         .FIXARRAY => {
-                            len = marker_u8 - 0x90;
+                            len = marker_u8 - FIXARRAY_BASE;
                         },
                         .ARRAY16 => {
                             len = try self.readU16Value();
@@ -1637,7 +1668,7 @@ pub fn Pack(
                     var len: usize = 0;
                     switch (marker) {
                         .FIXMAP => {
-                            len = marker_u8 - @intFromEnum(Markers.FIXMAP);
+                            len = marker_u8 - FIXMAP_BASE;
                         },
                         .MAP16 => {
                             len = try self.readU16Value();
