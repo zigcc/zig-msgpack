@@ -9,16 +9,8 @@ const Allocator = std.mem.Allocator;
 const comptimePrint = std.fmt.comptimePrint;
 const native_endian = builtin.cpu.arch.endian();
 
-const big_endian = switch (current_zig.minor) {
-     11 => std.builtin.Endian.Big,
-     12, 13, 14, 15, 16 => std.builtin.Endian.big,
-     else => @compileError("not support current version zig"),
-};
-const little_endian = switch (current_zig.minor) {
-     11 => std.builtin.Endian.Little,
-     12, 13, 14, 15, 16 => std.builtin.Endian.little,
-     else => @compileError("not support current version zig"),
-};
+const big_endian = std.builtin.Endian.big;
+const little_endian = std.builtin.Endian.little;
 
 // Constants for improved code readability
 const MAX_POSITIVE_FIXINT: u8 = 0x7f;
@@ -166,7 +158,7 @@ pub const Payload = union(enum) {
         if (self.* != .map) {
             return Errors.NotMap;
         }
-        
+
         // Check if the key already exists using getKeyPtr
         if (self.map.getKeyPtr(key)) |existing_key| {
             // Key exists, use the existing allocated key
@@ -1010,8 +1002,6 @@ pub fn Pack(
                 },
             }
         }
-
-        // TODO: add timestamp
 
         fn readFrom(self: Self, bytes: []u8) !usize {
             return readFn(self.read_context, bytes);
