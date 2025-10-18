@@ -465,7 +465,7 @@ pub fn Pack(
         }
 
         /// write one byte
-        fn writeByte(self: Self, byte: u8) !void {
+         inline fn writeByte(self: Self, byte: u8) !void {
             const bytes = [_]u8{byte};
             const len = try self.writeTo(&bytes);
             if (len != 1) {
@@ -474,15 +474,22 @@ pub fn Pack(
         }
 
         /// write data
-        fn writeData(self: Self, data: []const u8) !void {
+         inline fn writeData(self: Self, data: []const u8) !void {
             const len = try self.writeTo(data);
             if (len != data.len) {
                  return MsgPackError.LengthWriting;
             }
         }
 
+        /// Generic integer write helper
+        inline fn writeIntRaw(self: Self, comptime T: type, val: T) !void {
+            var arr: [@sizeOf(T)]u8 = undefined;
+            std.mem.writeInt(T, &arr, val, big_endian);
+            try self.writeData(&arr);
+        }
+
         /// write type marker
-        fn writeTypeMarker(self: Self, comptime marker: Markers) !void {
+         inline fn writeTypeMarker(self: Self, comptime marker: Markers) !void {
             switch (marker) {
                 .POSITIVE_FIXINT, .FIXMAP, .FIXARRAY, .FIXSTR, .NEGATIVE_FIXINT => {
                     const err_msg = comptimePrint("marker ({}) is wrong, the can not be write directly!", .{marker});
@@ -516,7 +523,7 @@ pub fn Pack(
             }
         }
 
-        fn writeU8Value(self: Self, val: u8) !void {
+         inline fn writeU8Value(self: Self, val: u8) !void {
             try self.writeByte(val);
         }
 
@@ -526,11 +533,8 @@ pub fn Pack(
             try self.writeU8Value(val);
         }
 
-        fn writeU16Value(self: Self, val: u16) !void {
-            var arr: [2]u8 = undefined;
-            std.mem.writeInt(u16, &arr, val, big_endian);
-
-            try self.writeData(&arr);
+         inline fn writeU16Value(self: Self, val: u16) !void {
+             try self.writeIntRaw(u16, val);
         }
 
         /// write u16 int
@@ -539,11 +543,8 @@ pub fn Pack(
             try self.writeU16Value(val);
         }
 
-        fn writeU32Value(self: Self, val: u32) !void {
-            var arr: [4]u8 = undefined;
-            std.mem.writeInt(u32, &arr, val, big_endian);
-
-            try self.writeData(&arr);
+         inline fn writeU32Value(self: Self, val: u32) !void {
+             try self.writeIntRaw(u32, val);
         }
 
         /// write u32 int
@@ -552,11 +553,8 @@ pub fn Pack(
             try self.writeU32Value(val);
         }
 
-        fn writeU64Value(self: Self, val: u64) !void {
-            var arr: [8]u8 = undefined;
-            std.mem.writeInt(u64, &arr, val, big_endian);
-
-            try self.writeData(&arr);
+         inline fn writeU64Value(self: Self, val: u64) !void {
+             try self.writeIntRaw(u64, val);
         }
 
         /// write u64 int
@@ -574,7 +572,7 @@ pub fn Pack(
             }
         }
 
-        fn writeI8Value(self: Self, val: i8) !void {
+         inline fn writeI8Value(self: Self, val: i8) !void {
             try self.writeByte(@bitCast(val));
         }
 
@@ -584,11 +582,8 @@ pub fn Pack(
             try self.writeI8Value(val);
         }
 
-        fn writeI16Value(self: Self, val: i16) !void {
-            var arr: [2]u8 = undefined;
-            std.mem.writeInt(i16, &arr, val, big_endian);
-
-            try self.writeData(&arr);
+         inline fn writeI16Value(self: Self, val: i16) !void {
+             try self.writeIntRaw(i16, val);
         }
 
         /// write i16 int
@@ -597,11 +592,8 @@ pub fn Pack(
             try self.writeI16Value(val);
         }
 
-        fn writeI32Value(self: Self, val: i32) !void {
-            var arr: [4]u8 = undefined;
-            std.mem.writeInt(i32, &arr, val, big_endian);
-
-            try self.writeData(&arr);
+         inline fn writeI32Value(self: Self, val: i32) !void {
+             try self.writeIntRaw(i32, val);
         }
 
         /// write i32 int
@@ -610,11 +602,8 @@ pub fn Pack(
             try self.writeI32Value(val);
         }
 
-        fn writeI64Value(self: Self, val: i64) !void {
-            var arr: [8]u8 = undefined;
-            std.mem.writeInt(i64, &arr, val, big_endian);
-
-            try self.writeData(&arr);
+         inline fn writeI64Value(self: Self, val: i64) !void {
+             try self.writeIntRaw(i64, val);
         }
 
         /// write i64 int
@@ -655,7 +644,7 @@ pub fn Pack(
             }
         }
 
-        fn writeF32Value(self: Self, val: f32) !void {
+         inline fn writeF32Value(self: Self, val: f32) !void {
             const int: u32 = @bitCast(val);
             var arr: [4]u8 = undefined;
             std.mem.writeInt(u32, &arr, int, big_endian);
@@ -669,7 +658,7 @@ pub fn Pack(
             try self.writeF32Value(val);
         }
 
-        fn writeF64Value(self: Self, val: f64) !void {
+         inline fn writeF64Value(self: Self, val: f64) !void {
             const int: u64 = @bitCast(val);
             var arr: [8]u8 = undefined;
             std.mem.writeInt(u64, &arr, int, big_endian);
@@ -696,7 +685,7 @@ pub fn Pack(
             }
         }
 
-        fn writeFixStrValue(self: Self, str: []const u8) !void {
+         inline fn writeFixStrValue(self: Self, str: []const u8) !void {
             try self.writeData(str);
         }
 
@@ -711,7 +700,7 @@ pub fn Pack(
             try self.writeFixStrValue(str);
         }
 
-        fn writeStr8Value(self: Self, str: []const u8) !void {
+         inline fn writeStr8Value(self: Self, str: []const u8) !void {
             const len = str.len;
             try self.writeU8Value(@intCast(len));
 
@@ -729,7 +718,7 @@ pub fn Pack(
             try self.writeStr8Value(str);
         }
 
-        fn writeStr16Value(self: Self, str: []const u8) !void {
+         inline fn writeStr16Value(self: Self, str: []const u8) !void {
             const len = str.len;
             try self.writeU16Value(@intCast(len));
 
@@ -748,7 +737,7 @@ pub fn Pack(
             try self.writeStr16Value(str);
         }
 
-        fn writeStr32Value(self: Self, str: []const u8) !void {
+         inline fn writeStr32Value(self: Self, str: []const u8) !void {
             const len = str.len;
             try self.writeU32Value(@intCast(len));
 
@@ -828,7 +817,7 @@ pub fn Pack(
             }
         }
 
-        fn writeExtValue(self: Self, ext: EXT) !void {
+         inline fn writeExtValue(self: Self, ext: EXT) !void {
             try self.writeI8Value(ext.type);
             try self.writeData(ext.data);
         }
@@ -1036,7 +1025,7 @@ pub fn Pack(
             return readFn(self.read_context, bytes);
         }
 
-        fn readByte(self: Self) !u8 {
+         inline fn readByte(self: Self) !u8 {
             var res = [1]u8{0};
             const len = try self.readFrom(&res);
 
@@ -1059,27 +1048,61 @@ pub fn Pack(
             return data;
         }
 
+        /// Generic integer read helper
+        inline fn readIntRaw(self: Self, comptime T: type) !T {
+            var buffer: [@sizeOf(T)]u8 = undefined;
+            const len = try self.readFrom(&buffer);
+            if (len != @sizeOf(T)) {
+                return MsgPackError.LengthReading;
+            }
+            return std.mem.readInt(T, &buffer, big_endian);
+        }
+
         fn readTypeMarkerU8(self: Self) !u8 {
             const val = try self.readByte();
             return val;
         }
 
-        fn markerU8To(_: Self, marker_u8: u8) Markers {
-            var val = marker_u8;
-
-            if (val <= MAX_POSITIVE_FIXINT) {
-                val = @intFromEnum(Markers.POSITIVE_FIXINT);
-            } else if (FIXMAP_BASE <= val and val <= 0x8f) {
-                val = FIXMAP_BASE;
-            } else if (FIXARRAY_BASE <= val and val <= 0x9f) {
-                val = FIXARRAY_BASE;
-            } else if (FIXSTR_BASE <= val and val <= 0xbf) {
-                val = FIXSTR_BASE;
-            } else if (@intFromEnum(Markers.NEGATIVE_FIXINT) <= val and val <= MAX_UINT8) {
-                val = @intFromEnum(Markers.NEGATIVE_FIXINT);
-            }
-
-            return @enumFromInt(val);
+         inline fn markerU8To(_: Self, marker_u8: u8) Markers {
+             return switch (marker_u8) {
+                 0x00...0x7f => .POSITIVE_FIXINT,
+                 0x80...0x8f => .FIXMAP,
+                 0x90...0x9f => .FIXARRAY,
+                 0xa0...0xbf => .FIXSTR,
+                 0xc0 => .NIL,
+                0xc1 => .NIL, // Reserved byte, treat as NIL
+                 0xc2 => .FALSE,
+                 0xc3 => .TRUE,
+                 0xc4 => .BIN8,
+                 0xc5 => .BIN16,
+                 0xc6 => .BIN32,
+                 0xc7 => .EXT8,
+                 0xc8 => .EXT16,
+                 0xc9 => .EXT32,
+                 0xca => .FLOAT32,
+                 0xcb => .FLOAT64,
+                 0xcc => .UINT8,
+                 0xcd => .UINT16,
+                 0xce => .UINT32,
+                 0xcf => .UINT64,
+                 0xd0 => .INT8,
+                 0xd1 => .INT16,
+                 0xd2 => .INT32,
+                 0xd3 => .INT64,
+                 0xd4 => .FIXEXT1,
+                 0xd5 => .FIXEXT2,
+                 0xd6 => .FIXEXT4,
+                 0xd7 => .FIXEXT8,
+                 0xd8 => .FIXEXT16,
+                 0xd9 => .STR8,
+                 0xda => .STR16,
+                 0xdb => .STR32,
+                 0xdc => .ARRAY16,
+                 0xdd => .ARRAY32,
+                 0xde => .MAP16,
+                 0xdf => .MAP32,
+                 0xe0...0xff => .NEGATIVE_FIXINT,
+             };
         }
 
         fn readTypeMarker(self: Self) !Markers {
@@ -1087,7 +1110,7 @@ pub fn Pack(
             return self.markerU8To(val);
         }
 
-        fn readBoolValue(_: Self, marker: Markers) !bool {
+         inline fn readBoolValue(_: Self, marker: Markers) !bool {
             switch (marker) {
                 .TRUE => return true,
                 .FALSE => return false,
@@ -1104,73 +1127,37 @@ pub fn Pack(
             return @bitCast(marker_u8);
         }
 
-        fn readI8Value(self: Self) !i8 {
+         inline fn readI8Value(self: Self) !i8 {
             const val = try self.readByte();
             return @bitCast(val);
         }
 
-        fn readV8Value(self: Self) !u8 {
+         inline fn readV8Value(self: Self) !u8 {
             return self.readByte();
         }
 
-        fn readI16Value(self: Self) !i16 {
-            var buffer: [2]u8 = undefined;
-            const len = try self.readFrom(&buffer);
-            if (len != 2) {
-                 return MsgPackError.LengthReading;
-            }
-            const val = std.mem.readInt(i16, &buffer, big_endian);
-            return val;
+         inline fn readI16Value(self: Self) !i16 {
+             return self.readIntRaw(i16);
         }
 
-        fn readU16Value(self: Self) !u16 {
-            var buffer: [2]u8 = undefined;
-            const len = try self.readFrom(&buffer);
-            if (len != 2) {
-                 return MsgPackError.LengthReading;
-            }
-            const val = std.mem.readInt(u16, &buffer, big_endian);
-            return val;
+         inline fn readU16Value(self: Self) !u16 {
+             return self.readIntRaw(u16);
         }
 
-        fn readI32Value(self: Self) !i32 {
-            var buffer: [4]u8 = undefined;
-            const len = try self.readFrom(&buffer);
-            if (len != 4) {
-                 return MsgPackError.LengthReading;
-            }
-            const val = std.mem.readInt(i32, &buffer, big_endian);
-            return val;
+         inline fn readI32Value(self: Self) !i32 {
+             return self.readIntRaw(i32);
         }
 
-        fn readU32Value(self: Self) !u32 {
-            var buffer: [4]u8 = undefined;
-            const len = try self.readFrom(&buffer);
-            if (len != 4) {
-                 return MsgPackError.LengthReading;
-            }
-            const val = std.mem.readInt(u32, &buffer, big_endian);
-            return val;
+         inline fn readU32Value(self: Self) !u32 {
+             return self.readIntRaw(u32);
         }
 
-        fn readI64Value(self: Self) !i64 {
-            var buffer: [8]u8 = undefined;
-            const len = try self.readFrom(&buffer);
-            if (len != 8) {
-                 return MsgPackError.LengthReading;
-            }
-            const val = std.mem.readInt(i64, &buffer, big_endian);
-            return val;
+         inline fn readI64Value(self: Self) !i64 {
+             return self.readIntRaw(i64);
         }
 
-        fn readU64Value(self: Self) !u64 {
-            var buffer: [8]u8 = undefined;
-            const len = try self.readFrom(&buffer);
-            if (len != 8) {
-                 return MsgPackError.LengthReading;
-            }
-            const val = std.mem.readInt(u64, &buffer, big_endian);
-            return val;
+         inline fn readU64Value(self: Self) !u64 {
+             return self.readIntRaw(u64);
         }
 
         fn readIntValue(self: Self, marker_u8: u8) !i64 {
@@ -1271,24 +1258,14 @@ pub fn Pack(
             }
         }
 
-        fn readF32Value(self: Self) !f32 {
-            var buffer: [4]u8 = undefined;
-            const len = try self.readFrom(&buffer);
-            if (len != 4) {
-                 return MsgPackError.LengthReading;
-            }
-            const val_int = std.mem.readInt(u32, &buffer, big_endian);
+         inline fn readF32Value(self: Self) !f32 {
+             const val_int = try self.readIntRaw(u32);
             const val: f32 = @bitCast(val_int);
             return val;
         }
 
-        fn readF64Value(self: Self) !f64 {
-            var buffer: [8]u8 = undefined;
-            const len = try self.readFrom(&buffer);
-            if (len != 8) {
-                 return MsgPackError.LengthReading;
-            }
-            const val_int = std.mem.readInt(u64, &buffer, big_endian);
+         inline fn readF64Value(self: Self) !f64 {
+             const val_int = try self.readIntRaw(u64);
             const val: f64 = @bitCast(val_int);
             return val;
         }
@@ -1390,7 +1367,7 @@ pub fn Pack(
             }
         }
 
-        fn readExtData(self: Self, allocator: Allocator, len: usize) !EXT {
+         inline fn readExtData(self: Self, allocator: Allocator, len: usize) !EXT {
             const ext_type = try self.readI8Value();
             const data = try self.readData(allocator, len);
             return EXT{
