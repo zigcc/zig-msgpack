@@ -1539,6 +1539,39 @@ pub fn Pack(
             return Payload{ .ext = EXT{ .type = ext_type, .data = ext_data } };
         }
 
+        /// Get EXT data length from marker
+        inline fn getExtLength(marker: Markers) usize {
+            return switch (marker) {
+                .FIXEXT1 => FIXEXT1_LEN,
+                .FIXEXT2 => FIXEXT2_LEN,
+                .FIXEXT4 => FIXEXT4_LEN,
+                .FIXEXT8 => FIXEXT8_LEN,
+                .FIXEXT16 => FIXEXT16_LEN,
+                else => unreachable,
+            };
+        }
+
+        /// Read and validate EXT8 length for timestamp detection
+        fn readExt8Length(self: Self) !struct { len: usize, is_timestamp_candidate: bool } {
+            const len = try self.readV8Value();
+            // Only timestamp 96 format uses 12 bytes in EXT8
+            if (len != TIMESTAMP96_DATA_LEN) {
+                return .{ .len = len, .is_timestamp_candidate = false };
+            }
+            return .{ .len = len, .is_timestamp_candidate = true };
+        }
+
+        /// Read timestamp payload based on marker
+        inline fn readTimestampPayload(self: Self, marker: Markers) !Payload {
+            const timestamp: Timestamp = switch (marker) {
+                .FIXEXT4 => try self.readTimestamp32(),
+                .FIXEXT8 => try self.readTimestamp64(),
+                .EXT8 => try self.readTimestamp96(),
+                else => unreachable,
+            };
+            return Payload{ .timestamp = timestamp };
+        }
+
         /// read ext value or timestamp if it's timestamp type (-1)
         fn readExtValueOrTimestamp(self: Self, marker: Markers, allocator: Allocator) !Payload {
             // Fast path: not a timestamp candidate
@@ -1547,124 +1580,28 @@ pub fn Pack(
                 return Payload{ .ext = val };
             }
 
-            // Determine actual length
-            const actual_len: usize = switch (marker) {
-                .FIXEXT4 => FIXEXT4_LEN,
-                .FIXEXT8 => FIXEXT8_LEN,
-                .EXT8 => blk: {
-                    const len = try self.readV8Value();
-                    // If not timestamp 96 length, read as regular EXT
-                    if (len != TIMESTAMP96_DATA_LEN) {
-                        const ext_type = try self.readI8Value();
-                        return try self.readRegularExt(ext_type, len, allocator);
-                    }
-                    break :blk len;
-                },
-                else => unreachable,
-            };
-
-            // Read the extension type
+            // Handle EXT8 special case (need to read length first)
+            if (marker == .EXT8) {
+                const len_info = try self.readExt8Length();
+                
+                // If not timestamp length, read as regular EXT
+                if (!len_info.is_timestamp_candidate) {
+                    const ext_type = try self.readI8Value();
+                    return try self.readRegularExt(ext_type, len_info.len, allocator);
+                }
+            }
+            
+            // Read extension type to determine if it's a timestamp
             const ext_type = try self.readI8Value();
-
-            // Check if it's a timestamp
+            
+            // Timestamp type: read timestamp data
             if (ext_type == TIMESTAMP_EXT_TYPE) {
-                const timestamp: Timestamp = switch (marker) {
-                    .FIXEXT4 => try self.readTimestamp32(),
-                    .FIXEXT8 => try self.readTimestamp64(),
-                    .EXT8 => try self.readTimestamp96(),
-                    else => unreachable,
-                };
-                return Payload{ .timestamp = timestamp };
+                return try self.readTimestampPayload(marker);
             }
-
-            // Not a timestamp, read as regular EXT
+            
+            // Regular EXT: read remaining data
+            const actual_len = if (marker == .EXT8) TIMESTAMP96_DATA_LEN else getExtLength(marker);
             return try self.readRegularExt(ext_type, actual_len, allocator);
-        }
-
-        /// try to read timestamp from ext data, return error if not timestamp
-        fn tryReadTimestamp(self: Self, marker: Markers, _: Allocator) !Timestamp {
-            switch (marker) {
-                .FIXEXT4 => {
-                    // timestamp 32 format
-                    const ext_type = try self.readI8Value();
-                    if (ext_type != TIMESTAMP_EXT_TYPE) {
-                        return MsgPackError.InvalidType;
-                    }
-                    const seconds = try self.readU32Value();
-                    return Timestamp.new(@intCast(seconds), 0);
-                },
-                .FIXEXT8 => {
-                    // timestamp 64 format
-                    const ext_type = try self.readI8Value();
-                    if (ext_type != TIMESTAMP_EXT_TYPE) {
-                        return MsgPackError.InvalidType;
-                    }
-                    const data64 = try self.readU64Value();
-                    const nanoseconds: u32 = @intCast(data64 >> TIMESTAMP64_SECONDS_BITS);
-                    const seconds: i64 = @intCast(data64 & TIMESTAMP64_SECONDS_MASK);
-                    return Timestamp.new(seconds, nanoseconds);
-                },
-                .EXT8 => {
-                    // timestamp 96 format (length should be 12)
-                    const len = try self.readV8Value();
-                    if (len != TIMESTAMP96_DATA_LEN) {
-                        return MsgPackError.InvalidType;
-                    }
-                    const ext_type = try self.readI8Value();
-                    if (ext_type != TIMESTAMP_EXT_TYPE) {
-                        return MsgPackError.InvalidType;
-                    }
-                    const nanoseconds = try self.readU32Value();
-                    const seconds = try self.readI64Value();
-                    return Timestamp.new(seconds, nanoseconds);
-                },
-                else => {
-                    return MsgPackError.InvalidType;
-                },
-            }
-        }
-
-        /// read timestamp from ext data
-        fn readTimestamp(self: Self, marker: Markers, _: Allocator) !Timestamp {
-            switch (marker) {
-                .FIXEXT4 => {
-                    // timestamp 32 format
-                    const ext_type = try self.readI8Value();
-                    if (ext_type != TIMESTAMP_EXT_TYPE) {
-                        return MsgPackError.InvalidType;
-                    }
-                    const seconds = try self.readU32Value();
-                    return Timestamp.new(@intCast(seconds), 0);
-                },
-                .FIXEXT8 => {
-                    // timestamp 64 format
-                    const ext_type = try self.readI8Value();
-                    if (ext_type != TIMESTAMP_EXT_TYPE) {
-                        return MsgPackError.InvalidType;
-                    }
-                    const data64 = try self.readU64Value();
-                    const nanoseconds: u32 = @intCast(data64 >> TIMESTAMP64_SECONDS_BITS);
-                    const seconds: i64 = @intCast(data64 & TIMESTAMP64_SECONDS_MASK);
-                    return Timestamp.new(seconds, nanoseconds);
-                },
-                .EXT8 => {
-                    // timestamp 96 format (length should be 12)
-                    const len = try self.readV8Value();
-                    if (len != TIMESTAMP96_DATA_LEN) {
-                        return MsgPackError.InvalidType;
-                    }
-                    const ext_type = try self.readI8Value();
-                    if (ext_type != TIMESTAMP_EXT_TYPE) {
-                        return MsgPackError.InvalidType;
-                    }
-                    const nanoseconds = try self.readU32Value();
-                    const seconds = try self.readI64Value();
-                    return Timestamp.new(seconds, nanoseconds);
-                },
-                else => {
-                    return MsgPackError.InvalidType;
-                },
-            }
         }
 
         fn readExtValue(self: Self, marker: Markers, allocator: Allocator) !EXT {
