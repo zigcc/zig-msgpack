@@ -190,6 +190,27 @@ zig build test
 zig build test --summary all
 ```
 
+## Benchmarks
+
+To run performance benchmarks:
+
+```sh
+# Run benchmarks (default build mode)
+zig build bench
+
+# Run with optimizations for accurate performance measurements
+zig build bench -Doptimize=ReleaseFast
+```
+
+The benchmark suite includes:
+- Basic types (nil, bool, integers, floats)
+- Strings and binary data of various sizes
+- Arrays and maps (small, medium, large)
+- Extension types and timestamps
+- Nested structures and mixed-type payloads
+
+Output provides throughput (ops/sec) and latency (ns/op) metrics for each operation.
+
 ## Documentation
 
 To generate documentation for this library:

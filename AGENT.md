@@ -42,6 +42,7 @@
 src/
 ├── msgpack.zig      # 核心实现（主文件）
 ├── test.zig         # 完整测试套件
+├── bench.zig        # 性能基准测试
 └── compat.zig       # 跨版本兼容层
 ```
 
@@ -63,6 +64,13 @@ src/
 - 覆盖所有 MessagePack 类型
 - 测试边界条件和错误处理
 - 验证格式选择逻辑（最小编码原则）
+- 包含 Fuzz 测试覆盖随机数据
+
+#### `src/bench.zig` (性能基准测试)
+- 基本类型序列化/反序列化性能测试
+- 不同大小容器(数组/Map)的性能对比
+- 嵌套结构和混合类型的实际场景测试
+- 提供详细的吞吐量和延迟指标
 
 ---
 
@@ -350,6 +358,12 @@ error {
 # 运行所有测试
 zig build test
 
+# 运行性能基准测试
+zig build bench
+
+# 使用 Release 模式运行以获得准确性能数据
+zig build bench -Doptimize=ReleaseFast
+
 # 详细输出
 zig build test --summary all
 ```
@@ -383,6 +397,31 @@ test "描述性测试名称" {
     defer result.free(allocator);
     try expect(result.xxx == expected);
 }
+```
+
+### 8.4 基准测试
+
+```bash
+# 运行所有基准测试
+zig build bench
+
+# 使用 ReleaseFast 优化获取最佳性能数据
+zig build bench -Doptimize=ReleaseFast
+```
+
+基准测试覆盖范围：
+- ✅ 基本类型（nil, bool, int, uint, float）的序列化/反序列化
+- ✅ 字符串和二进制数据（不同大小）
+- ✅ 数组和 Map（小型/中型/大型）
+- ✅ 扩展类型和 Timestamp
+- ✅ 嵌套结构和混合类型的实际场景
+
+输出格式示例：
+```
+Benchmark Name                           | Iterations | ns/op    | ops/sec
+------------------------------------------------------------------------
+Nil Write                                |  1000000   |       45 |  22222222
+Small Int Read                           |  1000000   |      123 |   8130081
 ```
 
 ---
@@ -468,6 +507,7 @@ while (iterator.next()) |entry| {
 - 使用 `fixedBufferStream` 避免动态分配
 - 预分配足够大的缓冲区
 - 批量写入时重用 Pack 实例
+- 参考 `bench.zig` 中的性能基准数据优化热点路径
 
 ### 11.2 反序列化优化
 
@@ -529,6 +569,7 @@ try expect(arr[0] == 0xd6);  // 检查是否为 FIXEXT4
 |------|---------|
 | 修改核心逻辑 | `src/msgpack.zig` |
 | 添加测试 | `src/test.zig` |
+| 添加/运行基准测试 | `src/bench.zig` |
 | 修复版本兼容 | `src/compat.zig` |
 | 更新构建配置 | `build.zig` |
 
@@ -577,6 +618,14 @@ TIMESTAMP_EXT_TYPE: i8 = -1
 
 ### 示例
 ```
+[2025-10-18] [Feature] 添加性能基准测试套件
+- 创建 src/bench.zig 完整基准测试文件
+- 覆盖所有主要类型的序列化/反序列化性能
+- 包含小/中/大规模容器的性能对比测试
+- 测试嵌套结构和混合类型的实际应用场景
+- 在 build.zig 中添加 `bench` 构建目标
+- 提供详细的吞吐量(ops/sec)和延迟(ns/op)指标输出
+
 [2025-10-03] [Feature] 添加 Timestamp 支持
 - 实现三种 timestamp 格式（32/64/96 位）
 - 添加 Timestamp.toFloat() 转换方法

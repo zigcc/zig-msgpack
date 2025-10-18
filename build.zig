@@ -17,6 +17,8 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step("test", "Run unit tests");
 
+const bench_step = b.step("bench", "Run benchmarks");
+
     const msgpack_unit_tests = if (builtin.zig_version.minor == 14) b.addTest(.{
         .root_source_file = b.path(b.pathJoin(&.{ "src", "test.zig" })),
         .target = target,
@@ -37,6 +39,32 @@ pub fn build(b: *std.Build) void {
     msgpack_unit_tests.root_module.addImport("msgpack", msgpack);
     const run_msgpack_tests = b.addRunArtifact(msgpack_unit_tests);
     test_step.dependOn(&run_msgpack_tests.step);
+
+    // Add benchmark executable
+    const benchmark = if (builtin.zig_version.minor == 14) b.addExecutable(.{
+        .name = "msgpack-bench",
+        .root_source_file = b.path(b.pathJoin(&.{ "src", "bench.zig" })),
+        .target = target,
+        .optimize = optimize,
+    }) else if (builtin.zig_version.minor >= 16) b.addExecutable(.{
+        .name = "msgpack-bench",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path(b.pathJoin(&.{ "src", "bench.zig" })),
+            .target = target,
+            .optimize = optimize,
+        }),
+    }) else b.addExecutable(.{
+        .name = "msgpack-bench",
+        .root_module = b.addModule("bench", .{
+            .root_source_file = b.path(b.pathJoin(&.{ "src", "bench.zig" })),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    benchmark.root_module.addImport("msgpack", msgpack);
+
+    const run_benchmark = b.addRunArtifact(benchmark);
+    bench_step.dependOn(&run_benchmark.step);
 }
 
 fn generateDocs(b: *Build, optimize: OptimizeMode, target: Build.ResolvedTarget) void {

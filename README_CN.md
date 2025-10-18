@@ -190,6 +190,27 @@ zig build test
 zig build test --summary all
 ```
 
+## 性能基准测试
+
+运行性能基准测试：
+
+```sh
+# 运行基准测试（默认构建模式）
+zig build bench
+
+# 使用优化模式运行以获得准确的性能测量结果
+zig build bench -Doptimize=ReleaseFast
+```
+
+基准测试套件包括：
+- 基本类型（nil、bool、整数、浮点数）
+- 不同大小的字符串和二进制数据
+- 数组和映射表（小型、中型、大型）
+- 扩展类型和时间戳
+- 嵌套结构和混合类型载荷
+
+输出提供每个操作的吞吐量（ops/sec）和延迟（ns/op）指标。
+
 ## 文档
 
 要生成此库的文档：
