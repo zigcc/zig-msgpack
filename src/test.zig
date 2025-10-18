@@ -267,23 +267,23 @@ test "payload error handling" {
     // Test NotArr error
     const not_arr_payload = Payload.nilToPayload();
     const arr_len_result = not_arr_payload.getArrLen();
-    try expect(arr_len_result == Payload.Errors.NotArr);
+     try expect(arr_len_result == Payload.Error.NotArray);
 
     const arr_element_result = not_arr_payload.getArrElement(0);
-    try expect(arr_element_result == Payload.Errors.NotArr);
+     try expect(arr_element_result == Payload.Error.NotArray);
 
     var mut_not_arr = Payload.nilToPayload();
     const set_arr_result = mut_not_arr.setArrElement(0, Payload.nilToPayload());
-    try expect(set_arr_result == Payload.Errors.NotArr);
+     try expect(set_arr_result == Payload.Error.NotArray);
 
     // Test NotMap error
     const not_map_payload = Payload.nilToPayload();
     const map_get_result = not_map_payload.mapGet("test");
-    try expect(map_get_result == Payload.Errors.NotMap);
+     try expect(map_get_result == Payload.Error.NotMap);
 
     var mut_not_map = Payload.nilToPayload();
     const map_put_result = mut_not_map.mapPut("test", Payload.nilToPayload());
-    try expect(map_put_result == Payload.Errors.NotMap);
+     try expect(map_put_result == Payload.Error.NotMap);
 }
 
 // Test boundary values for integers
@@ -1037,12 +1037,12 @@ test "getUint method" {
     // Test negative int payload should fail
     const neg_int_payload = Payload.intToPayload(-5);
     const result = neg_int_payload.getUint();
-    try expect(result == msgpack.MsGPackError.INVALID_TYPE);
+     try expect(result == msgpack.MsgPackError.InvalidType);
 
     // Test non-numeric payload should fail
     const nil_payload = Payload.nilToPayload();
     const nil_result = nil_payload.getUint();
-    try expect(nil_result == msgpack.MsGPackError.INVALID_TYPE);
+     try expect(nil_result == msgpack.MsgPackError.InvalidType);
 }
 
 // Test NaN and Infinity float values
@@ -1802,7 +1802,7 @@ test "timestamp error handling" {
 
     // This should fail to write
     const result = p.write(Payload{ .timestamp = invalid_nano_ts });
-    try std.testing.expectError(msgpack.MsGPackError.INVALID_TYPE, result);
+     try std.testing.expectError(msgpack.MsgPackError.InvalidType, result);
 }
 
 // Test timestamp format selection logic

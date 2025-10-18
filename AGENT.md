@@ -265,30 +265,30 @@ try some_operation(str_payload);
 
 ## 7. 错误类型
 
-### 7.1 MsGPackError 枚举
+ ### 7.1 MsgPackError 枚举
 
 ```zig
 error {
-    STR_DATA_LENGTH_TOO_LONG,    // 字符串超过格式限制
-    BIN_DATA_LENGTH_TOO_LONG,    // 二进制数据超长
-    ARRAY_LENGTH_TOO_LONG,       // 数组超长
-    MAP_LENGTH_TOO_LONG,         // Map 超长
-    INPUT_VALUE_TOO_LARGE,       // 输入值超出范围
-    TYPE_MARKER_READING,         // 类型标记读取错误
-    DATA_READING,                // 数据读取错误
-    LENGTH_READING,              // 长度读取错误
-    EXT_TYPE_LENGTH,             // 扩展类型长度不匹配
-    INVALID_TYPE,                // 类型不匹配/无效
+     StrDataLengthTooLong,    // 字符串超过格式限制
+     BinDataLengthTooLong,    // 二进制数据超长
+     ArrayLengthTooLong,      // 数组超长
+     MapLengthTooLong,        // Map 超长
+     InputValueTooLarge,      // 输入值超出范围
+     TypeMarkerReading,       // 类型标记读取错误
+     DataReading,             // 数据读取错误
+     LengthReading,           // 长度读取错误
+     ExtTypeLength,           // 扩展类型长度不匹配
+     InvalidType,             // 类型不匹配/无效
     // ... 其他错误
 }
 ```
 
-### 7.2 Payload.Errors 枚举
+ ### 7.2 Payload.Error 枚举
 
 ```zig
 error {
     NotMap,   // 不是 Map 类型
-    NotArr,   // 不是 Array 类型
+     NotArray, // 不是 Array 类型
 }
 ```
 

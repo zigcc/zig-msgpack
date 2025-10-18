@@ -135,9 +135,9 @@ pub const Map = std.StringHashMap(Payload);
 /// Note: The payload and its subvalues must have the same allocator
 pub const Payload = union(enum) {
     /// the error for Payload
-    pub const Errors = error{
-        NotMap,
-        NotArr,
+     pub const Error = error{
+         NotMap,
+         NotArray,
     };
 
     nil: void,
@@ -155,7 +155,7 @@ pub const Payload = union(enum) {
     /// get array element
     pub fn getArrElement(self: Payload, index: usize) !Payload {
         if (self != .arr) {
-            return Errors.NotArr;
+             return Error.NotArray;
         }
         return self.arr[index];
     }
@@ -163,7 +163,7 @@ pub const Payload = union(enum) {
     /// get array length
     pub fn getArrLen(self: Payload) !usize {
         if (self != .arr) {
-            return Errors.NotArr;
+             return Error.NotArray;
         }
         return self.arr.len;
     }
@@ -171,7 +171,7 @@ pub const Payload = union(enum) {
     /// get map's element
     pub fn mapGet(self: Payload, key: []const u8) !?Payload {
         if (self != .map) {
-            return Errors.NotMap;
+             return Error.NotMap;
         }
         return self.map.get(key);
     }
@@ -179,7 +179,7 @@ pub const Payload = union(enum) {
     /// set array element
     pub fn setArrElement(self: *Payload, index: usize, val: Payload) !void {
         if (self.* != .arr) {
-            return Errors.NotArr;
+             return Error.NotArray;
         }
         self.arr[index] = val;
     }
@@ -187,16 +187,14 @@ pub const Payload = union(enum) {
     /// put a new element to map payload
     pub fn mapPut(self: *Payload, key: []const u8, val: Payload) !void {
         if (self.* != .map) {
-            return Errors.NotMap;
+             return Error.NotMap;
         }
 
-        // Check if the key already exists using getKeyPtr
         if (self.map.getKeyPtr(key)) |existing_key| {
-            // Key exists, use the existing allocated key
             try self.map.put(existing_key.*, val);
         } else {
-            // Key doesn't exist, create a new key
             const new_key = try self.map.allocator.alloc(u8, key.len);
+            errdefer self.map.allocator.free(new_key);
             @memcpy(new_key, key);
             try self.map.put(new_key, val);
         }
@@ -353,9 +351,9 @@ pub const Payload = union(enum) {
                     return @intCast(val);
                 }
                 // Value exceeds i64 range
-                return MsGPackError.INVALID_TYPE;
+                 return MsgPackError.InvalidType;
             },
-            else => return MsGPackError.INVALID_TYPE,
+             else => return MsgPackError.InvalidType,
         };
     }
 
@@ -368,10 +366,10 @@ pub const Payload = union(enum) {
                     return @intCast(val);
                 }
                 // Negative values cannot be converted to u64
-                return MsGPackError.INVALID_TYPE;
+                 return MsgPackError.InvalidType;
             },
             .uint => |val| val,
-            else => return MsGPackError.INVALID_TYPE,
+             else => return MsgPackError.InvalidType,
         };
     }
 };
@@ -417,25 +415,25 @@ const Markers = enum(u8) {
 };
 
 /// A collection of errors that may occur when reading the payload
-pub const MsGPackError = error{
-    STR_DATA_LENGTH_TOO_LONG,
-    BIN_DATA_LENGTH_TOO_LONG,
-    ARRAY_LENGTH_TOO_LONG,
-    TUPLE_LENGTH_TOO_LONG,
-    MAP_LENGTH_TOO_LONG,
-    INPUT_VALUE_TOO_LARGE,
-    FIXED_VALUE_WRITING,
-    TYPE_MARKER_READING,
-    TYPE_MARKER_WRITING,
-    DATA_READING,
-    DATA_WRITING,
-    EXT_TYPE_READING,
-    EXT_TYPE_WRITING,
-    EXT_TYPE_LENGTH,
-    INVALID_TYPE,
-    LENGTH_READING,
-    LENGTH_WRITING,
-    INTERNAL,
+ pub const MsgPackError = error{
+     StrDataLengthTooLong,
+     BinDataLengthTooLong,
+     ArrayLengthTooLong,
+     TupleLengthTooLong,
+     MapLengthTooLong,
+     InputValueTooLarge,
+     FixedValueWriting,
+     TypeMarkerReading,
+     TypeMarkerWriting,
+     DataReading,
+     DataWriting,
+     ExtTypeReading,
+     ExtTypeWriting,
+     ExtTypeLength,
+     InvalidType,
+     LengthReading,
+     LengthWriting,
+     Internal,
 };
 
 /// Create an instance of msgpack_pack
@@ -471,7 +469,7 @@ pub fn Pack(
             const bytes = [_]u8{byte};
             const len = try self.writeTo(&bytes);
             if (len != 1) {
-                return MsGPackError.LENGTH_WRITING;
+                 return MsgPackError.LengthWriting;
             }
         }
 
@@ -479,7 +477,7 @@ pub fn Pack(
         fn writeData(self: Self, data: []const u8) !void {
             const len = try self.writeTo(data);
             if (len != data.len) {
-                return MsGPackError.LENGTH_WRITING;
+                 return MsgPackError.LengthWriting;
             }
         }
 
@@ -514,7 +512,7 @@ pub fn Pack(
             if (val <= MAX_POSITIVE_FIXINT) {
                 try self.writeByte(val);
             } else {
-                return MsGPackError.INPUT_VALUE_TOO_LARGE;
+                 return MsgPackError.InputValueTooLarge;
             }
         }
 
@@ -572,7 +570,7 @@ pub fn Pack(
             if (val >= MIN_NEGATIVE_FIXINT and val <= -1) {
                 try self.writeByte(@bitCast(val));
             } else {
-                return MsGPackError.INPUT_VALUE_TOO_LARGE;
+                 return MsgPackError.InputValueTooLarge;
             }
         }
 
@@ -706,7 +704,7 @@ pub fn Pack(
         fn writeFixStr(self: Self, str: []const u8) !void {
             const len = str.len;
             if (len > MAX_FIXSTR_LEN) {
-                return MsGPackError.STR_DATA_LENGTH_TOO_LONG;
+                 return MsgPackError.StrDataLengthTooLong;
             }
             const header: u8 = @intFromEnum(Markers.FIXSTR) + @as(u8, @intCast(len));
             try self.writeByte(header);
@@ -724,7 +722,7 @@ pub fn Pack(
         fn writeStr8(self: Self, str: []const u8) !void {
             const len = str.len;
             if (len > MAX_UINT8) {
-                return MsGPackError.STR_DATA_LENGTH_TOO_LONG;
+                 return MsgPackError.StrDataLengthTooLong;
             }
 
             try self.writeTypeMarker(.STR8);
@@ -742,7 +740,7 @@ pub fn Pack(
         fn writeStr16(self: Self, str: []const u8) !void {
             const len = str.len;
             if (len > MAX_UINT16) {
-                return MsGPackError.STR_DATA_LENGTH_TOO_LONG;
+                 return MsgPackError.StrDataLengthTooLong;
             }
 
             try self.writeTypeMarker(.STR16);
@@ -761,7 +759,7 @@ pub fn Pack(
         fn writeStr32(self: Self, str: []const u8) !void {
             const len = str.len;
             if (len > MAX_UINT32) {
-                return MsGPackError.STR_DATA_LENGTH_TOO_LONG;
+                 return MsgPackError.StrDataLengthTooLong;
             }
 
             try self.writeTypeMarker(.STR32);
@@ -786,7 +784,7 @@ pub fn Pack(
         fn writeBin8(self: Self, bin: []const u8) !void {
             const len = bin.len;
             if (len > MAX_UINT8) {
-                return MsGPackError.BIN_DATA_LENGTH_TOO_LONG;
+                 return MsgPackError.BinDataLengthTooLong;
             }
 
             try self.writeTypeMarker(.BIN8);
@@ -798,7 +796,7 @@ pub fn Pack(
         fn writeBin16(self: Self, bin: []const u8) !void {
             const len = bin.len;
             if (len > MAX_UINT16) {
-                return MsGPackError.BIN_DATA_LENGTH_TOO_LONG;
+                 return MsgPackError.BinDataLengthTooLong;
             }
 
             try self.writeTypeMarker(.BIN16);
@@ -810,7 +808,7 @@ pub fn Pack(
         fn writeBin32(self: Self, bin: []const u8) !void {
             const len = bin.len;
             if (len > MAX_UINT32) {
-                return MsGPackError.BIN_DATA_LENGTH_TOO_LONG;
+                 return MsgPackError.BinDataLengthTooLong;
             }
 
             try self.writeTypeMarker(.BIN32);
@@ -837,7 +835,7 @@ pub fn Pack(
 
         fn writeFixExt1(self: Self, ext: EXT) !void {
             if (ext.data.len != FIXEXT1_LEN) {
-                return MsGPackError.EXT_TYPE_LENGTH;
+                 return MsgPackError.ExtTypeLength;
             }
             try self.writeTypeMarker(.FIXEXT1);
 
@@ -846,7 +844,7 @@ pub fn Pack(
 
         fn writeFixExt2(self: Self, ext: EXT) !void {
             if (ext.data.len != FIXEXT2_LEN) {
-                return MsGPackError.EXT_TYPE_LENGTH;
+                 return MsgPackError.ExtTypeLength;
             }
             try self.writeTypeMarker(.FIXEXT2);
             try self.writeExtValue(ext);
@@ -854,7 +852,7 @@ pub fn Pack(
 
         fn writeFixExt4(self: Self, ext: EXT) !void {
             if (ext.data.len != FIXEXT4_LEN) {
-                return MsGPackError.EXT_TYPE_LENGTH;
+                 return MsgPackError.ExtTypeLength;
             }
             try self.writeTypeMarker(.FIXEXT4);
             try self.writeExtValue(ext);
@@ -862,7 +860,7 @@ pub fn Pack(
 
         fn writeFixExt8(self: Self, ext: EXT) !void {
             if (ext.data.len != FIXEXT8_LEN) {
-                return MsGPackError.EXT_TYPE_LENGTH;
+                 return MsgPackError.ExtTypeLength;
             }
             try self.writeTypeMarker(.FIXEXT8);
             try self.writeExtValue(ext);
@@ -870,7 +868,7 @@ pub fn Pack(
 
         fn writeFixExt16(self: Self, ext: EXT) !void {
             if (ext.data.len != FIXEXT16_LEN) {
-                return MsGPackError.EXT_TYPE_LENGTH;
+                 return MsgPackError.ExtTypeLength;
             }
             try self.writeTypeMarker(.FIXEXT16);
             try self.writeExtValue(ext);
@@ -878,7 +876,7 @@ pub fn Pack(
 
         fn writeExt8(self: Self, ext: EXT) !void {
             if (ext.data.len > std.math.maxInt(u8)) {
-                return MsGPackError.EXT_TYPE_LENGTH;
+                 return MsgPackError.ExtTypeLength;
             }
 
             try self.writeTypeMarker(.EXT8);
@@ -888,7 +886,7 @@ pub fn Pack(
 
         fn writeExt16(self: Self, ext: EXT) !void {
             if (ext.data.len > std.math.maxInt(u16)) {
-                return MsGPackError.EXT_TYPE_LENGTH;
+                 return MsgPackError.ExtTypeLength;
             }
             try self.writeTypeMarker(.EXT16);
             try self.writeU16Value(@intCast(ext.data.len));
@@ -897,7 +895,7 @@ pub fn Pack(
 
         fn writeExt32(self: Self, ext: EXT) !void {
             if (ext.data.len > std.math.maxInt(u32)) {
-                return MsGPackError.EXT_TYPE_LENGTH;
+                 return MsgPackError.ExtTypeLength;
             }
             try self.writeTypeMarker(.EXT32);
             try self.writeU32Value(@intCast(ext.data.len));
@@ -923,7 +921,7 @@ pub fn Pack(
             } else if (len <= std.math.maxInt(u32)) {
                 try self.writeExt32(ext);
             } else {
-                return MsGPackError.EXT_TYPE_LENGTH;
+                 return MsgPackError.ExtTypeLength;
             }
         }
 
@@ -960,7 +958,7 @@ pub fn Pack(
                 return;
             }
 
-            return MsGPackError.INVALID_TYPE;
+             return MsgPackError.InvalidType;
         }
 
         /// write payload
@@ -999,7 +997,7 @@ pub fn Pack(
                         try self.writeTypeMarker(.ARRAY32);
                         try self.writeU32Value(@as(u32, @intCast(len)));
                     } else {
-                        return MsGPackError.MAP_LENGTH_TOO_LONG;
+                         return MsgPackError.MapLengthTooLong;
                     }
                     for (arr) |val| {
                         try self.write(val);
@@ -1017,7 +1015,7 @@ pub fn Pack(
                         try self.writeTypeMarker(.MAP32);
                         try self.writeU32Value(@intCast(len));
                     } else {
-                        return MsGPackError.MAP_LENGTH_TOO_LONG;
+                         return MsgPackError.MapLengthTooLong;
                     }
                     var itera = map.iterator();
                     while (itera.next()) |entry| {
@@ -1043,7 +1041,7 @@ pub fn Pack(
             const len = try self.readFrom(&res);
 
             if (len != 1) {
-                return MsGPackError.LENGTH_READING;
+                 return MsgPackError.LengthReading;
             }
 
             return res[0];
@@ -1055,7 +1053,7 @@ pub fn Pack(
             const data_len = try self.readFrom(data);
 
             if (data_len != len) {
-                return MsGPackError.LENGTH_READING;
+                 return MsgPackError.LengthReading;
             }
 
             return data;
@@ -1093,7 +1091,7 @@ pub fn Pack(
             switch (marker) {
                 .TRUE => return true,
                 .FALSE => return false,
-                else => return MsGPackError.TYPE_MARKER_READING,
+                 else => return MsgPackError.TypeMarkerReading,
             }
         }
 
@@ -1119,7 +1117,7 @@ pub fn Pack(
             var buffer: [2]u8 = undefined;
             const len = try self.readFrom(&buffer);
             if (len != 2) {
-                return MsGPackError.LENGTH_READING;
+                 return MsgPackError.LengthReading;
             }
             const val = std.mem.readInt(i16, &buffer, big_endian);
             return val;
@@ -1129,7 +1127,7 @@ pub fn Pack(
             var buffer: [2]u8 = undefined;
             const len = try self.readFrom(&buffer);
             if (len != 2) {
-                return MsGPackError.LENGTH_READING;
+                 return MsgPackError.LengthReading;
             }
             const val = std.mem.readInt(u16, &buffer, big_endian);
             return val;
@@ -1139,7 +1137,7 @@ pub fn Pack(
             var buffer: [4]u8 = undefined;
             const len = try self.readFrom(&buffer);
             if (len != 4) {
-                return MsGPackError.LENGTH_READING;
+                 return MsgPackError.LengthReading;
             }
             const val = std.mem.readInt(i32, &buffer, big_endian);
             return val;
@@ -1149,7 +1147,7 @@ pub fn Pack(
             var buffer: [4]u8 = undefined;
             const len = try self.readFrom(&buffer);
             if (len != 4) {
-                return MsGPackError.LENGTH_READING;
+                 return MsgPackError.LengthReading;
             }
             const val = std.mem.readInt(u32, &buffer, big_endian);
             return val;
@@ -1159,7 +1157,7 @@ pub fn Pack(
             var buffer: [8]u8 = undefined;
             const len = try self.readFrom(&buffer);
             if (len != 8) {
-                return MsGPackError.LENGTH_READING;
+                 return MsgPackError.LengthReading;
             }
             const val = std.mem.readInt(i64, &buffer, big_endian);
             return val;
@@ -1169,7 +1167,7 @@ pub fn Pack(
             var buffer: [8]u8 = undefined;
             const len = try self.readFrom(&buffer);
             if (len != 8) {
-                return MsGPackError.LENGTH_READING;
+                 return MsgPackError.LengthReading;
             }
             const val = std.mem.readInt(u64, &buffer, big_endian);
             return val;
@@ -1214,9 +1212,9 @@ pub fn Pack(
                     if (val <= std.math.maxInt(i64)) {
                         return @intCast(val);
                     }
-                    return MsGPackError.INVALID_TYPE;
+                     return MsgPackError.InvalidType;
                 },
-                else => return MsGPackError.TYPE_MARKER_READING,
+                 else => return MsgPackError.TypeMarkerReading,
             }
         }
 
@@ -1235,7 +1233,7 @@ pub fn Pack(
                     if (val >= 0) {
                         return @intCast(val);
                     }
-                    return MsGPackError.INVALID_TYPE;
+                     return MsgPackError.InvalidType;
                 },
                 .UINT16 => {
                     const val = try self.readU16Value();
@@ -1246,7 +1244,7 @@ pub fn Pack(
                     if (val >= 0) {
                         return @intCast(val);
                     }
-                    return MsGPackError.INVALID_TYPE;
+                     return MsgPackError.InvalidType;
                 },
                 .UINT32 => {
                     const val = try self.readU32Value();
@@ -1257,7 +1255,7 @@ pub fn Pack(
                     if (val >= 0) {
                         return @intCast(val);
                     }
-                    return MsGPackError.INVALID_TYPE;
+                     return MsgPackError.InvalidType;
                 },
                 .UINT64 => {
                     return self.readU64Value();
@@ -1267,9 +1265,9 @@ pub fn Pack(
                     if (val >= 0) {
                         return @intCast(val);
                     }
-                    return MsGPackError.INVALID_TYPE;
+                     return MsgPackError.InvalidType;
                 },
-                else => return MsGPackError.TYPE_MARKER_READING,
+                 else => return MsgPackError.TypeMarkerReading,
             }
         }
 
@@ -1277,7 +1275,7 @@ pub fn Pack(
             var buffer: [4]u8 = undefined;
             const len = try self.readFrom(&buffer);
             if (len != 4) {
-                return MsGPackError.LENGTH_READING;
+                 return MsgPackError.LengthReading;
             }
             const val_int = std.mem.readInt(u32, &buffer, big_endian);
             const val: f32 = @bitCast(val_int);
@@ -1288,7 +1286,7 @@ pub fn Pack(
             var buffer: [8]u8 = undefined;
             const len = try self.readFrom(&buffer);
             if (len != 8) {
-                return MsGPackError.LENGTH_READING;
+                 return MsgPackError.LengthReading;
             }
             const val_int = std.mem.readInt(u64, &buffer, big_endian);
             const val: f64 = @bitCast(val_int);
@@ -1304,7 +1302,7 @@ pub fn Pack(
                 .FLOAT64 => {
                     return self.readF64Value();
                 },
-                else => return MsGPackError.TYPE_MARKER_READING,
+                 else => return MsgPackError.TypeMarkerReading,
             }
         }
 
@@ -1352,7 +1350,7 @@ pub fn Pack(
                 .STR32 => {
                     return self.readStr32Value(allocator);
                 },
-                else => return MsGPackError.TYPE_MARKER_READING,
+                 else => return MsgPackError.TypeMarkerReading,
             }
         }
 
@@ -1388,7 +1386,7 @@ pub fn Pack(
                 .BIN32 => {
                     return self.readBin32Value(allocator);
                 },
-                else => return MsGPackError.TYPE_MARKER_READING,
+                 else => return MsgPackError.TypeMarkerReading,
             }
         }
 
@@ -1463,7 +1461,7 @@ pub fn Pack(
                     // timestamp 32 format
                     const ext_type = try self.readI8Value();
                     if (ext_type != TIMESTAMP_EXT_TYPE) {
-                        return MsGPackError.INVALID_TYPE;
+                         return MsgPackError.InvalidType;
                     }
                     const seconds = try self.readU32Value();
                     return Timestamp.new(@intCast(seconds), 0);
@@ -1472,7 +1470,7 @@ pub fn Pack(
                     // timestamp 64 format
                     const ext_type = try self.readI8Value();
                     if (ext_type != TIMESTAMP_EXT_TYPE) {
-                        return MsGPackError.INVALID_TYPE;
+                         return MsgPackError.InvalidType;
                     }
                     const data64 = try self.readU64Value();
                     const nanoseconds: u32 = @intCast(data64 >> TIMESTAMP64_SECONDS_BITS);
@@ -1483,18 +1481,18 @@ pub fn Pack(
                     // timestamp 96 format (length should be 12)
                     const len = try self.readV8Value();
                     if (len != TIMESTAMP96_DATA_LEN) {
-                        return MsGPackError.INVALID_TYPE;
+                         return MsgPackError.InvalidType;
                     }
                     const ext_type = try self.readI8Value();
                     if (ext_type != TIMESTAMP_EXT_TYPE) {
-                        return MsGPackError.INVALID_TYPE;
+                         return MsgPackError.InvalidType;
                     }
                     const nanoseconds = try self.readU32Value();
                     const seconds = try self.readI64Value();
                     return Timestamp.new(seconds, nanoseconds);
                 },
                 else => {
-                    return MsGPackError.INVALID_TYPE;
+                     return MsgPackError.InvalidType;
                 },
             }
         }
@@ -1506,7 +1504,7 @@ pub fn Pack(
                     // timestamp 32 format
                     const ext_type = try self.readI8Value();
                     if (ext_type != TIMESTAMP_EXT_TYPE) {
-                        return MsGPackError.INVALID_TYPE;
+                         return MsgPackError.InvalidType;
                     }
                     const seconds = try self.readU32Value();
                     return Timestamp.new(@intCast(seconds), 0);
@@ -1515,7 +1513,7 @@ pub fn Pack(
                     // timestamp 64 format
                     const ext_type = try self.readI8Value();
                     if (ext_type != TIMESTAMP_EXT_TYPE) {
-                        return MsGPackError.INVALID_TYPE;
+                         return MsgPackError.InvalidType;
                     }
                     const data64 = try self.readU64Value();
                     const nanoseconds: u32 = @intCast(data64 >> TIMESTAMP64_SECONDS_BITS);
@@ -1526,18 +1524,18 @@ pub fn Pack(
                     // timestamp 96 format (length should be 12)
                     const len = try self.readV8Value();
                     if (len != TIMESTAMP96_DATA_LEN) {
-                        return MsGPackError.INVALID_TYPE;
+                         return MsgPackError.InvalidType;
                     }
                     const ext_type = try self.readI8Value();
                     if (ext_type != TIMESTAMP_EXT_TYPE) {
-                        return MsGPackError.INVALID_TYPE;
+                         return MsgPackError.InvalidType;
                     }
                     const nanoseconds = try self.readU32Value();
                     const seconds = try self.readI64Value();
                     return Timestamp.new(seconds, nanoseconds);
                 },
                 else => {
-                    return MsGPackError.INVALID_TYPE;
+                     return MsgPackError.InvalidType;
                 },
             }
         }
@@ -1572,7 +1570,7 @@ pub fn Pack(
                     return self.readExtData(allocator, len);
                 },
                 else => {
-                    return MsGPackError.INVALID_TYPE;
+                    return MsgPackError.InvalidType;
                 },
             }
         }
@@ -1649,7 +1647,7 @@ pub fn Pack(
                             len = try self.readU32Value();
                         },
                         else => {
-                            return MsGPackError.INVALID_TYPE;
+                             return MsgPackError.InvalidType;
                         },
                     }
 
@@ -1677,7 +1675,7 @@ pub fn Pack(
                             len = try self.readU32Value();
                         },
                         else => {
-                            return MsGPackError.INVALID_TYPE;
+                             return MsgPackError.InvalidType;
                         },
                     }
 
