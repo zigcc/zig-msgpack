@@ -1295,6 +1295,48 @@ test "actual map32 format" {
     try expect(try last_value.?.getInt() == 999);
 }
 
+// Test constant structures values
+test "constant structures validation" {
+    // Test FixLimits constants
+    try expect(msgpack.FixLimits.POSITIVE_INT_MAX == 0x7f);
+    try expect(msgpack.FixLimits.NEGATIVE_INT_MIN == -32);
+    try expect(msgpack.FixLimits.STR_LEN_MAX == 31);
+    try expect(msgpack.FixLimits.ARRAY_LEN_MAX == 15);
+    try expect(msgpack.FixLimits.MAP_LEN_MAX == 15);
+
+    // Test IntBounds constants
+    try expect(msgpack.IntBounds.UINT8_MAX == 0xff);
+    try expect(msgpack.IntBounds.UINT16_MAX == 0xffff);
+    try expect(msgpack.IntBounds.UINT32_MAX == 0xffff_ffff);
+    try expect(msgpack.IntBounds.INT8_MIN == -128);
+    try expect(msgpack.IntBounds.INT16_MIN == -32768);
+    try expect(msgpack.IntBounds.INT32_MIN == -2147483648);
+
+    // Test FixExtLen constants
+    try expect(msgpack.FixExtLen.EXT1 == 1);
+    try expect(msgpack.FixExtLen.EXT2 == 2);
+    try expect(msgpack.FixExtLen.EXT4 == 4);
+    try expect(msgpack.FixExtLen.EXT8 == 8);
+    try expect(msgpack.FixExtLen.EXT16 == 16);
+
+    // Test TimestampExt constants
+    try expect(msgpack.TimestampExt.TYPE_ID == -1);
+    try expect(msgpack.TimestampExt.FORMAT32_LEN == 4);
+    try expect(msgpack.TimestampExt.FORMAT64_LEN == 8);
+    try expect(msgpack.TimestampExt.FORMAT96_LEN == 12);
+    try expect(msgpack.TimestampExt.SECONDS_BITS_64 == 34);
+    try expect(msgpack.TimestampExt.SECONDS_MASK_64 == 0x3ffffffff);
+    try expect(msgpack.TimestampExt.NANOSECONDS_MAX == 999_999_999);
+    try expect(msgpack.TimestampExt.NANOSECONDS_PER_SECOND == 1_000_000_000.0);
+
+    // Test MarkerBase constants
+    try expect(msgpack.MarkerBase.FIXARRAY == 0x90);
+    try expect(msgpack.MarkerBase.FIXMAP == 0x80);
+    try expect(msgpack.MarkerBase.FIXSTR == 0xa0);
+    try expect(msgpack.MarkerBase.FIXSTR_LEN_MASK == 0x1f);
+    try expect(msgpack.MarkerBase.FIXSTR_TYPE_MASK == 0xe0);
+}
+
 // Test edge cases and error conditions
 test "edge cases and error conditions" {
     var arr: [100]u8 = std.mem.zeroes([100]u8);
