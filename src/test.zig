@@ -1045,6 +1045,82 @@ test "getUint method" {
      try expect(nil_result == msgpack.MsgPackError.InvalidType);
 }
 
+// Test new strict type conversion methods
+test "strict type conversion methods" {
+    // Test asInt - strict mode
+    const int_payload = Payload.intToPayload(-42);
+    try expect(try int_payload.asInt() == -42);
+    
+    const uint_payload = Payload.uintToPayload(100);
+    const uint_as_int = uint_payload.asInt();
+    try expect(uint_as_int == msgpack.MsgPackError.InvalidType);
+
+    // Test asUint - strict mode
+    try expect(try uint_payload.asUint() == 100);
+    
+    const int_as_uint = int_payload.asUint();
+    try expect(int_as_uint == msgpack.MsgPackError.InvalidType);
+
+    // Test asFloat
+    const float_payload = Payload.floatToPayload(3.14);
+    try expect(try float_payload.asFloat() == 3.14);
+    
+    const int_as_float = int_payload.asFloat();
+    try expect(int_as_float == msgpack.MsgPackError.InvalidType);
+
+    // Test asBool
+    const bool_payload = Payload.boolToPayload(true);
+    try expect(try bool_payload.asBool() == true);
+    
+    const int_as_bool = int_payload.asBool();
+    try expect(int_as_bool == msgpack.MsgPackError.InvalidType);
+
+    // Test asStr
+    const str_payload = try Payload.strToPayload("hello", allocator);
+    defer str_payload.free(allocator);
+    const str_value = try str_payload.asStr();
+    try expect(u8eql("hello", str_value));
+    
+    const int_as_str = int_payload.asStr();
+    try expect(int_as_str == msgpack.MsgPackError.InvalidType);
+
+    // Test asBin
+    var bin_data = [_]u8{ 1, 2, 3 };
+    const bin_payload = try Payload.binToPayload(&bin_data, allocator);
+    defer bin_payload.free(allocator);
+    const bin_value = try bin_payload.asBin();
+    try expect(u8eql(&bin_data, bin_value));
+}
+
+// Test payload type checking methods
+test "payload type checking methods" {
+    // Test isNil
+    const nil_payload = Payload.nilToPayload();
+    try expect(nil_payload.isNil());
+    
+    const int_payload = Payload.intToPayload(42);
+    try expect(!int_payload.isNil());
+
+    // Test isNumber
+    try expect(int_payload.isNumber());
+    
+    const uint_payload = Payload.uintToPayload(100);
+    try expect(uint_payload.isNumber());
+    
+    const float_payload = Payload.floatToPayload(3.14);
+    try expect(float_payload.isNumber());
+    
+    const str_payload = try Payload.strToPayload("test", allocator);
+    defer str_payload.free(allocator);
+    try expect(!str_payload.isNumber());
+
+    // Test isInteger
+    try expect(int_payload.isInteger());
+    try expect(uint_payload.isInteger());
+    try expect(!float_payload.isInteger());
+    try expect(!str_payload.isInteger());
+}
+
 // Test NaN and Infinity float values
 test "nan and infinity float values" {
     var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);

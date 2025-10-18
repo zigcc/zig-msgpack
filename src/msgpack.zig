@@ -12,44 +12,85 @@ const native_endian = builtin.cpu.arch.endian();
 const big_endian = std.builtin.Endian.big;
 const little_endian = std.builtin.Endian.little;
 
-// Basic format boundary constants
-const MAX_POSITIVE_FIXINT: u8 = 0x7f;
-const MIN_NEGATIVE_FIXINT: i8 = -32;
-const MAX_FIXSTR_LEN: u8 = 31;
-const MAX_FIXARRAY_LEN: u8 = 15;
-const MAX_FIXMAP_LEN: u8 = 15;
-const TIMESTAMP_EXT_TYPE: i8 = -1;
-
-// Integer boundary constants
-const MAX_UINT8: u64 = 0xff;
-const MAX_UINT16: u64 = 0xffff;
-const MAX_UINT32: u64 = 0xffff_ffff;
-const MIN_INT8: i64 = -128;
-const MIN_INT16: i64 = -32768;
-const MIN_INT32: i64 = -2147483648;
-
-// Fixed extension type lengths
-const FIXEXT1_LEN: usize = 1;
-const FIXEXT2_LEN: usize = 2;
-const FIXEXT4_LEN: usize = 4;
-const FIXEXT8_LEN: usize = 8;
-const FIXEXT16_LEN: usize = 16;
-
-// Timestamp format constants
-const TIMESTAMP32_DATA_LEN: usize = 4;
-const TIMESTAMP64_DATA_LEN: usize = 8;
-const TIMESTAMP96_DATA_LEN: usize = 12;
-const TIMESTAMP64_SECONDS_BITS: u6 = 34;
-const TIMESTAMP64_SECONDS_MASK: u64 = 0x3ffffffff;
-const MAX_NANOSECONDS: u32 = 999_999_999;
-const NANOSECONDS_PER_SECOND: f64 = 1_000_000_000.0;
-
-// Marker value offsets and masks
-const FIXARRAY_BASE: u8 = 0x90;
-const FIXMAP_BASE: u8 = 0x80;
-const FIXSTR_BASE: u8 = 0xa0;
-const FIXSTR_MASK: u8 = 0x1f;
-const FIXSTR_TYPE_MASK: u8 = 0xe0;
+ /// MessagePack format limits for fix types
+ pub const FixLimits = struct {
+     pub const POSITIVE_INT_MAX: u8 = 0x7f;
+     pub const NEGATIVE_INT_MIN: i8 = -32;
+     pub const STR_LEN_MAX: u8 = 31;
+     pub const ARRAY_LEN_MAX: u8 = 15;
+     pub const MAP_LEN_MAX: u8 = 15;
+ };
+ 
+ /// Integer type boundaries
+ pub const IntBounds = struct {
+     pub const UINT8_MAX: u64 = 0xff;
+     pub const UINT16_MAX: u64 = 0xffff;
+     pub const UINT32_MAX: u64 = 0xffff_ffff;
+     pub const INT8_MIN: i64 = -128;
+     pub const INT16_MIN: i64 = -32768;
+     pub const INT32_MIN: i64 = -2147483648;
+ };
+ 
+ /// Fixed extension type data lengths
+ pub const FixExtLen = struct {
+     pub const EXT1: usize = 1;
+     pub const EXT2: usize = 2;
+     pub const EXT4: usize = 4;
+     pub const EXT8: usize = 8;
+     pub const EXT16: usize = 16;
+ };
+ 
+ /// Timestamp extension type constants
+ pub const TimestampExt = struct {
+     pub const TYPE_ID: i8 = -1;
+     pub const FORMAT32_LEN: usize = 4;
+     pub const FORMAT64_LEN: usize = 8;
+     pub const FORMAT96_LEN: usize = 12;
+     pub const SECONDS_BITS_64: u6 = 34;
+     pub const SECONDS_MASK_64: u64 = 0x3ffffffff;
+     pub const NANOSECONDS_MAX: u32 = 999_999_999;
+     pub const NANOSECONDS_PER_SECOND: f64 = 1_000_000_000.0;
+ };
+ 
+ /// Marker byte base values and masks
+ pub const MarkerBase = struct {
+     pub const FIXARRAY: u8 = 0x90;
+     pub const FIXMAP: u8 = 0x80;
+     pub const FIXSTR: u8 = 0xa0;
+     pub const FIXSTR_LEN_MASK: u8 = 0x1f;
+     pub const FIXSTR_TYPE_MASK: u8 = 0xe0;
+ };
+ 
+ // Backward compatibility aliases (will be deprecated)
+ const MAX_POSITIVE_FIXINT: u8 = FixLimits.POSITIVE_INT_MAX;
+ const MIN_NEGATIVE_FIXINT: i8 = FixLimits.NEGATIVE_INT_MIN;
+ const MAX_FIXSTR_LEN: u8 = FixLimits.STR_LEN_MAX;
+ const MAX_FIXARRAY_LEN: u8 = FixLimits.ARRAY_LEN_MAX;
+ const MAX_FIXMAP_LEN: u8 = FixLimits.MAP_LEN_MAX;
+ const TIMESTAMP_EXT_TYPE: i8 = TimestampExt.TYPE_ID;
+ const MAX_UINT8: u64 = IntBounds.UINT8_MAX;
+ const MAX_UINT16: u64 = IntBounds.UINT16_MAX;
+ const MAX_UINT32: u64 = IntBounds.UINT32_MAX;
+ const MIN_INT8: i64 = IntBounds.INT8_MIN;
+ const MIN_INT16: i64 = IntBounds.INT16_MIN;
+ const MIN_INT32: i64 = IntBounds.INT32_MIN;
+ const FIXEXT1_LEN: usize = FixExtLen.EXT1;
+ const FIXEXT2_LEN: usize = FixExtLen.EXT2;
+ const FIXEXT4_LEN: usize = FixExtLen.EXT4;
+ const FIXEXT8_LEN: usize = FixExtLen.EXT8;
+ const FIXEXT16_LEN: usize = FixExtLen.EXT16;
+ const TIMESTAMP32_DATA_LEN: usize = TimestampExt.FORMAT32_LEN;
+ const TIMESTAMP64_DATA_LEN: usize = TimestampExt.FORMAT64_LEN;
+ const TIMESTAMP96_DATA_LEN: usize = TimestampExt.FORMAT96_LEN;
+ const TIMESTAMP64_SECONDS_BITS: u6 = TimestampExt.SECONDS_BITS_64;
+ const TIMESTAMP64_SECONDS_MASK: u64 = TimestampExt.SECONDS_MASK_64;
+ const MAX_NANOSECONDS: u32 = TimestampExt.NANOSECONDS_MAX;
+ const NANOSECONDS_PER_SECOND: f64 = TimestampExt.NANOSECONDS_PER_SECOND;
+ const FIXARRAY_BASE: u8 = MarkerBase.FIXARRAY;
+ const FIXMAP_BASE: u8 = MarkerBase.FIXMAP;
+ const FIXSTR_BASE: u8 = MarkerBase.FIXSTR;
+ const FIXSTR_MASK: u8 = MarkerBase.FIXSTR_LEN_MASK;
+ const FIXSTR_TYPE_MASK: u8 = MarkerBase.FIXSTR_TYPE_MASK;
 
 /// the Str Type
 pub const Str = struct {
@@ -342,7 +383,8 @@ pub const Payload = union(enum) {
     }
 
     /// get an i64 value from payload
-    /// Note: if the payload is not an int or the value is too large, it will return MsGPackError.INVALID_TYPE
+     /// Tries to get i64 value, converting uint if it fits within i64 range.
+     /// This is a lenient conversion method.
     pub fn getInt(self: Payload) !i64 {
         return switch (self) {
             .int => |val| val,
@@ -358,7 +400,8 @@ pub const Payload = union(enum) {
     }
 
     /// get an u64 value from payload
-    /// Note: if the payload is not a uint or the value is negative, it will return MsGPackError.INVALID_TYPE
+     /// Tries to get u64 value, converting positive int if possible.
+     /// This is a lenient conversion method.
     pub fn getUint(self: Payload) !u64 {
         return switch (self) {
             .int => |val| {
@@ -370,6 +413,77 @@ pub const Payload = union(enum) {
             },
             .uint => |val| val,
              else => return MsgPackError.InvalidType,
+        };
+    }
+
+    /// Get i64 value without type conversion (strict mode).
+    /// Returns error if payload is not exactly an int type.
+    pub fn asInt(self: Payload) !i64 {
+        return switch (self) {
+            .int => |val| val,
+            else => MsgPackError.InvalidType,
+        };
+    }
+
+    /// Get u64 value without type conversion (strict mode).
+    /// Returns error if payload is not exactly a uint type.
+    pub fn asUint(self: Payload) !u64 {
+        return switch (self) {
+            .uint => |val| val,
+            else => MsgPackError.InvalidType,
+        };
+    }
+
+    /// Get f64 value without type conversion.
+    pub fn asFloat(self: Payload) !f64 {
+        return switch (self) {
+            .float => |val| val,
+            else => MsgPackError.InvalidType,
+        };
+    }
+
+    /// Get bool value.
+    pub fn asBool(self: Payload) !bool {
+        return switch (self) {
+            .bool => |val| val,
+            else => MsgPackError.InvalidType,
+        };
+    }
+
+    /// Get string slice. The string data is owned by the Payload.
+    pub fn asStr(self: Payload) ![]const u8 {
+        return switch (self) {
+            .str => |s| s.value(),
+            else => MsgPackError.InvalidType,
+        };
+    }
+
+    /// Get binary data slice. The data is owned by the Payload.
+    pub fn asBin(self: Payload) ![]u8 {
+        return switch (self) {
+            .bin => |b| b.value(),
+            else => MsgPackError.InvalidType,
+        };
+    }
+
+    /// Check if payload is nil.
+    pub fn isNil(self: Payload) bool {
+        return self == .nil;
+    }
+
+    /// Check if payload is a number (int, uint, or float).
+    pub fn isNumber(self: Payload) bool {
+        return switch (self) {
+            .int, .uint, .float => true,
+            else => false,
+        };
+    }
+
+    /// Check if payload is an integer (int or uint).
+    pub fn isInteger(self: Payload) bool {
+        return switch (self) {
+            .int, .uint => true,
+            else => false,
         };
     }
 };
@@ -486,6 +600,12 @@ pub fn Pack(
             var arr: [@sizeOf(T)]u8 = undefined;
             std.mem.writeInt(T, &arr, val, big_endian);
             try self.writeData(&arr);
+        }
+
+        /// Generic data write with length prefix
+        inline fn writeDataWithLength(self: Self, comptime LenType: type, data: []const u8) !void {
+            try self.writeIntRaw(LenType, @intCast(data.len));
+            try self.writeData(data);
         }
 
         /// write type marker
@@ -701,10 +821,7 @@ pub fn Pack(
         }
 
          inline fn writeStr8Value(self: Self, str: []const u8) !void {
-            const len = str.len;
-            try self.writeU8Value(@intCast(len));
-
-            try self.writeData(str);
+             try self.writeDataWithLength(u8, str);
         }
 
         /// write str8
@@ -719,10 +836,7 @@ pub fn Pack(
         }
 
          inline fn writeStr16Value(self: Self, str: []const u8) !void {
-            const len = str.len;
-            try self.writeU16Value(@intCast(len));
-
-            try self.writeData(str);
+             try self.writeDataWithLength(u16, str);
         }
 
         /// write str16
@@ -738,10 +852,7 @@ pub fn Pack(
         }
 
          inline fn writeStr32Value(self: Self, str: []const u8) !void {
-            const len = str.len;
-            try self.writeU32Value(@intCast(len));
-
-            try self.writeData(str);
+             try self.writeDataWithLength(u32, str);
         }
 
         /// write str32
@@ -1376,61 +1487,82 @@ pub fn Pack(
             };
         }
 
-        /// read ext value or timestamp if it's timestamp type (-1)
-        fn readExtValueOrTimestamp(self: Self, marker: Markers, allocator: Allocator) !Payload {
-            // First, check if this could be a timestamp format
-            if (marker == .FIXEXT4 or marker == .FIXEXT8 or marker == .EXT8) {
-                // Read and check length for EXT8
-                var actual_len: usize = 0;
-                if (marker == .EXT8) {
-                    actual_len = try self.readV8Value();
-                    if (actual_len != TIMESTAMP96_DATA_LEN) {
-                        // Not timestamp 96, read as regular EXT
-                        const ext_type = try self.readI8Value();
-                        const ext_data = try allocator.alloc(u8, actual_len);
-                        _ = try self.readFrom(ext_data);
-                        return Payload{ .ext = EXT{ .type = ext_type, .data = ext_data } };
-                    }
-                } else if (marker == .FIXEXT4) {
-                    actual_len = FIXEXT4_LEN;
-                } else if (marker == .FIXEXT8) {
-                    actual_len = FIXEXT8_LEN;
-                }
-
-                // Read the type
-                const ext_type = try self.readI8Value();
-
-                if (ext_type == TIMESTAMP_EXT_TYPE) {
-                    // This is a timestamp
-                    if (marker == .FIXEXT4) {
-                        // timestamp 32
-                        const seconds = try self.readU32Value();
-                        return Payload{ .timestamp = Timestamp.new(@intCast(seconds), 0) };
-                    } else if (marker == .FIXEXT8) {
-                        // timestamp 64
-                        const data64 = try self.readU64Value();
-                        const nanoseconds: u32 = @intCast(data64 >> TIMESTAMP64_SECONDS_BITS);
-                        const seconds: i64 = @intCast(data64 & TIMESTAMP64_SECONDS_MASK);
-                        return Payload{ .timestamp = Timestamp.new(seconds, nanoseconds) };
-                    } else if (marker == .EXT8) {
-                        // timestamp 96
-                        const nanoseconds = try self.readU32Value();
-                        const seconds = try self.readI64Value();
-                        return Payload{ .timestamp = Timestamp.new(seconds, nanoseconds) };
-                    }
-                } else {
-                    // Not a timestamp, read as regular EXT
-                    const ext_data = try allocator.alloc(u8, actual_len);
-                    _ = try self.readFrom(ext_data);
-                    return Payload{ .ext = EXT{ .type = ext_type, .data = ext_data } };
-                }
-            }
-
-            // Regular EXT processing
-            const val = try self.readExtValue(marker, allocator);
-            return Payload{ .ext = val };
+        /// Check if a marker can potentially be a timestamp
+        inline fn isTimestampCandidate(marker: Markers) bool {
+            return marker == .FIXEXT4 or marker == .FIXEXT8 or marker == .EXT8;
         }
 
+        /// Read timestamp 32-bit format (seconds only, 0 nanoseconds)
+        inline fn readTimestamp32(self: Self) !Timestamp {
+            const seconds = try self.readU32Value();
+            return Timestamp.new(@intCast(seconds), 0);
+        }
+
+        /// Read timestamp 64-bit format (34-bit seconds + 30-bit nanoseconds)
+        inline fn readTimestamp64(self: Self) !Timestamp {
+            const data64 = try self.readU64Value();
+            const nanoseconds: u32 = @intCast(data64 >> TIMESTAMP64_SECONDS_BITS);
+            const seconds: i64 = @intCast(data64 & TIMESTAMP64_SECONDS_MASK);
+            return Timestamp.new(seconds, nanoseconds);
+        }
+
+        /// Read timestamp 96-bit format (32-bit nanoseconds + 64-bit seconds)
+        inline fn readTimestamp96(self: Self) !Timestamp {
+            const nanoseconds = try self.readU32Value();
+            const seconds = try self.readI64Value();
+            return Timestamp.new(seconds, nanoseconds);
+        }
+
+        /// Read non-timestamp EXT data
+        inline fn readRegularExt(self: Self, ext_type: i8, len: usize, allocator: Allocator) !Payload {
+            const ext_data = try allocator.alloc(u8, len);
+            errdefer allocator.free(ext_data);
+            _ = try self.readFrom(ext_data);
+            return Payload{ .ext = EXT{ .type = ext_type, .data = ext_data } };
+        }
+
+        /// read ext value or timestamp if it's timestamp type (-1)
+        fn readExtValueOrTimestamp(self: Self, marker: Markers, allocator: Allocator) !Payload {
+             // Fast path: not a timestamp candidate
+             if (!isTimestampCandidate(marker)) {
+                 const val = try self.readExtValue(marker, allocator);
+                 return Payload{ .ext = val };
+             }
+ 
+             // Determine actual length
+             const actual_len: usize = switch (marker) {
+                 .FIXEXT4 => FIXEXT4_LEN,
+                 .FIXEXT8 => FIXEXT8_LEN,
+                 .EXT8 => blk: {
+                     const len = try self.readV8Value();
+                     // If not timestamp 96 length, read as regular EXT
+                     if (len != TIMESTAMP96_DATA_LEN) {
+                         const ext_type = try self.readI8Value();
+                         return try self.readRegularExt(ext_type, len, allocator);
+                     }
+                     break :blk len;
+                 },
+                 else => unreachable,
+             };
+ 
+             // Read the extension type
+             const ext_type = try self.readI8Value();
+ 
+             // Check if it's a timestamp
+             if (ext_type == TIMESTAMP_EXT_TYPE) {
+                 const timestamp: Timestamp = switch (marker) {
+                     .FIXEXT4 => try self.readTimestamp32(),
+                     .FIXEXT8 => try self.readTimestamp64(),
+                     .EXT8 => try self.readTimestamp96(),
+                     else => unreachable,
+                 };
+                 return Payload{ .timestamp = timestamp };
+             }
+ 
+             // Not a timestamp, read as regular EXT
+             return try self.readRegularExt(ext_type, actual_len, allocator);
+         }
+ 
         /// try to read timestamp from ext data, return error if not timestamp
         fn tryReadTimestamp(self: Self, marker: Markers, _: Allocator) !Timestamp {
             switch (marker) {
