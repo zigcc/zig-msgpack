@@ -267,23 +267,23 @@ test "payload error handling" {
     // Test NotArr error
     const not_arr_payload = Payload.nilToPayload();
     const arr_len_result = not_arr_payload.getArrLen();
-     try expect(arr_len_result == Payload.Error.NotArray);
+    try expect(arr_len_result == Payload.Error.NotArray);
 
     const arr_element_result = not_arr_payload.getArrElement(0);
-     try expect(arr_element_result == Payload.Error.NotArray);
+    try expect(arr_element_result == Payload.Error.NotArray);
 
     var mut_not_arr = Payload.nilToPayload();
     const set_arr_result = mut_not_arr.setArrElement(0, Payload.nilToPayload());
-     try expect(set_arr_result == Payload.Error.NotArray);
+    try expect(set_arr_result == Payload.Error.NotArray);
 
     // Test NotMap error
     const not_map_payload = Payload.nilToPayload();
     const map_get_result = not_map_payload.mapGet("test");
-     try expect(map_get_result == Payload.Error.NotMap);
+    try expect(map_get_result == Payload.Error.NotMap);
 
     var mut_not_map = Payload.nilToPayload();
     const map_put_result = mut_not_map.mapPut("test", Payload.nilToPayload());
-     try expect(map_put_result == Payload.Error.NotMap);
+    try expect(map_put_result == Payload.Error.NotMap);
 }
 
 // Test boundary values for integers
@@ -1037,12 +1037,12 @@ test "getUint method" {
     // Test negative int payload should fail
     const neg_int_payload = Payload.intToPayload(-5);
     const result = neg_int_payload.getUint();
-     try expect(result == msgpack.MsgPackError.InvalidType);
+    try expect(result == msgpack.MsgPackError.InvalidType);
 
     // Test non-numeric payload should fail
     const nil_payload = Payload.nilToPayload();
     const nil_result = nil_payload.getUint();
-     try expect(nil_result == msgpack.MsgPackError.InvalidType);
+    try expect(nil_result == msgpack.MsgPackError.InvalidType);
 }
 
 // Test new strict type conversion methods
@@ -1050,28 +1050,28 @@ test "strict type conversion methods" {
     // Test asInt - strict mode
     const int_payload = Payload.intToPayload(-42);
     try expect(try int_payload.asInt() == -42);
-    
+
     const uint_payload = Payload.uintToPayload(100);
     const uint_as_int = uint_payload.asInt();
     try expect(uint_as_int == msgpack.MsgPackError.InvalidType);
 
     // Test asUint - strict mode
     try expect(try uint_payload.asUint() == 100);
-    
+
     const int_as_uint = int_payload.asUint();
     try expect(int_as_uint == msgpack.MsgPackError.InvalidType);
 
     // Test asFloat
     const float_payload = Payload.floatToPayload(3.14);
     try expect(try float_payload.asFloat() == 3.14);
-    
+
     const int_as_float = int_payload.asFloat();
     try expect(int_as_float == msgpack.MsgPackError.InvalidType);
 
     // Test asBool
     const bool_payload = Payload.boolToPayload(true);
     try expect(try bool_payload.asBool() == true);
-    
+
     const int_as_bool = int_payload.asBool();
     try expect(int_as_bool == msgpack.MsgPackError.InvalidType);
 
@@ -1080,7 +1080,7 @@ test "strict type conversion methods" {
     defer str_payload.free(allocator);
     const str_value = try str_payload.asStr();
     try expect(u8eql("hello", str_value));
-    
+
     const int_as_str = int_payload.asStr();
     try expect(int_as_str == msgpack.MsgPackError.InvalidType);
 
@@ -1097,19 +1097,19 @@ test "payload type checking methods" {
     // Test isNil
     const nil_payload = Payload.nilToPayload();
     try expect(nil_payload.isNil());
-    
+
     const int_payload = Payload.intToPayload(42);
     try expect(!int_payload.isNil());
 
     // Test isNumber
     try expect(int_payload.isNumber());
-    
+
     const uint_payload = Payload.uintToPayload(100);
     try expect(uint_payload.isNumber());
-    
+
     const float_payload = Payload.floatToPayload(3.14);
     try expect(float_payload.isNumber());
-    
+
     const str_payload = try Payload.strToPayload("test", allocator);
     defer str_payload.free(allocator);
     try expect(!str_payload.isNumber());
@@ -1878,7 +1878,7 @@ test "timestamp error handling" {
 
     // This should fail to write
     const result = p.write(Payload{ .timestamp = invalid_nano_ts });
-     try std.testing.expectError(msgpack.MsgPackError.InvalidType, result);
+    try std.testing.expectError(msgpack.MsgPackError.InvalidType, result);
 }
 
 // Test timestamp format selection logic

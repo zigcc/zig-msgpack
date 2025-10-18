@@ -12,85 +12,85 @@ const native_endian = builtin.cpu.arch.endian();
 const big_endian = std.builtin.Endian.big;
 const little_endian = std.builtin.Endian.little;
 
- /// MessagePack format limits for fix types
- pub const FixLimits = struct {
-     pub const POSITIVE_INT_MAX: u8 = 0x7f;
-     pub const NEGATIVE_INT_MIN: i8 = -32;
-     pub const STR_LEN_MAX: u8 = 31;
-     pub const ARRAY_LEN_MAX: u8 = 15;
-     pub const MAP_LEN_MAX: u8 = 15;
- };
- 
- /// Integer type boundaries
- pub const IntBounds = struct {
-     pub const UINT8_MAX: u64 = 0xff;
-     pub const UINT16_MAX: u64 = 0xffff;
-     pub const UINT32_MAX: u64 = 0xffff_ffff;
-     pub const INT8_MIN: i64 = -128;
-     pub const INT16_MIN: i64 = -32768;
-     pub const INT32_MIN: i64 = -2147483648;
- };
- 
- /// Fixed extension type data lengths
- pub const FixExtLen = struct {
-     pub const EXT1: usize = 1;
-     pub const EXT2: usize = 2;
-     pub const EXT4: usize = 4;
-     pub const EXT8: usize = 8;
-     pub const EXT16: usize = 16;
- };
- 
- /// Timestamp extension type constants
- pub const TimestampExt = struct {
-     pub const TYPE_ID: i8 = -1;
-     pub const FORMAT32_LEN: usize = 4;
-     pub const FORMAT64_LEN: usize = 8;
-     pub const FORMAT96_LEN: usize = 12;
-     pub const SECONDS_BITS_64: u6 = 34;
-     pub const SECONDS_MASK_64: u64 = 0x3ffffffff;
-     pub const NANOSECONDS_MAX: u32 = 999_999_999;
-     pub const NANOSECONDS_PER_SECOND: f64 = 1_000_000_000.0;
- };
- 
- /// Marker byte base values and masks
- pub const MarkerBase = struct {
-     pub const FIXARRAY: u8 = 0x90;
-     pub const FIXMAP: u8 = 0x80;
-     pub const FIXSTR: u8 = 0xa0;
-     pub const FIXSTR_LEN_MASK: u8 = 0x1f;
-     pub const FIXSTR_TYPE_MASK: u8 = 0xe0;
- };
- 
- // Backward compatibility aliases (will be deprecated)
- const MAX_POSITIVE_FIXINT: u8 = FixLimits.POSITIVE_INT_MAX;
- const MIN_NEGATIVE_FIXINT: i8 = FixLimits.NEGATIVE_INT_MIN;
- const MAX_FIXSTR_LEN: u8 = FixLimits.STR_LEN_MAX;
- const MAX_FIXARRAY_LEN: u8 = FixLimits.ARRAY_LEN_MAX;
- const MAX_FIXMAP_LEN: u8 = FixLimits.MAP_LEN_MAX;
- const TIMESTAMP_EXT_TYPE: i8 = TimestampExt.TYPE_ID;
- const MAX_UINT8: u64 = IntBounds.UINT8_MAX;
- const MAX_UINT16: u64 = IntBounds.UINT16_MAX;
- const MAX_UINT32: u64 = IntBounds.UINT32_MAX;
- const MIN_INT8: i64 = IntBounds.INT8_MIN;
- const MIN_INT16: i64 = IntBounds.INT16_MIN;
- const MIN_INT32: i64 = IntBounds.INT32_MIN;
- const FIXEXT1_LEN: usize = FixExtLen.EXT1;
- const FIXEXT2_LEN: usize = FixExtLen.EXT2;
- const FIXEXT4_LEN: usize = FixExtLen.EXT4;
- const FIXEXT8_LEN: usize = FixExtLen.EXT8;
- const FIXEXT16_LEN: usize = FixExtLen.EXT16;
- const TIMESTAMP32_DATA_LEN: usize = TimestampExt.FORMAT32_LEN;
- const TIMESTAMP64_DATA_LEN: usize = TimestampExt.FORMAT64_LEN;
- const TIMESTAMP96_DATA_LEN: usize = TimestampExt.FORMAT96_LEN;
- const TIMESTAMP64_SECONDS_BITS: u6 = TimestampExt.SECONDS_BITS_64;
- const TIMESTAMP64_SECONDS_MASK: u64 = TimestampExt.SECONDS_MASK_64;
- const MAX_NANOSECONDS: u32 = TimestampExt.NANOSECONDS_MAX;
- const NANOSECONDS_PER_SECOND: f64 = TimestampExt.NANOSECONDS_PER_SECOND;
- const FIXARRAY_BASE: u8 = MarkerBase.FIXARRAY;
- const FIXMAP_BASE: u8 = MarkerBase.FIXMAP;
- const FIXSTR_BASE: u8 = MarkerBase.FIXSTR;
- const FIXSTR_MASK: u8 = MarkerBase.FIXSTR_LEN_MASK;
- const FIXSTR_TYPE_MASK: u8 = MarkerBase.FIXSTR_TYPE_MASK;
+/// MessagePack format limits for fix types
+pub const FixLimits = struct {
+    pub const POSITIVE_INT_MAX: u8 = 0x7f;
+    pub const NEGATIVE_INT_MIN: i8 = -32;
+    pub const STR_LEN_MAX: u8 = 31;
+    pub const ARRAY_LEN_MAX: u8 = 15;
+    pub const MAP_LEN_MAX: u8 = 15;
+};
+
+/// Integer type boundaries
+pub const IntBounds = struct {
+    pub const UINT8_MAX: u64 = 0xff;
+    pub const UINT16_MAX: u64 = 0xffff;
+    pub const UINT32_MAX: u64 = 0xffff_ffff;
+    pub const INT8_MIN: i64 = -128;
+    pub const INT16_MIN: i64 = -32768;
+    pub const INT32_MIN: i64 = -2147483648;
+};
+
+/// Fixed extension type data lengths
+pub const FixExtLen = struct {
+    pub const EXT1: usize = 1;
+    pub const EXT2: usize = 2;
+    pub const EXT4: usize = 4;
+    pub const EXT8: usize = 8;
+    pub const EXT16: usize = 16;
+};
+
+/// Timestamp extension type constants
+pub const TimestampExt = struct {
+    pub const TYPE_ID: i8 = -1;
+    pub const FORMAT32_LEN: usize = 4;
+    pub const FORMAT64_LEN: usize = 8;
+    pub const FORMAT96_LEN: usize = 12;
+    pub const SECONDS_BITS_64: u6 = 34;
+    pub const SECONDS_MASK_64: u64 = 0x3ffffffff;
+    pub const NANOSECONDS_MAX: u32 = 999_999_999;
+    pub const NANOSECONDS_PER_SECOND: f64 = 1_000_000_000.0;
+};
+
+/// Marker byte base values and masks
+pub const MarkerBase = struct {
+    pub const FIXARRAY: u8 = 0x90;
+    pub const FIXMAP: u8 = 0x80;
+    pub const FIXSTR: u8 = 0xa0;
+    pub const FIXSTR_LEN_MASK: u8 = 0x1f;
+    pub const FIXSTR_TYPE_MASK: u8 = 0xe0;
+};
+
+// Backward compatibility aliases (will be deprecated)
+const MAX_POSITIVE_FIXINT: u8 = FixLimits.POSITIVE_INT_MAX;
+const MIN_NEGATIVE_FIXINT: i8 = FixLimits.NEGATIVE_INT_MIN;
+const MAX_FIXSTR_LEN: u8 = FixLimits.STR_LEN_MAX;
+const MAX_FIXARRAY_LEN: u8 = FixLimits.ARRAY_LEN_MAX;
+const MAX_FIXMAP_LEN: u8 = FixLimits.MAP_LEN_MAX;
+const TIMESTAMP_EXT_TYPE: i8 = TimestampExt.TYPE_ID;
+const MAX_UINT8: u64 = IntBounds.UINT8_MAX;
+const MAX_UINT16: u64 = IntBounds.UINT16_MAX;
+const MAX_UINT32: u64 = IntBounds.UINT32_MAX;
+const MIN_INT8: i64 = IntBounds.INT8_MIN;
+const MIN_INT16: i64 = IntBounds.INT16_MIN;
+const MIN_INT32: i64 = IntBounds.INT32_MIN;
+const FIXEXT1_LEN: usize = FixExtLen.EXT1;
+const FIXEXT2_LEN: usize = FixExtLen.EXT2;
+const FIXEXT4_LEN: usize = FixExtLen.EXT4;
+const FIXEXT8_LEN: usize = FixExtLen.EXT8;
+const FIXEXT16_LEN: usize = FixExtLen.EXT16;
+const TIMESTAMP32_DATA_LEN: usize = TimestampExt.FORMAT32_LEN;
+const TIMESTAMP64_DATA_LEN: usize = TimestampExt.FORMAT64_LEN;
+const TIMESTAMP96_DATA_LEN: usize = TimestampExt.FORMAT96_LEN;
+const TIMESTAMP64_SECONDS_BITS: u6 = TimestampExt.SECONDS_BITS_64;
+const TIMESTAMP64_SECONDS_MASK: u64 = TimestampExt.SECONDS_MASK_64;
+const MAX_NANOSECONDS: u32 = TimestampExt.NANOSECONDS_MAX;
+const NANOSECONDS_PER_SECOND: f64 = TimestampExt.NANOSECONDS_PER_SECOND;
+const FIXARRAY_BASE: u8 = MarkerBase.FIXARRAY;
+const FIXMAP_BASE: u8 = MarkerBase.FIXMAP;
+const FIXSTR_BASE: u8 = MarkerBase.FIXSTR;
+const FIXSTR_MASK: u8 = MarkerBase.FIXSTR_LEN_MASK;
+const FIXSTR_TYPE_MASK: u8 = MarkerBase.FIXSTR_TYPE_MASK;
 
 /// the Str Type
 pub const Str = struct {
@@ -176,9 +176,9 @@ pub const Map = std.StringHashMap(Payload);
 /// Note: The payload and its subvalues must have the same allocator
 pub const Payload = union(enum) {
     /// the error for Payload
-     pub const Error = error{
-         NotMap,
-         NotArray,
+    pub const Error = error{
+        NotMap,
+        NotArray,
     };
 
     nil: void,
@@ -196,7 +196,7 @@ pub const Payload = union(enum) {
     /// get array element
     pub fn getArrElement(self: Payload, index: usize) !Payload {
         if (self != .arr) {
-             return Error.NotArray;
+            return Error.NotArray;
         }
         return self.arr[index];
     }
@@ -204,7 +204,7 @@ pub const Payload = union(enum) {
     /// get array length
     pub fn getArrLen(self: Payload) !usize {
         if (self != .arr) {
-             return Error.NotArray;
+            return Error.NotArray;
         }
         return self.arr.len;
     }
@@ -212,7 +212,7 @@ pub const Payload = union(enum) {
     /// get map's element
     pub fn mapGet(self: Payload, key: []const u8) !?Payload {
         if (self != .map) {
-             return Error.NotMap;
+            return Error.NotMap;
         }
         return self.map.get(key);
     }
@@ -220,7 +220,7 @@ pub const Payload = union(enum) {
     /// set array element
     pub fn setArrElement(self: *Payload, index: usize, val: Payload) !void {
         if (self.* != .arr) {
-             return Error.NotArray;
+            return Error.NotArray;
         }
         self.arr[index] = val;
     }
@@ -228,7 +228,7 @@ pub const Payload = union(enum) {
     /// put a new element to map payload
     pub fn mapPut(self: *Payload, key: []const u8, val: Payload) !void {
         if (self.* != .map) {
-             return Error.NotMap;
+            return Error.NotMap;
         }
 
         if (self.map.getKeyPtr(key)) |existing_key| {
@@ -383,8 +383,8 @@ pub const Payload = union(enum) {
     }
 
     /// get an i64 value from payload
-     /// Tries to get i64 value, converting uint if it fits within i64 range.
-     /// This is a lenient conversion method.
+    /// Tries to get i64 value, converting uint if it fits within i64 range.
+    /// This is a lenient conversion method.
     pub fn getInt(self: Payload) !i64 {
         return switch (self) {
             .int => |val| val,
@@ -393,15 +393,15 @@ pub const Payload = union(enum) {
                     return @intCast(val);
                 }
                 // Value exceeds i64 range
-                 return MsgPackError.InvalidType;
+                return MsgPackError.InvalidType;
             },
-             else => return MsgPackError.InvalidType,
+            else => return MsgPackError.InvalidType,
         };
     }
 
     /// get an u64 value from payload
-     /// Tries to get u64 value, converting positive int if possible.
-     /// This is a lenient conversion method.
+    /// Tries to get u64 value, converting positive int if possible.
+    /// This is a lenient conversion method.
     pub fn getUint(self: Payload) !u64 {
         return switch (self) {
             .int => |val| {
@@ -409,10 +409,10 @@ pub const Payload = union(enum) {
                     return @intCast(val);
                 }
                 // Negative values cannot be converted to u64
-                 return MsgPackError.InvalidType;
+                return MsgPackError.InvalidType;
             },
             .uint => |val| val,
-             else => return MsgPackError.InvalidType,
+            else => return MsgPackError.InvalidType,
         };
     }
 
@@ -467,12 +467,12 @@ pub const Payload = union(enum) {
     }
 
     /// Check if payload is nil.
-    pub fn isNil(self: Payload) bool {
+    pub inline fn isNil(self: Payload) bool {
         return self == .nil;
     }
 
     /// Check if payload is a number (int, uint, or float).
-    pub fn isNumber(self: Payload) bool {
+    pub inline fn isNumber(self: Payload) bool {
         return switch (self) {
             .int, .uint, .float => true,
             else => false,
@@ -480,7 +480,7 @@ pub const Payload = union(enum) {
     }
 
     /// Check if payload is an integer (int or uint).
-    pub fn isInteger(self: Payload) bool {
+    pub inline fn isInteger(self: Payload) bool {
         return switch (self) {
             .int, .uint => true,
             else => false,
@@ -529,25 +529,25 @@ const Markers = enum(u8) {
 };
 
 /// A collection of errors that may occur when reading the payload
- pub const MsgPackError = error{
-     StrDataLengthTooLong,
-     BinDataLengthTooLong,
-     ArrayLengthTooLong,
-     TupleLengthTooLong,
-     MapLengthTooLong,
-     InputValueTooLarge,
-     FixedValueWriting,
-     TypeMarkerReading,
-     TypeMarkerWriting,
-     DataReading,
-     DataWriting,
-     ExtTypeReading,
-     ExtTypeWriting,
-     ExtTypeLength,
-     InvalidType,
-     LengthReading,
-     LengthWriting,
-     Internal,
+pub const MsgPackError = error{
+    StrDataLengthTooLong,
+    BinDataLengthTooLong,
+    ArrayLengthTooLong,
+    TupleLengthTooLong,
+    MapLengthTooLong,
+    InputValueTooLarge,
+    FixedValueWriting,
+    TypeMarkerReading,
+    TypeMarkerWriting,
+    DataReading,
+    DataWriting,
+    ExtTypeReading,
+    ExtTypeWriting,
+    ExtTypeLength,
+    InvalidType,
+    LengthReading,
+    LengthWriting,
+    Internal,
 };
 
 /// Create an instance of msgpack_pack
@@ -579,19 +579,19 @@ pub fn Pack(
         }
 
         /// write one byte
-         inline fn writeByte(self: Self, byte: u8) !void {
+        inline fn writeByte(self: Self, byte: u8) !void {
             const bytes = [_]u8{byte};
             const len = try self.writeTo(&bytes);
             if (len != 1) {
-                 return MsgPackError.LengthWriting;
+                return MsgPackError.LengthWriting;
             }
         }
 
         /// write data
-         inline fn writeData(self: Self, data: []const u8) !void {
+        inline fn writeData(self: Self, data: []const u8) !void {
             const len = try self.writeTo(data);
             if (len != data.len) {
-                 return MsgPackError.LengthWriting;
+                return MsgPackError.LengthWriting;
             }
         }
 
@@ -609,7 +609,7 @@ pub fn Pack(
         }
 
         /// write type marker
-         inline fn writeTypeMarker(self: Self, comptime marker: Markers) !void {
+        inline fn writeTypeMarker(self: Self, comptime marker: Markers) !void {
             switch (marker) {
                 .POSITIVE_FIXINT, .FIXMAP, .FIXARRAY, .FIXSTR, .NEGATIVE_FIXINT => {
                     const err_msg = comptimePrint("marker ({}) is wrong, the can not be write directly!", .{marker});
@@ -635,15 +635,15 @@ pub fn Pack(
         }
 
         /// write positive fix int
-        fn writePfixInt(self: Self, val: u8) !void {
+        inline fn writePfixInt(self: Self, val: u8) !void {
             if (val <= MAX_POSITIVE_FIXINT) {
                 try self.writeByte(val);
             } else {
-                 return MsgPackError.InputValueTooLarge;
+                return MsgPackError.InputValueTooLarge;
             }
         }
 
-         inline fn writeU8Value(self: Self, val: u8) !void {
+        inline fn writeU8Value(self: Self, val: u8) !void {
             try self.writeByte(val);
         }
 
@@ -653,8 +653,8 @@ pub fn Pack(
             try self.writeU8Value(val);
         }
 
-         inline fn writeU16Value(self: Self, val: u16) !void {
-             try self.writeIntRaw(u16, val);
+        inline fn writeU16Value(self: Self, val: u16) !void {
+            try self.writeIntRaw(u16, val);
         }
 
         /// write u16 int
@@ -663,8 +663,8 @@ pub fn Pack(
             try self.writeU16Value(val);
         }
 
-         inline fn writeU32Value(self: Self, val: u32) !void {
-             try self.writeIntRaw(u32, val);
+        inline fn writeU32Value(self: Self, val: u32) !void {
+            try self.writeIntRaw(u32, val);
         }
 
         /// write u32 int
@@ -673,8 +673,8 @@ pub fn Pack(
             try self.writeU32Value(val);
         }
 
-         inline fn writeU64Value(self: Self, val: u64) !void {
-             try self.writeIntRaw(u64, val);
+        inline fn writeU64Value(self: Self, val: u64) !void {
+            try self.writeIntRaw(u64, val);
         }
 
         /// write u64 int
@@ -684,15 +684,15 @@ pub fn Pack(
         }
 
         /// write negative fix int
-        fn writeNfixInt(self: Self, val: i8) !void {
+        inline fn writeNfixInt(self: Self, val: i8) !void {
             if (val >= MIN_NEGATIVE_FIXINT and val <= -1) {
                 try self.writeByte(@bitCast(val));
             } else {
-                 return MsgPackError.InputValueTooLarge;
+                return MsgPackError.InputValueTooLarge;
             }
         }
 
-         inline fn writeI8Value(self: Self, val: i8) !void {
+        inline fn writeI8Value(self: Self, val: i8) !void {
             try self.writeByte(@bitCast(val));
         }
 
@@ -702,8 +702,8 @@ pub fn Pack(
             try self.writeI8Value(val);
         }
 
-         inline fn writeI16Value(self: Self, val: i16) !void {
-             try self.writeIntRaw(i16, val);
+        inline fn writeI16Value(self: Self, val: i16) !void {
+            try self.writeIntRaw(i16, val);
         }
 
         /// write i16 int
@@ -712,8 +712,8 @@ pub fn Pack(
             try self.writeI16Value(val);
         }
 
-         inline fn writeI32Value(self: Self, val: i32) !void {
-             try self.writeIntRaw(i32, val);
+        inline fn writeI32Value(self: Self, val: i32) !void {
+            try self.writeIntRaw(i32, val);
         }
 
         /// write i32 int
@@ -722,8 +722,8 @@ pub fn Pack(
             try self.writeI32Value(val);
         }
 
-         inline fn writeI64Value(self: Self, val: i64) !void {
-             try self.writeIntRaw(i64, val);
+        inline fn writeI64Value(self: Self, val: i64) !void {
+            try self.writeIntRaw(i64, val);
         }
 
         /// write i64 int
@@ -764,7 +764,7 @@ pub fn Pack(
             }
         }
 
-         inline fn writeF32Value(self: Self, val: f32) !void {
+        inline fn writeF32Value(self: Self, val: f32) !void {
             const int: u32 = @bitCast(val);
             var arr: [4]u8 = undefined;
             std.mem.writeInt(u32, &arr, int, big_endian);
@@ -778,7 +778,7 @@ pub fn Pack(
             try self.writeF32Value(val);
         }
 
-         inline fn writeF64Value(self: Self, val: f64) !void {
+        inline fn writeF64Value(self: Self, val: f64) !void {
             const int: u64 = @bitCast(val);
             var arr: [8]u8 = undefined;
             std.mem.writeInt(u64, &arr, int, big_endian);
@@ -805,7 +805,7 @@ pub fn Pack(
             }
         }
 
-         inline fn writeFixStrValue(self: Self, str: []const u8) !void {
+        inline fn writeFixStrValue(self: Self, str: []const u8) !void {
             try self.writeData(str);
         }
 
@@ -813,37 +813,37 @@ pub fn Pack(
         fn writeFixStr(self: Self, str: []const u8) !void {
             const len = str.len;
             if (len > MAX_FIXSTR_LEN) {
-                 return MsgPackError.StrDataLengthTooLong;
+                return MsgPackError.StrDataLengthTooLong;
             }
             const header: u8 = @intFromEnum(Markers.FIXSTR) + @as(u8, @intCast(len));
             try self.writeByte(header);
             try self.writeFixStrValue(str);
         }
 
-         inline fn writeStr8Value(self: Self, str: []const u8) !void {
-             try self.writeDataWithLength(u8, str);
+        inline fn writeStr8Value(self: Self, str: []const u8) !void {
+            try self.writeDataWithLength(u8, str);
         }
 
         /// write str8
         fn writeStr8(self: Self, str: []const u8) !void {
             const len = str.len;
             if (len > MAX_UINT8) {
-                 return MsgPackError.StrDataLengthTooLong;
+                return MsgPackError.StrDataLengthTooLong;
             }
 
             try self.writeTypeMarker(.STR8);
             try self.writeStr8Value(str);
         }
 
-         inline fn writeStr16Value(self: Self, str: []const u8) !void {
-             try self.writeDataWithLength(u16, str);
+        inline fn writeStr16Value(self: Self, str: []const u8) !void {
+            try self.writeDataWithLength(u16, str);
         }
 
         /// write str16
         fn writeStr16(self: Self, str: []const u8) !void {
             const len = str.len;
             if (len > MAX_UINT16) {
-                 return MsgPackError.StrDataLengthTooLong;
+                return MsgPackError.StrDataLengthTooLong;
             }
 
             try self.writeTypeMarker(.STR16);
@@ -851,15 +851,15 @@ pub fn Pack(
             try self.writeStr16Value(str);
         }
 
-         inline fn writeStr32Value(self: Self, str: []const u8) !void {
-             try self.writeDataWithLength(u32, str);
+        inline fn writeStr32Value(self: Self, str: []const u8) !void {
+            try self.writeDataWithLength(u32, str);
         }
 
         /// write str32
         fn writeStr32(self: Self, str: []const u8) !void {
             const len = str.len;
             if (len > MAX_UINT32) {
-                 return MsgPackError.StrDataLengthTooLong;
+                return MsgPackError.StrDataLengthTooLong;
             }
 
             try self.writeTypeMarker(.STR32);
@@ -884,7 +884,7 @@ pub fn Pack(
         fn writeBin8(self: Self, bin: []const u8) !void {
             const len = bin.len;
             if (len > MAX_UINT8) {
-                 return MsgPackError.BinDataLengthTooLong;
+                return MsgPackError.BinDataLengthTooLong;
             }
 
             try self.writeTypeMarker(.BIN8);
@@ -896,7 +896,7 @@ pub fn Pack(
         fn writeBin16(self: Self, bin: []const u8) !void {
             const len = bin.len;
             if (len > MAX_UINT16) {
-                 return MsgPackError.BinDataLengthTooLong;
+                return MsgPackError.BinDataLengthTooLong;
             }
 
             try self.writeTypeMarker(.BIN16);
@@ -908,7 +908,7 @@ pub fn Pack(
         fn writeBin32(self: Self, bin: []const u8) !void {
             const len = bin.len;
             if (len > MAX_UINT32) {
-                 return MsgPackError.BinDataLengthTooLong;
+                return MsgPackError.BinDataLengthTooLong;
             }
 
             try self.writeTypeMarker(.BIN32);
@@ -928,14 +928,14 @@ pub fn Pack(
             }
         }
 
-         inline fn writeExtValue(self: Self, ext: EXT) !void {
+        inline fn writeExtValue(self: Self, ext: EXT) !void {
             try self.writeI8Value(ext.type);
             try self.writeData(ext.data);
         }
 
         fn writeFixExt1(self: Self, ext: EXT) !void {
             if (ext.data.len != FIXEXT1_LEN) {
-                 return MsgPackError.ExtTypeLength;
+                return MsgPackError.ExtTypeLength;
             }
             try self.writeTypeMarker(.FIXEXT1);
 
@@ -944,7 +944,7 @@ pub fn Pack(
 
         fn writeFixExt2(self: Self, ext: EXT) !void {
             if (ext.data.len != FIXEXT2_LEN) {
-                 return MsgPackError.ExtTypeLength;
+                return MsgPackError.ExtTypeLength;
             }
             try self.writeTypeMarker(.FIXEXT2);
             try self.writeExtValue(ext);
@@ -952,7 +952,7 @@ pub fn Pack(
 
         fn writeFixExt4(self: Self, ext: EXT) !void {
             if (ext.data.len != FIXEXT4_LEN) {
-                 return MsgPackError.ExtTypeLength;
+                return MsgPackError.ExtTypeLength;
             }
             try self.writeTypeMarker(.FIXEXT4);
             try self.writeExtValue(ext);
@@ -960,7 +960,7 @@ pub fn Pack(
 
         fn writeFixExt8(self: Self, ext: EXT) !void {
             if (ext.data.len != FIXEXT8_LEN) {
-                 return MsgPackError.ExtTypeLength;
+                return MsgPackError.ExtTypeLength;
             }
             try self.writeTypeMarker(.FIXEXT8);
             try self.writeExtValue(ext);
@@ -968,7 +968,7 @@ pub fn Pack(
 
         fn writeFixExt16(self: Self, ext: EXT) !void {
             if (ext.data.len != FIXEXT16_LEN) {
-                 return MsgPackError.ExtTypeLength;
+                return MsgPackError.ExtTypeLength;
             }
             try self.writeTypeMarker(.FIXEXT16);
             try self.writeExtValue(ext);
@@ -976,7 +976,7 @@ pub fn Pack(
 
         fn writeExt8(self: Self, ext: EXT) !void {
             if (ext.data.len > std.math.maxInt(u8)) {
-                 return MsgPackError.ExtTypeLength;
+                return MsgPackError.ExtTypeLength;
             }
 
             try self.writeTypeMarker(.EXT8);
@@ -986,7 +986,7 @@ pub fn Pack(
 
         fn writeExt16(self: Self, ext: EXT) !void {
             if (ext.data.len > std.math.maxInt(u16)) {
-                 return MsgPackError.ExtTypeLength;
+                return MsgPackError.ExtTypeLength;
             }
             try self.writeTypeMarker(.EXT16);
             try self.writeU16Value(@intCast(ext.data.len));
@@ -995,7 +995,7 @@ pub fn Pack(
 
         fn writeExt32(self: Self, ext: EXT) !void {
             if (ext.data.len > std.math.maxInt(u32)) {
-                 return MsgPackError.ExtTypeLength;
+                return MsgPackError.ExtTypeLength;
             }
             try self.writeTypeMarker(.EXT32);
             try self.writeU32Value(@intCast(ext.data.len));
@@ -1021,7 +1021,7 @@ pub fn Pack(
             } else if (len <= std.math.maxInt(u32)) {
                 try self.writeExt32(ext);
             } else {
-                 return MsgPackError.ExtTypeLength;
+                return MsgPackError.ExtTypeLength;
             }
         }
 
@@ -1058,7 +1058,7 @@ pub fn Pack(
                 return;
             }
 
-             return MsgPackError.InvalidType;
+            return MsgPackError.InvalidType;
         }
 
         /// write payload
@@ -1097,7 +1097,7 @@ pub fn Pack(
                         try self.writeTypeMarker(.ARRAY32);
                         try self.writeU32Value(@as(u32, @intCast(len)));
                     } else {
-                         return MsgPackError.MapLengthTooLong;
+                        return MsgPackError.MapLengthTooLong;
                     }
                     for (arr) |val| {
                         try self.write(val);
@@ -1115,7 +1115,7 @@ pub fn Pack(
                         try self.writeTypeMarker(.MAP32);
                         try self.writeU32Value(@intCast(len));
                     } else {
-                         return MsgPackError.MapLengthTooLong;
+                        return MsgPackError.MapLengthTooLong;
                     }
                     var itera = map.iterator();
                     while (itera.next()) |entry| {
@@ -1136,12 +1136,12 @@ pub fn Pack(
             return readFn(self.read_context, bytes);
         }
 
-         inline fn readByte(self: Self) !u8 {
+        inline fn readByte(self: Self) !u8 {
             var res = [1]u8{0};
             const len = try self.readFrom(&res);
 
             if (len != 1) {
-                 return MsgPackError.LengthReading;
+                return MsgPackError.LengthReading;
             }
 
             return res[0];
@@ -1153,7 +1153,7 @@ pub fn Pack(
             const data_len = try self.readFrom(data);
 
             if (data_len != len) {
-                 return MsgPackError.LengthReading;
+                return MsgPackError.LengthReading;
             }
 
             return data;
@@ -1174,46 +1174,46 @@ pub fn Pack(
             return val;
         }
 
-         inline fn markerU8To(_: Self, marker_u8: u8) Markers {
-             return switch (marker_u8) {
-                 0x00...0x7f => .POSITIVE_FIXINT,
-                 0x80...0x8f => .FIXMAP,
-                 0x90...0x9f => .FIXARRAY,
-                 0xa0...0xbf => .FIXSTR,
-                 0xc0 => .NIL,
+        inline fn markerU8To(_: Self, marker_u8: u8) Markers {
+            return switch (marker_u8) {
+                0x00...0x7f => .POSITIVE_FIXINT,
+                0x80...0x8f => .FIXMAP,
+                0x90...0x9f => .FIXARRAY,
+                0xa0...0xbf => .FIXSTR,
+                0xc0 => .NIL,
                 0xc1 => .NIL, // Reserved byte, treat as NIL
-                 0xc2 => .FALSE,
-                 0xc3 => .TRUE,
-                 0xc4 => .BIN8,
-                 0xc5 => .BIN16,
-                 0xc6 => .BIN32,
-                 0xc7 => .EXT8,
-                 0xc8 => .EXT16,
-                 0xc9 => .EXT32,
-                 0xca => .FLOAT32,
-                 0xcb => .FLOAT64,
-                 0xcc => .UINT8,
-                 0xcd => .UINT16,
-                 0xce => .UINT32,
-                 0xcf => .UINT64,
-                 0xd0 => .INT8,
-                 0xd1 => .INT16,
-                 0xd2 => .INT32,
-                 0xd3 => .INT64,
-                 0xd4 => .FIXEXT1,
-                 0xd5 => .FIXEXT2,
-                 0xd6 => .FIXEXT4,
-                 0xd7 => .FIXEXT8,
-                 0xd8 => .FIXEXT16,
-                 0xd9 => .STR8,
-                 0xda => .STR16,
-                 0xdb => .STR32,
-                 0xdc => .ARRAY16,
-                 0xdd => .ARRAY32,
-                 0xde => .MAP16,
-                 0xdf => .MAP32,
-                 0xe0...0xff => .NEGATIVE_FIXINT,
-             };
+                0xc2 => .FALSE,
+                0xc3 => .TRUE,
+                0xc4 => .BIN8,
+                0xc5 => .BIN16,
+                0xc6 => .BIN32,
+                0xc7 => .EXT8,
+                0xc8 => .EXT16,
+                0xc9 => .EXT32,
+                0xca => .FLOAT32,
+                0xcb => .FLOAT64,
+                0xcc => .UINT8,
+                0xcd => .UINT16,
+                0xce => .UINT32,
+                0xcf => .UINT64,
+                0xd0 => .INT8,
+                0xd1 => .INT16,
+                0xd2 => .INT32,
+                0xd3 => .INT64,
+                0xd4 => .FIXEXT1,
+                0xd5 => .FIXEXT2,
+                0xd6 => .FIXEXT4,
+                0xd7 => .FIXEXT8,
+                0xd8 => .FIXEXT16,
+                0xd9 => .STR8,
+                0xda => .STR16,
+                0xdb => .STR32,
+                0xdc => .ARRAY16,
+                0xdd => .ARRAY32,
+                0xde => .MAP16,
+                0xdf => .MAP32,
+                0xe0...0xff => .NEGATIVE_FIXINT,
+            };
         }
 
         fn readTypeMarker(self: Self) !Markers {
@@ -1221,11 +1221,11 @@ pub fn Pack(
             return self.markerU8To(val);
         }
 
-         inline fn readBoolValue(_: Self, marker: Markers) !bool {
+        inline fn readBoolValue(_: Self, marker: Markers) !bool {
             switch (marker) {
                 .TRUE => return true,
                 .FALSE => return false,
-                 else => return MsgPackError.TypeMarkerReading,
+                else => return MsgPackError.TypeMarkerReading,
             }
         }
 
@@ -1234,41 +1234,41 @@ pub fn Pack(
             return self.readBoolValue(marker);
         }
 
-        fn readFixintValue(_: Self, marker_u8: u8) i8 {
+        inline fn readFixintValue(_: Self, marker_u8: u8) i8 {
             return @bitCast(marker_u8);
         }
 
-         inline fn readI8Value(self: Self) !i8 {
+        inline fn readI8Value(self: Self) !i8 {
             const val = try self.readByte();
             return @bitCast(val);
         }
 
-         inline fn readV8Value(self: Self) !u8 {
+        inline fn readV8Value(self: Self) !u8 {
             return self.readByte();
         }
 
-         inline fn readI16Value(self: Self) !i16 {
-             return self.readIntRaw(i16);
+        inline fn readI16Value(self: Self) !i16 {
+            return self.readIntRaw(i16);
         }
 
-         inline fn readU16Value(self: Self) !u16 {
-             return self.readIntRaw(u16);
+        inline fn readU16Value(self: Self) !u16 {
+            return self.readIntRaw(u16);
         }
 
-         inline fn readI32Value(self: Self) !i32 {
-             return self.readIntRaw(i32);
+        inline fn readI32Value(self: Self) !i32 {
+            return self.readIntRaw(i32);
         }
 
-         inline fn readU32Value(self: Self) !u32 {
-             return self.readIntRaw(u32);
+        inline fn readU32Value(self: Self) !u32 {
+            return self.readIntRaw(u32);
         }
 
-         inline fn readI64Value(self: Self) !i64 {
-             return self.readIntRaw(i64);
+        inline fn readI64Value(self: Self) !i64 {
+            return self.readIntRaw(i64);
         }
 
-         inline fn readU64Value(self: Self) !u64 {
-             return self.readIntRaw(u64);
+        inline fn readU64Value(self: Self) !u64 {
+            return self.readIntRaw(u64);
         }
 
         fn readIntValue(self: Self, marker_u8: u8) !i64 {
@@ -1310,9 +1310,9 @@ pub fn Pack(
                     if (val <= std.math.maxInt(i64)) {
                         return @intCast(val);
                     }
-                     return MsgPackError.InvalidType;
+                    return MsgPackError.InvalidType;
                 },
-                 else => return MsgPackError.TypeMarkerReading,
+                else => return MsgPackError.TypeMarkerReading,
             }
         }
 
@@ -1331,7 +1331,7 @@ pub fn Pack(
                     if (val >= 0) {
                         return @intCast(val);
                     }
-                     return MsgPackError.InvalidType;
+                    return MsgPackError.InvalidType;
                 },
                 .UINT16 => {
                     const val = try self.readU16Value();
@@ -1342,7 +1342,7 @@ pub fn Pack(
                     if (val >= 0) {
                         return @intCast(val);
                     }
-                     return MsgPackError.InvalidType;
+                    return MsgPackError.InvalidType;
                 },
                 .UINT32 => {
                     const val = try self.readU32Value();
@@ -1353,7 +1353,7 @@ pub fn Pack(
                     if (val >= 0) {
                         return @intCast(val);
                     }
-                     return MsgPackError.InvalidType;
+                    return MsgPackError.InvalidType;
                 },
                 .UINT64 => {
                     return self.readU64Value();
@@ -1363,20 +1363,20 @@ pub fn Pack(
                     if (val >= 0) {
                         return @intCast(val);
                     }
-                     return MsgPackError.InvalidType;
+                    return MsgPackError.InvalidType;
                 },
-                 else => return MsgPackError.TypeMarkerReading,
+                else => return MsgPackError.TypeMarkerReading,
             }
         }
 
-         inline fn readF32Value(self: Self) !f32 {
-             const val_int = try self.readIntRaw(u32);
+        inline fn readF32Value(self: Self) !f32 {
+            const val_int = try self.readIntRaw(u32);
             const val: f32 = @bitCast(val_int);
             return val;
         }
 
-         inline fn readF64Value(self: Self) !f64 {
-             const val_int = try self.readIntRaw(u64);
+        inline fn readF64Value(self: Self) !f64 {
+            const val_int = try self.readIntRaw(u64);
             const val: f64 = @bitCast(val_int);
             return val;
         }
@@ -1390,7 +1390,7 @@ pub fn Pack(
                 .FLOAT64 => {
                     return self.readF64Value();
                 },
-                 else => return MsgPackError.TypeMarkerReading,
+                else => return MsgPackError.TypeMarkerReading,
             }
         }
 
@@ -1438,7 +1438,7 @@ pub fn Pack(
                 .STR32 => {
                     return self.readStr32Value(allocator);
                 },
-                 else => return MsgPackError.TypeMarkerReading,
+                else => return MsgPackError.TypeMarkerReading,
             }
         }
 
@@ -1474,11 +1474,11 @@ pub fn Pack(
                 .BIN32 => {
                     return self.readBin32Value(allocator);
                 },
-                 else => return MsgPackError.TypeMarkerReading,
+                else => return MsgPackError.TypeMarkerReading,
             }
         }
 
-         inline fn readExtData(self: Self, allocator: Allocator, len: usize) !EXT {
+        inline fn readExtData(self: Self, allocator: Allocator, len: usize) !EXT {
             const ext_type = try self.readI8Value();
             const data = try self.readData(allocator, len);
             return EXT{
@@ -1523,46 +1523,46 @@ pub fn Pack(
 
         /// read ext value or timestamp if it's timestamp type (-1)
         fn readExtValueOrTimestamp(self: Self, marker: Markers, allocator: Allocator) !Payload {
-             // Fast path: not a timestamp candidate
-             if (!isTimestampCandidate(marker)) {
-                 const val = try self.readExtValue(marker, allocator);
-                 return Payload{ .ext = val };
-             }
- 
-             // Determine actual length
-             const actual_len: usize = switch (marker) {
-                 .FIXEXT4 => FIXEXT4_LEN,
-                 .FIXEXT8 => FIXEXT8_LEN,
-                 .EXT8 => blk: {
-                     const len = try self.readV8Value();
-                     // If not timestamp 96 length, read as regular EXT
-                     if (len != TIMESTAMP96_DATA_LEN) {
-                         const ext_type = try self.readI8Value();
-                         return try self.readRegularExt(ext_type, len, allocator);
-                     }
-                     break :blk len;
-                 },
-                 else => unreachable,
-             };
- 
-             // Read the extension type
-             const ext_type = try self.readI8Value();
- 
-             // Check if it's a timestamp
-             if (ext_type == TIMESTAMP_EXT_TYPE) {
-                 const timestamp: Timestamp = switch (marker) {
-                     .FIXEXT4 => try self.readTimestamp32(),
-                     .FIXEXT8 => try self.readTimestamp64(),
-                     .EXT8 => try self.readTimestamp96(),
-                     else => unreachable,
-                 };
-                 return Payload{ .timestamp = timestamp };
-             }
- 
-             // Not a timestamp, read as regular EXT
-             return try self.readRegularExt(ext_type, actual_len, allocator);
-         }
- 
+            // Fast path: not a timestamp candidate
+            if (!isTimestampCandidate(marker)) {
+                const val = try self.readExtValue(marker, allocator);
+                return Payload{ .ext = val };
+            }
+
+            // Determine actual length
+            const actual_len: usize = switch (marker) {
+                .FIXEXT4 => FIXEXT4_LEN,
+                .FIXEXT8 => FIXEXT8_LEN,
+                .EXT8 => blk: {
+                    const len = try self.readV8Value();
+                    // If not timestamp 96 length, read as regular EXT
+                    if (len != TIMESTAMP96_DATA_LEN) {
+                        const ext_type = try self.readI8Value();
+                        return try self.readRegularExt(ext_type, len, allocator);
+                    }
+                    break :blk len;
+                },
+                else => unreachable,
+            };
+
+            // Read the extension type
+            const ext_type = try self.readI8Value();
+
+            // Check if it's a timestamp
+            if (ext_type == TIMESTAMP_EXT_TYPE) {
+                const timestamp: Timestamp = switch (marker) {
+                    .FIXEXT4 => try self.readTimestamp32(),
+                    .FIXEXT8 => try self.readTimestamp64(),
+                    .EXT8 => try self.readTimestamp96(),
+                    else => unreachable,
+                };
+                return Payload{ .timestamp = timestamp };
+            }
+
+            // Not a timestamp, read as regular EXT
+            return try self.readRegularExt(ext_type, actual_len, allocator);
+        }
+
         /// try to read timestamp from ext data, return error if not timestamp
         fn tryReadTimestamp(self: Self, marker: Markers, _: Allocator) !Timestamp {
             switch (marker) {
@@ -1570,7 +1570,7 @@ pub fn Pack(
                     // timestamp 32 format
                     const ext_type = try self.readI8Value();
                     if (ext_type != TIMESTAMP_EXT_TYPE) {
-                         return MsgPackError.InvalidType;
+                        return MsgPackError.InvalidType;
                     }
                     const seconds = try self.readU32Value();
                     return Timestamp.new(@intCast(seconds), 0);
@@ -1579,7 +1579,7 @@ pub fn Pack(
                     // timestamp 64 format
                     const ext_type = try self.readI8Value();
                     if (ext_type != TIMESTAMP_EXT_TYPE) {
-                         return MsgPackError.InvalidType;
+                        return MsgPackError.InvalidType;
                     }
                     const data64 = try self.readU64Value();
                     const nanoseconds: u32 = @intCast(data64 >> TIMESTAMP64_SECONDS_BITS);
@@ -1590,18 +1590,18 @@ pub fn Pack(
                     // timestamp 96 format (length should be 12)
                     const len = try self.readV8Value();
                     if (len != TIMESTAMP96_DATA_LEN) {
-                         return MsgPackError.InvalidType;
+                        return MsgPackError.InvalidType;
                     }
                     const ext_type = try self.readI8Value();
                     if (ext_type != TIMESTAMP_EXT_TYPE) {
-                         return MsgPackError.InvalidType;
+                        return MsgPackError.InvalidType;
                     }
                     const nanoseconds = try self.readU32Value();
                     const seconds = try self.readI64Value();
                     return Timestamp.new(seconds, nanoseconds);
                 },
                 else => {
-                     return MsgPackError.InvalidType;
+                    return MsgPackError.InvalidType;
                 },
             }
         }
@@ -1613,7 +1613,7 @@ pub fn Pack(
                     // timestamp 32 format
                     const ext_type = try self.readI8Value();
                     if (ext_type != TIMESTAMP_EXT_TYPE) {
-                         return MsgPackError.InvalidType;
+                        return MsgPackError.InvalidType;
                     }
                     const seconds = try self.readU32Value();
                     return Timestamp.new(@intCast(seconds), 0);
@@ -1622,7 +1622,7 @@ pub fn Pack(
                     // timestamp 64 format
                     const ext_type = try self.readI8Value();
                     if (ext_type != TIMESTAMP_EXT_TYPE) {
-                         return MsgPackError.InvalidType;
+                        return MsgPackError.InvalidType;
                     }
                     const data64 = try self.readU64Value();
                     const nanoseconds: u32 = @intCast(data64 >> TIMESTAMP64_SECONDS_BITS);
@@ -1633,18 +1633,18 @@ pub fn Pack(
                     // timestamp 96 format (length should be 12)
                     const len = try self.readV8Value();
                     if (len != TIMESTAMP96_DATA_LEN) {
-                         return MsgPackError.InvalidType;
+                        return MsgPackError.InvalidType;
                     }
                     const ext_type = try self.readI8Value();
                     if (ext_type != TIMESTAMP_EXT_TYPE) {
-                         return MsgPackError.InvalidType;
+                        return MsgPackError.InvalidType;
                     }
                     const nanoseconds = try self.readU32Value();
                     const seconds = try self.readI64Value();
                     return Timestamp.new(seconds, nanoseconds);
                 },
                 else => {
-                     return MsgPackError.InvalidType;
+                    return MsgPackError.InvalidType;
                 },
             }
         }
@@ -1756,7 +1756,7 @@ pub fn Pack(
                             len = try self.readU32Value();
                         },
                         else => {
-                             return MsgPackError.InvalidType;
+                            return MsgPackError.InvalidType;
                         },
                     }
 
@@ -1784,7 +1784,7 @@ pub fn Pack(
                             len = try self.readU32Value();
                         },
                         else => {
-                             return MsgPackError.InvalidType;
+                            return MsgPackError.InvalidType;
                         },
                     }
 
