@@ -608,6 +608,21 @@ pub fn Pack(
             try self.writeData(data);
         }
 
+        /// Generic integer value write (without marker)
+        inline fn writeIntValue(self: Self, comptime T: type, val: T) !void {
+            if (T == u8 or T == i8) {
+                try self.writeByte(@bitCast(val));
+            } else {
+                try self.writeIntRaw(T, val);
+            }
+        }
+
+        /// Generic integer write with marker
+        inline fn writeIntWithMarker(self: Self, comptime T: type, marker: Markers, val: T) !void {
+            try self.writeTypeMarker(marker);
+            try self.writeIntValue(T, val);
+        }
+
         /// write type marker
         inline fn writeTypeMarker(self: Self, comptime marker: Markers) !void {
             switch (marker) {
@@ -644,43 +659,39 @@ pub fn Pack(
         }
 
         inline fn writeU8Value(self: Self, val: u8) !void {
-            try self.writeByte(val);
+            try self.writeIntValue(u8, val);
         }
 
         /// write u8 int
         fn writeU8(self: Self, val: u8) !void {
-            try self.writeTypeMarker(.UINT8);
-            try self.writeU8Value(val);
+            try self.writeIntWithMarker(u8, .UINT8, val);
         }
 
         inline fn writeU16Value(self: Self, val: u16) !void {
-            try self.writeIntRaw(u16, val);
+            try self.writeIntValue(u16, val);
         }
 
         /// write u16 int
         fn writeU16(self: Self, val: u16) !void {
-            try self.writeTypeMarker(.UINT16);
-            try self.writeU16Value(val);
+            try self.writeIntWithMarker(u16, .UINT16, val);
         }
 
         inline fn writeU32Value(self: Self, val: u32) !void {
-            try self.writeIntRaw(u32, val);
+            try self.writeIntValue(u32, val);
         }
 
         /// write u32 int
         fn writeU32(self: Self, val: u32) !void {
-            try self.writeTypeMarker(.UINT32);
-            try self.writeU32Value(val);
+            try self.writeIntWithMarker(u32, .UINT32, val);
         }
 
         inline fn writeU64Value(self: Self, val: u64) !void {
-            try self.writeIntRaw(u64, val);
+            try self.writeIntValue(u64, val);
         }
 
         /// write u64 int
         fn writeU64(self: Self, val: u64) !void {
-            try self.writeTypeMarker(.UINT64);
-            try self.writeU64Value(val);
+            try self.writeIntWithMarker(u64, .UINT64, val);
         }
 
         /// write negative fix int
@@ -693,43 +704,39 @@ pub fn Pack(
         }
 
         inline fn writeI8Value(self: Self, val: i8) !void {
-            try self.writeByte(@bitCast(val));
+            try self.writeIntValue(i8, val);
         }
 
         /// write i8 int
         fn writeI8(self: Self, val: i8) !void {
-            try self.writeTypeMarker(.INT8);
-            try self.writeI8Value(val);
+            try self.writeIntWithMarker(i8, .INT8, val);
         }
 
         inline fn writeI16Value(self: Self, val: i16) !void {
-            try self.writeIntRaw(i16, val);
+            try self.writeIntValue(i16, val);
         }
 
         /// write i16 int
         fn writeI16(self: Self, val: i16) !void {
-            try self.writeTypeMarker(.INT16);
-            try self.writeI16Value(val);
+            try self.writeIntWithMarker(i16, .INT16, val);
         }
 
         inline fn writeI32Value(self: Self, val: i32) !void {
-            try self.writeIntRaw(i32, val);
+            try self.writeIntValue(i32, val);
         }
 
         /// write i32 int
         fn writeI32(self: Self, val: i32) !void {
-            try self.writeTypeMarker(.INT32);
-            try self.writeI32Value(val);
+            try self.writeIntWithMarker(i32, .INT32, val);
         }
 
         inline fn writeI64Value(self: Self, val: i64) !void {
-            try self.writeIntRaw(i64, val);
+            try self.writeIntValue(i64, val);
         }
 
         /// write i64 int
         fn writeI64(self: Self, val: i64) !void {
-            try self.writeTypeMarker(.INT64);
-            try self.writeI64Value(val);
+            try self.writeIntWithMarker(i64, .INT64, val);
         }
 
         /// write uint
@@ -1169,6 +1176,18 @@ pub fn Pack(
             return std.mem.readInt(T, &buffer, big_endian);
         }
 
+        /// Generic integer value read
+        inline fn readTypedInt(self: Self, comptime T: type) !T {
+            if (T == u8) {
+                return self.readByte();
+            } else if (T == i8) {
+                const val = try self.readByte();
+                return @bitCast(val);
+            } else {
+                return self.readIntRaw(T);
+            }
+        }
+
         fn readTypeMarkerU8(self: Self) !u8 {
             const val = try self.readByte();
             return val;
@@ -1239,36 +1258,35 @@ pub fn Pack(
         }
 
         inline fn readI8Value(self: Self) !i8 {
-            const val = try self.readByte();
-            return @bitCast(val);
+            return self.readTypedInt(i8);
         }
 
         inline fn readV8Value(self: Self) !u8 {
-            return self.readByte();
+            return self.readTypedInt(u8);
         }
 
         inline fn readI16Value(self: Self) !i16 {
-            return self.readIntRaw(i16);
+            return self.readTypedInt(i16);
         }
 
         inline fn readU16Value(self: Self) !u16 {
-            return self.readIntRaw(u16);
+            return self.readTypedInt(u16);
         }
 
         inline fn readI32Value(self: Self) !i32 {
-            return self.readIntRaw(i32);
+            return self.readTypedInt(i32);
         }
 
         inline fn readU32Value(self: Self) !u32 {
-            return self.readIntRaw(u32);
+            return self.readTypedInt(u32);
         }
 
         inline fn readI64Value(self: Self) !i64 {
-            return self.readIntRaw(i64);
+            return self.readTypedInt(i64);
         }
 
         inline fn readU64Value(self: Self) !u64 {
-            return self.readIntRaw(u64);
+            return self.readTypedInt(u64);
         }
 
         fn readIntValue(self: Self, marker_u8: u8) !i64 {
