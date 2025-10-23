@@ -10,6 +10,8 @@ An article introducing it: [Zig Msgpack](https://blog.nvimer.org/2025/09/20/zig-
 
 - **Full MessagePack Support:** Implements all MessagePack types including the timestamp extension.
 - **Timestamp Support:** Complete implementation of MessagePack timestamp extension type (-1) with support for all three formats (32-bit, 64-bit, and 96-bit).
+- **Production-Safe Parser:** Iterative parser prevents stack overflow on deeply nested or malicious input.
+- **Security Hardened:** Configurable limits protect against DoS attacks (depth bombs, size bombs, etc.).
 - **Efficient:** Designed for high performance with minimal memory overhead.
 - **Type-Safe:** Leverages Zig's type system to ensure safety during serialization and deserialization.
 - **Simple API:** Offers a straightforward and easy-to-use API for encoding and decoding.
@@ -18,12 +20,12 @@ An article introducing it: [Zig Msgpack](https://blog.nvimer.org/2025/09/20/zig-
 
 ### Version Compatibility
 
-| Zig Version | Library Version | Status |
-|-------------|----------------|---------|
-| 0.13 and older | 0.0.6 | Legacy support |
-| 0.14.0 | Current | ✅ Fully supported |
-| 0.15.x | Current | ✅ Fully supported |
-| 0.16.0-dev (nightly) | Current | ✅ Supported with compatibility layer |
+| Zig Version          | Library Version | Status                                |
+| -------------------- | --------------- | ------------------------------------- |
+| 0.13 and older       | 0.0.6           | Legacy support                        |
+| 0.14.0               | Current         | ✅ Fully supported                    |
+| 0.15.x               | Current         | ✅ Fully supported                    |
+| 0.16.0-dev (nightly) | Current         | ✅ Supported with compatibility layer |
 
 > **Note:** For Zig 0.13 and older versions, please use version `0.0.6` of this library.
 > **Note:** Zig 0.16+ removes `std.io.FixedBufferStream`, but this library provides a compatibility layer to maintain the same API across all supported versions.
@@ -76,7 +78,7 @@ const msgpack = @import("msgpack");
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
     var buffer: [1024]u8 = undefined;
-    
+
     // Use the compatibility layer for cross-version support
     const compat = msgpack.compat;
     var write_buffer = compat.fixedBufferStream(&buffer);
@@ -100,7 +102,7 @@ pub fn main() !void {
     read_buffer.pos = 0;
     const decoded = try packer.read(allocator);
     defer decoded.free(allocator);
-    
+
     const name = (try decoded.mapGet("name")).?.str.value();
     const age = (try decoded.mapGet("age")).?.uint;
     std.debug.print("Name: {s}, Age: {d}\n", .{ name, age });
@@ -143,7 +145,7 @@ read_buffer.pos = 0;
 const decoded_ts = try packer.read(allocator);
 defer decoded_ts.free(allocator);
 
-std.debug.print("Timestamp: {}s + {}ns\n", 
+std.debug.print("Timestamp: {}s + {}ns\n",
     .{ decoded_ts.timestamp.seconds, decoded_ts.timestamp.nanoseconds });
 std.debug.print("As float: {d}\n", .{ decoded_ts.timestamp.toFloat() });
 ```
@@ -154,7 +156,7 @@ std.debug.print("As float: {d}\n", .{ decoded_ts.timestamp.toFloat() });
 // Type conversion with error handling
 const int_payload = msgpack.Payload.intToPayload(-42);
 const uint_result = int_payload.getUint() catch |err| switch (err) {
-    msgpack.MsGPackError.INVALID_TYPE => {
+    msgpack.MsgPackError.InvalidType => {
         std.debug.print("Cannot convert negative to unsigned\n");
         return;
     },
@@ -162,12 +164,82 @@ const uint_result = int_payload.getUint() catch |err| switch (err) {
 };
 ```
 
+### Security Features (Parsing Untrusted Data)
+
+The library includes configurable safety limits to protect against malicious or corrupted MessagePack data:
+
+```zig
+// Default limits (recommended for most use cases)
+const Packer = msgpack.Pack(
+    *Writer, *Reader,
+    Writer.Error, Reader.Error,
+    Writer.write, Reader.read,
+);
+// Automatically protected against:
+// - Deep nesting attacks (max 1000 layers)
+// - Large array/map attacks (max 1M elements)
+// - Memory exhaustion (max 100MB strings)
+
+// Custom limits for specific environments
+const StrictPacker = msgpack.PackWithLimits(
+    *Writer, *Reader,
+    Writer.Error, Reader.Error,
+    Writer.write, Reader.read,
+    .{
+        .max_depth = 50,              // Limit nesting to 50 layers
+        .max_array_length = 10_000,   // Max 10K array elements
+        .max_map_size = 10_000,       // Max 10K map pairs
+        .max_string_length = 1024 * 1024,  // Max 1MB strings
+    },
+);
+```
+
+**Security Guarantees:**
+
+- ✅ **Never crashes** on malformed or malicious input
+- ✅ **No stack overflow** regardless of nesting depth (iterative parser)
+- ✅ **Bounded memory usage** with configurable limits
+- ✅ **Fast rejection** of invalid data (no resource exhaustion)
+
+Possible security errors:
+
+```zig
+msgpack.MsgPackError.MaxDepthExceeded    // Nesting too deep
+msgpack.MsgPackError.ArrayTooLarge       // Array claims too many elements
+msgpack.MsgPackError.MapTooLarge         // Map claims too many pairs
+msgpack.MsgPackError.StringTooLong       // String/binary data too large
+```
+
 ## API Overview
 
-- **`msgpack.Pack`**: The main struct for packing and unpacking MessagePack data. It is initialized with read and write contexts.
+- **`msgpack.Pack`**: The main struct for packing and unpacking MessagePack data with default safety limits.
+- **`msgpack.PackWithLimits`**: Create a packer with custom safety limits for specific security requirements.
 - **`msgpack.Payload`**: A union that represents any MessagePack type. It provides methods for creating and interacting with different data types (e.g., `mapPayload`, `strToPayload`, `mapGet`).
+- **`msgpack.ParseLimits`**: Configuration struct for parser safety limits.
 
 ## Implementation Notes
+
+### Security Architecture
+
+This library uses an **iterative parser** (not recursive) to provide strong security guarantees:
+
+**Iterative Parsing:**
+
+- Parser uses an explicit stack (on heap) instead of recursive function calls
+- Stack depth remains constant regardless of input nesting depth
+- Prevents stack overflow attacks completely
+
+**Safety Limits:**
+
+- All limits are enforced **before** memory allocation
+- Invalid input is rejected immediately without resource consumption
+- Configurable limits allow tuning for specific environments (embedded, server, etc.)
+
+**Memory Safety:**
+
+- All error paths include complete cleanup (`errdefer` + `cleanupParseStack`)
+- Zero memory leaks verified by GPA (General Purpose Allocator) in tests
+- Safe to parse untrusted data from network, files, or user input
 
 ### Zig 0.16 Compatibility
 
@@ -190,6 +262,14 @@ zig build test
 zig build test --summary all
 ```
 
+The comprehensive test suite includes:
+
+- **87 tests** covering all functionality
+- **Malicious data tests:** Verify protection against crafted attacks (billion-element arrays, extreme nesting, etc.)
+- **Fuzz tests:** Random input validation ensures no crashes on arbitrary data
+- **Large data tests:** Arrays with 1000+ elements, maps with 500+ pairs
+- **Memory safety:** Zero leaks verified by strict allocator testing
+
 ## Benchmarks
 
 To run performance benchmarks:
@@ -203,6 +283,7 @@ zig build bench -Doptimize=ReleaseFast
 ```
 
 The benchmark suite includes:
+
 - Basic types (nil, bool, integers, floats)
 - Strings and binary data of various sizes
 - Arrays and maps (small, medium, large)

@@ -10,6 +10,8 @@ Zig 编程语言的 MessagePack 实现。此库提供了一种简单高效的方
 
 - **完整的 MessagePack 支持**: 实现了所有 MessagePack 类型，包括时间戳扩展类型。
 - **时间戳支持**: 完整实现 MessagePack 时间戳扩展类型 (-1)，支持所有三种格式（32位、64位和96位）。
+- **生产级安全解析器**: 迭代式解析器防止深度嵌套或恶意输入导致的栈溢出。
+- **安全加固**: 可配置的限制保护，防御 DoS 攻击（深度炸弹、大小炸弹等）。
 - **高效**: 设计追求高性能，内存开销最小。
 - **类型安全**: 利用 Zig 的类型系统确保序列化和反序列化期间的安全性。
 - **简单的 API**: 提供直观易用的编码和解码 API。
@@ -18,11 +20,11 @@ Zig 编程语言的 MessagePack 实现。此库提供了一种简单高效的方
 
 ### 版本兼容性
 
-| Zig 版本 | 库版本 | 状态 |
-|-------------|----------------|---------|
-| 0.13 及更早版本 | 0.0.6 | 旧版支持 |
-| 0.14.0 | 当前版本 | ✅ 完全支持 |
-| 0.15.x | 当前版本 | ✅ 完全支持 |
+| Zig 版本             | 库版本   | 状态              |
+| -------------------- | -------- | ----------------- |
+| 0.13 及更早版本      | 0.0.6    | 旧版支持          |
+| 0.14.0               | 当前版本 | ✅ 完全支持       |
+| 0.15.x               | 当前版本 | ✅ 完全支持       |
 | 0.16.0-dev (nightly) | 当前版本 | ✅ 通过兼容层支持 |
 
 > **注意**: 对于 Zig 0.13 及更早版本，请使用本库的 `0.0.6` 版本。
@@ -76,7 +78,7 @@ const msgpack = @import("msgpack");
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
     var buffer: [1024]u8 = undefined;
-    
+
     // 使用兼容层实现跨版本支持
     const compat = msgpack.compat;
     var write_buffer = compat.fixedBufferStream(&buffer);
@@ -100,7 +102,7 @@ pub fn main() !void {
     read_buffer.pos = 0;
     const decoded = try packer.read(allocator);
     defer decoded.free(allocator);
-    
+
     const name = (try decoded.mapGet("姓名")).?.str.value();
     const age = (try decoded.mapGet("年龄")).?.uint;
     std.debug.print("姓名: {s}, 年龄: {d}\n", .{ name, age });
@@ -143,7 +145,7 @@ read_buffer.pos = 0;
 const decoded_ts = try packer.read(allocator);
 defer decoded_ts.free(allocator);
 
-std.debug.print("时间戳: {}秒 + {}纳秒\n", 
+std.debug.print("时间戳: {}秒 + {}纳秒\n",
     .{ decoded_ts.timestamp.seconds, decoded_ts.timestamp.nanoseconds });
 std.debug.print("浮点数形式: {d}\n", .{ decoded_ts.timestamp.toFloat() });
 ```
@@ -154,20 +156,90 @@ std.debug.print("浮点数形式: {d}\n", .{ decoded_ts.timestamp.toFloat() });
 // 类型转换与错误处理
 const int_payload = msgpack.Payload.intToPayload(-42);
 const uint_result = int_payload.getUint() catch |err| switch (err) {
-    msgpack.MsGPackError.INVALID_TYPE => {
-        std.debug.print("无法将负数转换为无符号整数\n");
+    msgpack.MsgPackError.InvalidType => {
+        std.debug.print("无法将负数转换为无符号整数\n", .{});
         return;
     },
     else => return err,
 };
 ```
 
+### 安全特性（解析不可信数据）
+
+本库包含可配置的安全限制，用于防护恶意或损坏的 MessagePack 数据：
+
+```zig
+// 默认限制（推荐用于大多数场景）
+const Packer = msgpack.Pack(
+    *Writer, *Reader,
+    Writer.Error, Reader.Error,
+    Writer.write, Reader.read,
+);
+// 自动防护：
+// - 深度嵌套攻击（最大 1000 层）
+// - 大数组/Map 攻击（最大 100 万元素）
+// - 内存耗尽（最大 100MB 字符串）
+
+// 针对特定环境的自定义限制
+const StrictPacker = msgpack.PackWithLimits(
+    *Writer, *Reader,
+    Writer.Error, Reader.Error,
+    Writer.write, Reader.read,
+    .{
+        .max_depth = 50,                      // 限制嵌套到 50 层
+        .max_array_length = 10_000,           // 最大 1 万个数组元素
+        .max_map_size = 10_000,               // 最大 1 万个 map 键值对
+        .max_string_length = 1024 * 1024,     // 最大 1MB 字符串
+    },
+);
+```
+
+**安全保证**:
+
+- ✅ **永不崩溃** - 任何畸形或恶意输入都不会导致崩溃
+- ✅ **无栈溢出** - 无论嵌套深度如何（迭代式解析器）
+- ✅ **内存可控** - 通过可配置限制控制内存使用
+- ✅ **快速拒绝** - 无效数据被立即拒绝（无资源耗尽）
+
+可能的安全错误：
+
+```zig
+msgpack.MsgPackError.MaxDepthExceeded    // 嵌套过深
+msgpack.MsgPackError.ArrayTooLarge       // 数组声称过多元素
+msgpack.MsgPackError.MapTooLarge         // Map 声称过多键值对
+msgpack.MsgPackError.StringTooLong       // 字符串/二进制数据过大
+```
+
 ## API 概览
 
-- **`msgpack.Pack`**: 用于打包和解包 MessagePack 数据的主要结构体。使用读写上下文进行初始化。
-- **`msgpack.Payload`**: 表示任何 MessagePack 类型的联合体。提供创建和与不同数据类型交互的方法（例如，`mapPayload`、`strToPayload`、`mapGet`）。
+- **`msgpack.Pack`**: 用于打包和解包 MessagePack 数据的主要结构体，带默认安全限制。
+- **`msgpack.PackWithLimits`**: 创建带自定义安全限制的 packer，满足特定安全需求。
+- **`msgpack.Payload`**: 表示任何 MessagePack 类型的联合体。提供创建和与不同数据类型交互的方法（例如 `mapPayload`、`strToPayload`、`mapGet`）。
+- **`msgpack.ParseLimits`**: 解析器安全限制的配置结构体。
 
 ## 实现说明
+
+### 安全架构
+
+本库使用**迭代式解析器**（非递归）提供强大的安全保证：
+
+**迭代式解析**：
+
+- 解析器使用显式栈（堆上）而非递归函数调用
+- 栈深度恒定，与输入嵌套深度无关
+- 完全防止栈溢出攻击
+
+**安全限制**：
+
+- 所有限制在内存分配**之前**强制执行
+- 无效输入被立即拒绝，不消耗资源
+- 可配置限制允许针对特定环境调整（嵌入式、服务器等）
+
+**内存安全**：
+
+- 所有错误路径包含完整清理（`errdefer` + `cleanupParseStack`）
+- 零内存泄漏（测试中由 GPA 验证）
+- 可安全解析来自网络、文件或用户输入的不可信数据
 
 ### Zig 0.16 兼容性
 
@@ -190,6 +262,14 @@ zig build test
 zig build test --summary all
 ```
 
+综合测试套件包括：
+
+- **87 个测试** 覆盖所有功能
+- **恶意数据测试**：验证针对精心构造的攻击（数十亿元素数组、极端嵌套等）的防护
+- **模糊测试**：随机输入验证，确保任意数据都不会崩溃
+- **大数据测试**：1000+ 元素的数组、500+ 键值对的 map
+- **内存安全**：严格分配器测试验证零泄漏
+
 ## 性能基准测试
 
 运行性能基准测试：
@@ -203,6 +283,7 @@ zig build bench -Doptimize=ReleaseFast
 ```
 
 基准测试套件包括：
+
 - 基本类型（nil、bool、整数、浮点数）
 - 不同大小的字符串和二进制数据
 - 数组和映射表（小型、中型、大型）
@@ -231,4 +312,3 @@ zig build docs
 ## 许可证
 
 此项目在 MIT 许可证下许可。详情请参阅 [LICENSE](LICENSE) 文件。
-
