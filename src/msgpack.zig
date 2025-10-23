@@ -92,6 +92,27 @@ const FIXSTR_BASE: u8 = MarkerBase.FIXSTR;
 const FIXSTR_MASK: u8 = MarkerBase.FIXSTR_LEN_MASK;
 const FIXSTR_TYPE_MASK: u8 = MarkerBase.FIXSTR_TYPE_MASK;
 
+/// Parse safety limits configuration
+pub const ParseLimits = struct {
+    /// Maximum nesting depth (default 1000 layers)
+    max_depth: usize = 1000,
+
+    /// Maximum array length (default 1 million elements)
+    max_array_length: usize = 1_000_000,
+
+    /// Maximum map size (default 1 million key-value pairs)
+    max_map_size: usize = 1_000_000,
+
+    /// Maximum string/binary data length (default 100MB)
+    max_string_length: usize = 100 * 1024 * 1024,
+
+    /// Maximum extension data length (default 100MB)
+    max_ext_length: usize = 100 * 1024 * 1024,
+};
+
+/// Default parse limits (for backward compatibility)
+pub const DEFAULT_LIMITS = ParseLimits{};
+
 /// the Str Type
 pub const Str = struct {
     str: []const u8,
@@ -343,42 +364,61 @@ pub const Payload = union(enum) {
 
     /// free all memory for this payload and sub payloads
     /// the allocator is payload's allocator
+    /// This is an iterative implementation that avoids stack overflow from deep nesting
     pub fn free(self: Payload, allocator: Allocator) void {
-        switch (self) {
-            .str => {
-                const str = self.str;
-                allocator.free(str.value());
-            },
-            .bin => {
-                const bin = self.bin;
-                allocator.free(bin.value());
-            },
-            .ext => {
-                const ext = self.ext;
-                allocator.free(ext.data);
-            },
-            .map => {
-                var map = self.map;
-                defer map.deinit();
-                var itera = map.iterator();
-                while (true) {
-                    if (itera.next()) |entry| {
-                        // free the key
-                        defer allocator.free(entry.key_ptr.*);
-                        entry.value_ptr.free(allocator);
-                    } else {
-                        break;
+        // Use explicit stack for iterative freeing
+        var stack = if (current_zig.minor == 14)
+            std.ArrayList(Payload).init(allocator)
+        else
+            std.ArrayList(Payload){};
+        defer if (current_zig.minor == 14) stack.deinit() else stack.deinit(allocator);
+
+        // Start with self
+        if (current_zig.minor == 14) {
+            stack.append(self) catch return;
+        } else {
+            stack.append(allocator, self) catch return;
+        }
+
+        while (stack.items.len > 0) {
+            const payload_item = stack.pop() orelse break;
+
+            switch (payload_item) {
+                .str => |s| allocator.free(s.value()),
+                .bin => |b| allocator.free(b.value()),
+                .ext => |e| allocator.free(e.data),
+
+                .arr => |arr| {
+                    defer allocator.free(arr);
+                    // Push children to stack in reverse order
+                    var i = arr.len;
+                    while (i > 0) {
+                        i -= 1;
+                        if (current_zig.minor == 14) {
+                            stack.append(arr[i]) catch {};
+                        } else {
+                            stack.append(allocator, arr[i]) catch {};
+                        }
                     }
-                }
-            },
-            .arr => {
-                const arr = self.arr;
-                defer allocator.free(arr);
-                for (0..arr.len) |i| {
-                    arr[i].free(allocator);
-                }
-            },
-            else => {},
+                },
+
+                .map => |map| {
+                    var map_copy = map;
+                    defer map_copy.deinit();
+                    var iter = map_copy.iterator();
+                    while (iter.next()) |entry| {
+                        defer allocator.free(entry.key_ptr.*);
+                        // Push value to stack
+                        if (current_zig.minor == 14) {
+                            stack.append(entry.value_ptr.*) catch {};
+                        } else {
+                            stack.append(allocator, entry.value_ptr.*) catch {};
+                        }
+                    }
+                },
+
+                else => {}, // nil, bool, int, uint, float, timestamp - no memory to free
+            }
         }
     }
 
@@ -548,22 +588,31 @@ pub const MsgPackError = error{
     LengthReading,
     LengthWriting,
     Internal,
+
+    // New safety errors for iterative parser
+    MaxDepthExceeded,      // Nesting depth exceeded limit
+    ArrayTooLarge,         // Array has too many elements
+    MapTooLarge,           // Map has too many key-value pairs
+    StringTooLong,         // String exceeds length limit
+    ExtDataTooLarge,       // Extension data exceeds length limit
 };
 
-/// Create an instance of msgpack_pack
-pub fn Pack(
+/// Create an instance of msgpack_pack with custom limits
+pub fn PackWithLimits(
     comptime WriteContext: type,
     comptime ReadContext: type,
     comptime WriteError: type,
     comptime ReadError: type,
     comptime writeFn: fn (context: WriteContext, bytes: []const u8) WriteError!usize,
     comptime readFn: fn (context: ReadContext, arr: []u8) ReadError!usize,
+    comptime limits: ParseLimits,
 ) type {
     return struct {
         write_context: WriteContext,
         read_context: ReadContext,
 
         const Self = @This();
+        const parse_limits = limits;
 
         /// init
         pub fn init(writeContext: WriteContext, readContext: ReadContext) Self {
@@ -1639,140 +1688,358 @@ pub fn Pack(
             }
         }
 
+        // ========== Iterative Parser State Machine ==========
+
+        /// Parse state for iterative parsing
+        const ParseState = struct {
+            container_type: enum {
+                array,      // Parsing array elements
+                map_key,    // Expecting map key (must be string)
+                map_value,  // Expecting map value
+            },
+            data: union(enum) {
+                array: ArrayState,
+                map: MapState,
+            },
+        };
+
+        const ArrayState = struct {
+            items: []Payload,
+            current_index: usize,
+            total_length: usize,
+        };
+
+        const MapState = struct {
+            map: Map,
+            current_key: ?[]const u8,
+            remaining_pairs: usize,
+        };
+
+        /// Clean up parse stack on error
+        fn cleanupParseStack(stack: *std.ArrayList(ParseState), allocator: Allocator) void {
+            // Pop and free all states from the stack
+            while (stack.items.len > 0) {
+                const state = stack.pop() orelse break;
+                switch (state.data) {
+                    .array => |arr_state| {
+                        // Free already parsed elements
+                        for (arr_state.items[0..arr_state.current_index]) |item| {
+                            item.free(allocator);
+                        }
+                        // Free the array itself
+                        allocator.free(arr_state.items);
+                    },
+                    .map => |map_state| {
+                        // Free current_key if it exists (orphaned key waiting for value)
+                        if (map_state.current_key) |key| {
+                            allocator.free(key);
+                        }
+                        // Free the map and its contents
+                        var map_copy = map_state.map;
+                        defer map_copy.deinit();
+                        var iter = map_copy.iterator();
+                        while (iter.next()) |entry| {
+                            allocator.free(entry.key_ptr.*);
+                            entry.value_ptr.free(allocator);
+                        }
+                    },
+                }
+            }
+        }
+
+        /// Read array length based on marker
+        inline fn readArrayLength(self: Self, marker: Markers, marker_u8: u8) !usize {
+            return switch (marker) {
+                .FIXARRAY => marker_u8 - FIXARRAY_BASE,
+                .ARRAY16 => try self.readU16Value(),
+                .ARRAY32 => try self.readU32Value(),
+                else => MsgPackError.InvalidType,
+            };
+        }
+
+        /// Read map length based on marker
+        inline fn readMapLength(self: Self, marker: Markers, marker_u8: u8) !usize {
+            return switch (marker) {
+                .FIXMAP => marker_u8 - FIXMAP_BASE,
+                .MAP16 => try self.readU16Value(),
+                .MAP32 => try self.readU32Value(),
+                else => MsgPackError.InvalidType,
+            };
+        }
+
+        /// Helper to append to parse stack (handles Zig version differences)
+        inline fn appendToStack(stack: *std.ArrayList(ParseState), allocator: Allocator, item: ParseState) !void {
+            if (current_zig.minor == 14) {
+                try stack.append(item);
+            } else {
+                try stack.append(allocator, item);
+            }
+        }
+
+        // ========== End of State Machine Helpers ==========
+
         /// read a payload, please use payload.free to free the memory
+        /// This is an iterative implementation that avoids stack overflow from deep nesting
         pub fn read(self: Self, allocator: Allocator) !Payload {
-            var res: Payload = undefined;
+            // Explicit stack for iterative parsing (on heap)
+            var parse_stack = if (current_zig.minor == 14)
+                std.ArrayList(ParseState).init(allocator)
+            else
+                std.ArrayList(ParseState){};
+            defer if (current_zig.minor == 14) parse_stack.deinit() else parse_stack.deinit(allocator);
 
-            const marker_u8 = try self.readTypeMarkerU8();
-            const marker = self.markerU8To(marker_u8);
+            // Root payload to return
+            var root: ?Payload = null;
 
-            switch (marker) {
-                // read nil
-                .NIL => {
-                    res = Payload{
-                        .nil = void{},
-                    };
-                },
-                // read bool
-                .TRUE, .FALSE => {
-                    const val = try self.readBoolValue(marker);
-                    res = Payload{
-                        .bool = val,
-                    };
-                },
-                // read uint
-                .POSITIVE_FIXINT, .UINT8, .UINT16, .UINT32, .UINT64 => {
-                    const val = try self.readUintValue(marker_u8);
-                    res = Payload{
-                        .uint = val,
-                    };
-                },
-                // read int
-                .NEGATIVE_FIXINT, .INT8, .INT16, .INT32, .INT64 => {
-                    const val = try self.readIntValue(marker_u8);
-                    res = Payload{
-                        .int = val,
-                    };
-                },
-                // read float
-                .FLOAT32, .FLOAT64 => {
-                    const val = try self.readFloatValue(marker);
-                    res = Payload{
-                        .float = val,
-                    };
-                },
-                // read str
-                .FIXSTR, .STR8, .STR16, .STR32 => {
-                    const val = try self.readStrValue(marker_u8, allocator);
-                    errdefer allocator.free(val);
-                    res = Payload{
-                        .str = wrapStr(val),
-                    };
-                },
-                // read bin
-                .BIN8, .BIN16, .BIN32 => {
-                    const val = try self.readBinValue(marker, allocator);
-                    errdefer allocator.free(val);
-                    res = Payload{
-                        .bin = wrapBin(val),
-                    };
-                },
-                // read array
-                .FIXARRAY, .ARRAY16, .ARRAY32 => {
-                    var len: usize = 0;
-                    switch (marker) {
-                        .FIXARRAY => {
-                            len = marker_u8 - FIXARRAY_BASE;
-                        },
-                        .ARRAY16 => {
-                            len = try self.readU16Value();
-                        },
-                        .ARRAY32 => {
-                            len = try self.readU32Value();
-                        },
-                        else => {
-                            return MsgPackError.InvalidType;
-                        },
+            // Main loop (replaces recursion)
+            while (true) {
+                // Check depth limit
+                if (parse_stack.items.len >= parse_limits.max_depth) {
+                    cleanupParseStack(&parse_stack, allocator);
+                    return MsgPackError.MaxDepthExceeded;
+                }
+
+                // Read type marker
+                const marker_u8 = try self.readTypeMarkerU8();
+                const marker = self.markerU8To(marker_u8);
+
+                // Current payload being constructed
+                var current_payload: Payload = undefined;
+                var needs_parent_fill = true;
+
+                switch (marker) {
+                    // Simple types: construct directly
+                    .NIL => {
+                        current_payload = Payload{ .nil = void{} };
+                    },
+                    .TRUE, .FALSE => {
+                        const val = try self.readBoolValue(marker);
+                        current_payload = Payload{ .bool = val };
+                    },
+                    .POSITIVE_FIXINT, .UINT8, .UINT16, .UINT32, .UINT64 => {
+                        const val = try self.readUintValue(marker_u8);
+                        current_payload = Payload{ .uint = val };
+                    },
+                    .NEGATIVE_FIXINT, .INT8, .INT16, .INT32, .INT64 => {
+                        const val = try self.readIntValue(marker_u8);
+                        current_payload = Payload{ .int = val };
+                    },
+                    .FLOAT32, .FLOAT64 => {
+                        const val = try self.readFloatValue(marker);
+                        current_payload = Payload{ .float = val };
+                    },
+                    .FIXSTR, .STR8, .STR16, .STR32 => {
+                        const val = try self.readStrValue(marker_u8, allocator);
+
+                        // Validate string length
+                        if (val.len > parse_limits.max_string_length) {
+                            allocator.free(val);
+                            cleanupParseStack(&parse_stack, allocator);
+                            return MsgPackError.StringTooLong;
+                        }
+
+                        current_payload = Payload{ .str = wrapStr(val) };
+                    },
+                    .BIN8, .BIN16, .BIN32 => {
+                        const val = try self.readBinValue(marker, allocator);
+
+                        // Validate binary length
+                        if (val.len > parse_limits.max_string_length) {
+                            allocator.free(val);
+                            cleanupParseStack(&parse_stack, allocator);
+                            return MsgPackError.BinDataLengthTooLong;
+                        }
+
+                        current_payload = Payload{ .bin = wrapBin(val) };
+                    },
+
+                    // Container types: push to stack and continue
+                    .FIXARRAY, .ARRAY16, .ARRAY32 => {
+                        const len = try self.readArrayLength(marker, marker_u8);
+
+                        // Validate array length
+                        if (len > parse_limits.max_array_length) {
+                            cleanupParseStack(&parse_stack, allocator);
+                            return MsgPackError.ArrayTooLarge;
+                        }
+
+                        // Special case: empty array
+                        if (len == 0) {
+                            const arr = try allocator.alloc(Payload, 0);
+                            current_payload = Payload{ .arr = arr };
+                        } else {
+                            // Allocate array
+                            const arr = try allocator.alloc(Payload, len);
+                            errdefer allocator.free(arr);
+
+                            // Push to stack
+                            try appendToStack(&parse_stack, allocator, .{
+                                .container_type = .array,
+                                .data = .{ .array = .{
+                                    .items = arr,
+                                    .current_index = 0,
+                                    .total_length = len,
+                                } },
+                            });
+
+                            needs_parent_fill = false;
+                            continue; // Continue to read first element
+                        }
+                    },
+
+                    .FIXMAP, .MAP16, .MAP32 => {
+                        const len = try self.readMapLength(marker, marker_u8);
+
+                        // Validate map size
+                        if (len > parse_limits.max_map_size) {
+                            cleanupParseStack(&parse_stack, allocator);
+                            return MsgPackError.MapTooLarge;
+                        }
+
+                        // Special case: empty map
+                        if (len == 0) {
+                            current_payload = Payload{ .map = Map.init(allocator) };
+                        } else {
+                            // Initialize map
+                            const map = Map.init(allocator);
+
+                            // Push to stack
+                            try appendToStack(&parse_stack, allocator, .{
+                                .container_type = .map_key,
+                                .data = .{ .map = .{
+                                    .map = map,
+                                    .current_key = null,
+                                    .remaining_pairs = len,
+                                } },
+                            });
+
+                            needs_parent_fill = false;
+                            continue; // Continue to read first key
+                        }
+                    },
+
+                    // Extension types
+                    .FIXEXT1, .FIXEXT2, .FIXEXT4, .FIXEXT8, .FIXEXT16, .EXT8, .EXT16, .EXT32 => {
+                        const ext_result = try self.readExtValueOrTimestamp(marker, allocator);
+                        current_payload = ext_result;
+                    },
+                }
+
+                // Fill parent container or set root
+                if (needs_parent_fill) {
+                    // Add errdefer to clean up current_payload if parent fill fails
+                    errdefer current_payload.free(allocator);
+
+                    if (parse_stack.items.len == 0) {
+                        // No parent, this is the root
+                        root = current_payload;
+                        break;
                     }
 
-                    const arr = try allocator.alloc(Payload, len);
-                    errdefer allocator.free(arr);
+                    // Fill parent and check if complete
+                    while (true) {
+                        const parent = &parse_stack.items[parse_stack.items.len - 1];
+                        const finished = try fillParentContainer(parent, current_payload, allocator, &parse_stack);
 
-                    for (0..len) |i| {
-                        arr[i] = try self.read(allocator);
-                    }
-                    res = Payload{
-                        .arr = arr,
-                    };
-                },
-                // read map
-                .FIXMAP, .MAP16, .MAP32 => {
-                    var len: usize = 0;
-                    switch (marker) {
-                        .FIXMAP => {
-                            len = marker_u8 - FIXMAP_BASE;
-                        },
-                        .MAP16 => {
-                            len = try self.readU16Value();
-                        },
-                        .MAP32 => {
-                            len = try self.readU32Value();
-                        },
-                        else => {
-                            return MsgPackError.InvalidType;
-                        },
+                        if (!finished) {
+                            // Parent needs more elements
+                            break;
+                        }
+
+                        // Parent container is complete, pop it
+                        const completed_state = parse_stack.pop() orelse return MsgPackError.Internal;
+                        const completed_payload = containerToPayload(completed_state);
+
+                        if (parse_stack.items.len == 0) {
+                            // This was the root container
+                            root = completed_payload;
+                            break;
+                        }
+
+                        // Continue with completed container as new current
+                        current_payload = completed_payload;
                     }
 
-                    var map = Map.init(allocator);
-                    for (0..len) |_| {
-                        const str = try self.readStrValue(
-                            try self.readTypeMarkerU8(),
-                            allocator,
-                        );
-                        const val = try self.read(allocator);
-                        try map.put(str, val);
-                    }
-                    res = Payload{
-                        .map = map,
-                    };
+                    if (root != null) break;
+                }
+            }
+
+            return root orelse MsgPackError.Internal;
+        }
+
+        /// Fill parent container with child element
+        /// Returns true if parent container is complete
+        fn fillParentContainer(
+            parent: *ParseState,
+            child: Payload,
+            allocator: Allocator,
+            stack: *std.ArrayList(ParseState),
+        ) !bool {
+            switch (parent.container_type) {
+                .array => {
+                    var arr_state = &parent.data.array;
+                    arr_state.items[arr_state.current_index] = child;
+                    arr_state.current_index += 1;
+                    return arr_state.current_index >= arr_state.total_length;
                 },
-                // read ext
-                .FIXEXT1,
-                .FIXEXT2,
-                .FIXEXT4,
-                .FIXEXT8,
-                .FIXEXT16,
-                .EXT8,
-                .EXT16,
-                .EXT32,
-                => {
-                    const ext_result = try self.readExtValueOrTimestamp(marker, allocator);
-                    res = ext_result;
+
+                .map_key => {
+                    // Child must be a string (key)
+                    if (child != .str) {
+                        child.free(allocator); // Free the invalid child first
+                        cleanupParseStack(stack, allocator);
+                        return MsgPackError.InvalidType;
+                    }
+                    parent.data.map.current_key = child.str.value();
+                    parent.container_type = .map_value;
+                    return false; // Still need to read value
+                },
+
+                .map_value => {
+                    var map_state = &parent.data.map;
+                    const key = map_state.current_key orelse return MsgPackError.Internal;
+                    try map_state.map.put(key, child);
+                    map_state.current_key = null;
+                    map_state.remaining_pairs -= 1;
+
+                    if (map_state.remaining_pairs == 0) {
+                        return true; // Map complete
+                    }
+
+                    parent.container_type = .map_key;
+                    return false; // Continue reading next key
                 },
             }
-            return res;
+        }
+
+        /// Convert completed ParseState to Payload
+        fn containerToPayload(state: ParseState) Payload {
+            return switch (state.data) {
+                .array => |arr_state| Payload{ .arr = arr_state.items },
+                .map => |map_state| Payload{ .map = map_state.map },
+            };
         }
     };
+}
+
+/// Create an instance of msgpack_pack with default limits (backward compatible)
+pub fn Pack(
+    comptime WriteContext: type,
+    comptime ReadContext: type,
+    comptime WriteError: type,
+    comptime ReadError: type,
+    comptime writeFn: fn (context: WriteContext, bytes: []const u8) WriteError!usize,
+    comptime readFn: fn (context: ReadContext, arr: []u8) ReadError!usize,
+) type {
+    return PackWithLimits(
+        WriteContext,
+        ReadContext,
+        WriteError,
+        ReadError,
+        writeFn,
+        readFn,
+        DEFAULT_LIMITS,
+    );
 }
 
 // Export compatibility layer for cross-version support

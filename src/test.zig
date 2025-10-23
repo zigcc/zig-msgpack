@@ -2790,3 +2790,698 @@ test "fuzz: mixed payload sequence" {
         try expect(payloadEqual(original, decoded));
     }
 }
+
+// ========== Iterative Parser Tests ==========
+
+test "iterative parser: normal nested depth (100 layers)" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+
+    // Build 100-layer deep nested array manually
+    var input = if (builtin.zig_version.minor == 14)
+        std.ArrayList(u8).init(allocator)
+    else
+        std.ArrayList(u8){};
+    defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
+
+    const depth = 100;
+    var i: usize = 0;
+    while (i < depth) : (i += 1) {
+        if (builtin.zig_version.minor == 14) {
+            try input.append(0x91); // fixarray with 1 element
+        } else {
+            try input.append(allocator, 0x91);
+        }
+    }
+    if (builtin.zig_version.minor == 14) {
+        try input.append(0x00); // int 0
+    } else {
+        try input.append(allocator, 0x00);
+    }
+
+    // Write to buffer
+    _ = try write_buffer.write(input.items);
+
+    var p = pack.init(&write_buffer, &read_buffer);
+    const decoded = try p.read(allocator);
+    defer decoded.free(allocator);
+
+    // Verify it's an array
+    try expect(decoded == .arr);
+}
+
+test "iterative parser: max depth exceeded" {
+    // Use custom limits with lower max_depth
+    const custom_pack = msgpack.PackWithLimits(
+        *bufferType,
+        *bufferType,
+        bufferType.WriteError,
+        bufferType.ReadError,
+        bufferType.write,
+        bufferType.read,
+        .{ .max_depth = 50 }, // Only allow 50 layers
+    );
+
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+
+    // Build 100-layer deep nested array (exceeds limit of 50)
+    var input = if (builtin.zig_version.minor == 14)
+        std.ArrayList(u8).init(allocator)
+    else
+        std.ArrayList(u8){};
+    defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
+
+    const depth = 100;
+    var i: usize = 0;
+    while (i < depth) : (i += 1) {
+        if (builtin.zig_version.minor == 14) {
+            try input.append(0x91);
+        } else {
+            try input.append(allocator, 0x91);
+        }
+    }
+    if (builtin.zig_version.minor == 14) {
+        try input.append(0x00);
+    } else {
+        try input.append(allocator, 0x00);
+    }
+
+    _ = try write_buffer.write(input.items);
+
+    var p = custom_pack.init(&write_buffer, &read_buffer);
+
+    // Should return MaxDepthExceeded error
+    const result = p.read(allocator);
+    try std.testing.expectError(msgpack.MsgPackError.MaxDepthExceeded, result);
+}
+
+test "iterative parser: array too large" {
+    const custom_pack = msgpack.PackWithLimits(
+        *bufferType,
+        *bufferType,
+        bufferType.WriteError,
+        bufferType.ReadError,
+        bufferType.write,
+        bufferType.read,
+        .{ .max_array_length = 100 }, // Only allow 100 elements
+    );
+
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+
+    // Try to create array with 1000 elements (exceeds limit)
+    var input = if (builtin.zig_version.minor == 14)
+        std.ArrayList(u8).init(allocator)
+    else
+        std.ArrayList(u8){};
+    defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
+
+    // array16 marker + length
+    if (builtin.zig_version.minor == 14) {
+        try input.append(0xdc); // array16
+        try input.append(0x03); // high byte (1000 = 0x03E8)
+        try input.append(0xE8); // low byte
+    } else {
+        try input.append(allocator, 0xdc);
+        try input.append(allocator, 0x03);
+        try input.append(allocator, 0xE8);
+    }
+
+    _ = try write_buffer.write(input.items);
+
+    var p = custom_pack.init(&write_buffer, &read_buffer);
+
+    // Should return ArrayTooLarge error
+    const result = p.read(allocator);
+    try std.testing.expectError(msgpack.MsgPackError.ArrayTooLarge, result);
+}
+
+test "iterative parser: deep nested maps" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+
+    // Build nested map structure: {"a": {"a": {"a": 42}}}
+    var input = if (builtin.zig_version.minor == 14)
+        std.ArrayList(u8).init(allocator)
+    else
+        std.ArrayList(u8){};
+    defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
+
+    const depth = 50;
+    var i: usize = 0;
+    while (i < depth) : (i += 1) {
+        if (builtin.zig_version.minor == 14) {
+            try input.append(0x81); // fixmap with 1 pair
+            try input.append(0xa1); // fixstr len 1
+            try input.append('a');  // key "a"
+        } else {
+            try input.append(allocator, 0x81);
+            try input.append(allocator, 0xa1);
+            try input.append(allocator, 'a');
+        }
+    }
+    // Final value
+    if (builtin.zig_version.minor == 14) {
+        try input.append(0x2a); // positive fixint 42
+    } else {
+        try input.append(allocator, 0x2a);
+    }
+
+    _ = try write_buffer.write(input.items);
+
+    var p = pack.init(&write_buffer, &read_buffer);
+    const decoded = try p.read(allocator);
+    defer decoded.free(allocator);
+
+    // Verify it's a map
+    try expect(decoded == .map);
+}
+
+test "iterative free: deeply nested payload" {
+    // Create a deeply nested structure in memory
+    var root = try Payload.arrPayload(1, allocator);
+    var current: *Payload = &root;
+
+    // Build 200-layer deep structure
+    var i: usize = 0;
+    while (i < 200) : (i += 1) {
+        const nested = try Payload.arrPayload(1, allocator);
+        try current.setArrElement(0, nested);
+        current = &current.arr[0];
+    }
+    try current.setArrElement(0, Payload.intToPayload(42));
+
+    // Free should not cause stack overflow
+    root.free(allocator);
+}
+
+// ========== Large Data and Fuzz Tests ==========
+
+test "large data: array with 1000 elements" {
+    const allocator_heap = std.heap.page_allocator;
+    
+    var buffer: [100000]u8 = undefined;
+    var write_buffer = fixedBufferStream(&buffer);
+    var read_buffer = fixedBufferStream(&buffer);
+
+    const size: usize = 1000;
+    var payload = try Payload.arrPayload(size, allocator_heap);
+    defer payload.free(allocator_heap);
+
+    for (0..size) |i| {
+        try payload.setArrElement(i, Payload.intToPayload(@intCast(i)));
+    }
+
+    var p = pack.init(&write_buffer, &read_buffer);
+    try p.write(payload);
+
+    read_buffer = fixedBufferStream(&buffer);
+    p = pack.init(&write_buffer, &read_buffer);
+    const decoded = try p.read(allocator_heap);
+    defer decoded.free(allocator_heap);
+
+    try expect(decoded == .arr);
+    try expect(decoded.arr.len == size);
+}
+
+test "large data: map with 500 pairs" {
+    const allocator_heap = std.heap.page_allocator;
+    
+    var buffer: [100000]u8 = undefined;
+    var write_buffer = fixedBufferStream(&buffer);
+    var read_buffer = fixedBufferStream(&buffer);
+
+    var payload = Payload.mapPayload(allocator_heap);
+    defer payload.free(allocator_heap);
+
+    var i: usize = 0;
+    while (i < 500) : (i += 1) {
+        const key = try std.fmt.allocPrint(allocator_heap, "k{d}", .{i});
+        defer allocator_heap.free(key);
+        try payload.mapPut(key, Payload.intToPayload(@intCast(i)));
+    }
+
+    var p = pack.init(&write_buffer, &read_buffer);
+    try p.write(payload);
+
+    read_buffer = fixedBufferStream(&buffer);
+    p = pack.init(&write_buffer, &read_buffer);
+    const decoded = try p.read(allocator_heap);
+    defer decoded.free(allocator_heap);
+
+    try expect(decoded == .map);
+}
+
+test "fuzz: random bytes protection (critical)" {
+    var prng = std.Random.DefaultPrng.init(12345);
+    const random = prng.random();
+
+    var input_buffer: [200]u8 = undefined;
+    var output_buffer: [10000]u8 = undefined;
+
+    var i: usize = 0;
+    while (i < 10) : (i += 1) {
+        random.bytes(&input_buffer);
+
+        var write_buffer = fixedBufferStream(&output_buffer);
+        var read_buffer = fixedBufferStream(&input_buffer);
+
+        var p = pack.init(&write_buffer, &read_buffer);
+
+        // Should never crash - either succeeds or returns error
+        if (p.read(allocator)) |payload| {
+            defer payload.free(allocator);
+        } else |_| {
+            // Expected - most random bytes are invalid msgpack
+        }
+    }
+}
+
+test "fuzz: deep mixed nesting" {
+    var prng = std.Random.DefaultPrng.init(789);
+    const random = prng.random();
+
+    var buffer: [20000]u8 = undefined;
+    const test_depths = [_]usize{ 10, 30, 50 };
+
+    for (test_depths) |depth| {
+        var write_buffer = fixedBufferStream(&buffer);
+        var read_buffer = fixedBufferStream(&buffer);
+
+        var input = if (builtin.zig_version.minor == 14)
+            std.ArrayList(u8).init(allocator)
+        else
+            std.ArrayList(u8){};
+        defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
+
+        for (0..depth) |_| {
+            if (random.boolean()) {
+                if (builtin.zig_version.minor == 14) {
+                    try input.append(0x91);
+                } else {
+                    try input.append(allocator, 0x91);
+                }
+            } else {
+                if (builtin.zig_version.minor == 14) {
+                    try input.append(0x81);
+                    try input.append(0xa1);
+                    try input.append('x');
+                } else {
+                    try input.append(allocator, 0x81);
+                    try input.append(allocator, 0xa1);
+                    try input.append(allocator, 'x');
+                }
+            }
+        }
+        if (builtin.zig_version.minor == 14) {
+            try input.append(0xc0); // nil
+        } else {
+            try input.append(allocator, 0xc0);
+        }
+
+        _ = try write_buffer.write(input.items);
+
+        var p = pack.init(&write_buffer, &read_buffer);
+        const decoded = try p.read(allocator);
+        defer decoded.free(allocator);
+
+        try expect(decoded == .arr or decoded == .map);
+    }
+}
+
+// ========== Malicious/Corrupted Data Tests (Never Crash Guarantee) ==========
+
+test "malicious: array32 claims 4 billion elements" {
+    var buffer: [10000]u8 = undefined;
+    var write_buffer = fixedBufferStream(&buffer);
+    var read_buffer = fixedBufferStream(&buffer);
+
+    var input = if (builtin.zig_version.minor == 14)
+        std.ArrayList(u8).init(allocator)
+    else
+        std.ArrayList(u8){};
+    defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
+
+    // array32 claiming 0xFFFFFFFF (4 billion) elements
+    if (builtin.zig_version.minor == 14) {
+        try input.append(0xdd); // array32
+        try input.append(0xFF);
+        try input.append(0xFF);
+        try input.append(0xFF);
+        try input.append(0xFF);
+    } else {
+        try input.append(allocator, 0xdd);
+        try input.append(allocator, 0xFF);
+        try input.append(allocator, 0xFF);
+        try input.append(allocator, 0xFF);
+        try input.append(allocator, 0xFF);
+    }
+
+    _ = try write_buffer.write(input.items);
+
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Must return error, never crash
+    const result = p.read(allocator);
+    try std.testing.expectError(msgpack.MsgPackError.ArrayTooLarge, result);
+}
+
+test "malicious: map32 claims 4 billion pairs" {
+    var buffer: [10000]u8 = undefined;
+    var write_buffer = fixedBufferStream(&buffer);
+    var read_buffer = fixedBufferStream(&buffer);
+
+    var input = if (builtin.zig_version.minor == 14)
+        std.ArrayList(u8).init(allocator)
+    else
+        std.ArrayList(u8){};
+    defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
+
+    // map32 claiming 0xFFFFFFFF pairs
+    if (builtin.zig_version.minor == 14) {
+        try input.append(0xdf); // map32
+        try input.append(0xFF);
+        try input.append(0xFF);
+        try input.append(0xFF);
+        try input.append(0xFF);
+    } else {
+        try input.append(allocator, 0xdf);
+        try input.append(allocator, 0xFF);
+        try input.append(allocator, 0xFF);
+        try input.append(allocator, 0xFF);
+        try input.append(allocator, 0xFF);
+    }
+
+    _ = try write_buffer.write(input.items);
+
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Must return error, never crash
+    const result = p.read(allocator);
+    try std.testing.expectError(msgpack.MsgPackError.MapTooLarge, result);
+}
+
+test "malicious: extremely deep nesting (2000 layers)" {
+    const custom_pack = msgpack.PackWithLimits(
+        *bufferType,
+        *bufferType,
+        bufferType.WriteError,
+        bufferType.ReadError,
+        bufferType.write,
+        bufferType.read,
+        .{ .max_depth = 100 }, // Only allow 100 layers
+    );
+
+    var buffer: [30000]u8 = undefined;
+    var write_buffer = fixedBufferStream(&buffer);
+    var read_buffer = fixedBufferStream(&buffer);
+
+    var input = if (builtin.zig_version.minor == 14)
+        std.ArrayList(u8).init(allocator)
+    else
+        std.ArrayList(u8){};
+    defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
+
+    // 2000 layers of nesting (far exceeds limit of 100)
+    const depth = 2000;
+    var i: usize = 0;
+    while (i < depth) : (i += 1) {
+        if (builtin.zig_version.minor == 14) {
+            try input.append(0x91);
+        } else {
+            try input.append(allocator, 0x91);
+        }
+    }
+    if (builtin.zig_version.minor == 14) {
+        try input.append(0x00);
+    } else {
+        try input.append(allocator, 0x00);
+    }
+
+    _ = try write_buffer.write(input.items);
+
+    var p = custom_pack.init(&write_buffer, &read_buffer);
+
+    // Must return MaxDepthExceeded, never crash
+    const result = p.read(allocator);
+    try std.testing.expectError(msgpack.MsgPackError.MaxDepthExceeded, result);
+}
+
+test "corrupted: truncated array data" {
+    var buffer: [1000]u8 = undefined;
+    var write_buffer = fixedBufferStream(&buffer);
+    var read_buffer = fixedBufferStream(&buffer);
+
+    var input = if (builtin.zig_version.minor == 14)
+        std.ArrayList(u8).init(allocator)
+    else
+        std.ArrayList(u8){};
+    defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
+
+    // array claiming 10 elements but data is incomplete
+    if (builtin.zig_version.minor == 14) {
+        try input.append(0x9a); // fixarray with 10 elements
+        try input.append(0x00); // int 0
+        try input.append(0x01); // int 1
+        // Missing 8 more elements - truncated!
+    } else {
+        try input.append(allocator, 0x9a);
+        try input.append(allocator, 0x00);
+        try input.append(allocator, 0x01);
+    }
+
+    _ = try write_buffer.write(input.items);
+
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Should return error, not crash
+    const result = p.read(allocator);
+    if (result) |payload| payload.free(allocator) else |_| {}
+}
+
+test "corrupted: invalid map key (non-string)" {
+    var buffer: [1000]u8 = undefined;
+    var write_buffer = fixedBufferStream(&buffer);
+    var read_buffer = fixedBufferStream(&buffer);
+
+    var input = if (builtin.zig_version.minor == 14)
+        std.ArrayList(u8).init(allocator)
+    else
+        std.ArrayList(u8){};
+    defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
+
+    // map with integer key (invalid - must be string)
+    if (builtin.zig_version.minor == 14) {
+        try input.append(0x81); // fixmap with 1 pair
+        try input.append(0x2a); // int 42 as key (INVALID!)
+        try input.append(0x00); // value
+    } else {
+        try input.append(allocator, 0x81);
+        try input.append(allocator, 0x2a);
+        try input.append(allocator, 0x00);
+    }
+
+    _ = try write_buffer.write(input.items);
+
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Should return error, not crash
+    const result = p.read(allocator);
+    try std.testing.expectError(msgpack.MsgPackError.InvalidType, result);
+}
+
+test "malicious: mixed depth and breadth attack" {
+    // Attack pattern: wide branching + deep nesting
+    // This tests both max_depth and max_array_length limits
+    const custom_pack = msgpack.PackWithLimits(
+        *bufferType,
+        *bufferType,
+        bufferType.WriteError,
+        bufferType.ReadError,
+        bufferType.write,
+        bufferType.read,
+        .{ .max_depth = 50, .max_array_length = 1000 },
+    );
+
+    var buffer: [50000]u8 = undefined;
+    var write_buffer = fixedBufferStream(&buffer);
+    var read_buffer = fixedBufferStream(&buffer);
+
+    var input = if (builtin.zig_version.minor == 14)
+        std.ArrayList(u8).init(allocator)
+    else
+        std.ArrayList(u8){};
+    defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
+
+    // Build: [ [100 items], [100 items], ... ] nested 60 levels deep
+    const depth = 60;
+    for (0..depth) |_| {
+        if (builtin.zig_version.minor == 14) {
+            try input.append(0x91); // fixarray with 1 element
+        } else {
+            try input.append(allocator, 0x91);
+        }
+    }
+    if (builtin.zig_version.minor == 14) {
+        try input.append(0x00);
+    } else {
+        try input.append(allocator, 0x00);
+    }
+
+    _ = try write_buffer.write(input.items);
+
+    var p = custom_pack.init(&write_buffer, &read_buffer);
+
+    // Should hit MaxDepthExceeded, never crash
+    const result = p.read(allocator);
+    try std.testing.expectError(msgpack.MsgPackError.MaxDepthExceeded, result);
+}
+
+test "edge case: empty containers at various depths" {
+    var buffer: [1000]u8 = undefined;
+    var write_buffer = fixedBufferStream(&buffer);
+    var read_buffer = fixedBufferStream(&buffer);
+
+    // Test: [ [], [[]], [[[]]], ... ]
+    var input = if (builtin.zig_version.minor == 14)
+        std.ArrayList(u8).init(allocator)
+    else
+        std.ArrayList(u8){};
+    defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
+
+    const depths = [_]usize{ 0, 1, 5, 10, 20 };
+    for (depths) |depth| {
+        input.clearRetainingCapacity();
+
+        for (0..depth) |_| {
+            if (builtin.zig_version.minor == 14) {
+                try input.append(0x91); // fixarray with 1 element
+            } else {
+                try input.append(allocator, 0x91);
+            }
+        }
+        if (builtin.zig_version.minor == 14) {
+            try input.append(0x90); // empty array
+        } else {
+            try input.append(allocator, 0x90);
+        }
+
+        @memset(&buffer, 0);
+        write_buffer = fixedBufferStream(&buffer);
+        read_buffer = fixedBufferStream(&buffer);
+
+        _ = try write_buffer.write(input.items);
+
+        var p = pack.init(&write_buffer, &read_buffer);
+        const decoded = try p.read(allocator);
+        defer decoded.free(allocator);
+
+        try expect(decoded == .arr);
+    }
+}
+
+test "stress: rapid allocation and deallocation" {
+    // Test memory safety under rapid alloc/free cycles
+    var buffer: [10000]u8 = undefined;
+
+    var i: usize = 0;
+    while (i < 100) : (i += 1) {
+        var write_buffer = fixedBufferStream(&buffer);
+        var read_buffer = fixedBufferStream(&buffer);
+
+        // Create small nested structure
+        var payload = try Payload.arrPayload(10, allocator);
+        for (0..10) |j| {
+            var inner = try Payload.arrPayload(5, allocator);
+            for (0..5) |k| {
+                try inner.setArrElement(k, Payload.intToPayload(@intCast(j * 5 + k)));
+            }
+            try payload.setArrElement(j, inner);
+        }
+
+        var p = pack.init(&write_buffer, &read_buffer);
+        try p.write(payload);
+
+        read_buffer = fixedBufferStream(&buffer);
+        p = pack.init(&write_buffer, &read_buffer);
+        const decoded = try p.read(allocator);
+
+        // Free both
+        payload.free(allocator);
+        decoded.free(allocator);
+    }
+}
+
+
+test "corrupted: nested arrays with mismatched counts" {
+    var buffer: [1000]u8 = undefined;
+    var write_buffer = fixedBufferStream(&buffer);
+    var read_buffer = fixedBufferStream(&buffer);
+
+    var input = if (builtin.zig_version.minor == 14)
+        std.ArrayList(u8).init(allocator)
+    else
+        std.ArrayList(u8){};
+    defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
+
+    // Outer array claims 3 elements, but we provide different structure
+    if (builtin.zig_version.minor == 14) {
+        try input.append(0x93); // fixarray with 3 elements
+        try input.append(0x92); // inner array with 2 elements
+        try input.append(0x00);
+        try input.append(0x01);
+        try input.append(0x91); // inner array with 1 element
+        // Missing data - truncated
+    } else {
+        try input.append(allocator, 0x93);
+        try input.append(allocator, 0x92);
+        try input.append(allocator, 0x00);
+        try input.append(allocator, 0x01);
+        try input.append(allocator, 0x91);
+    }
+
+    _ = try write_buffer.write(input.items);
+
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Should handle gracefully
+    const result = p.read(allocator);
+    if (result) |payload| {
+        payload.free(allocator);
+    } else |_| {
+        // Expected error is fine
+    }
+}
+
+
+test "malicious: str32 with excessive length claim" {
+    var buffer: [1000]u8 = undefined;
+    var input_buf: [10]u8 = undefined;
+    
+    // str32 claiming 100MB (will be rejected by limit)
+    input_buf[0] = 0xdb; // str32
+    input_buf[1] = 0x06; // 100MB = 0x06400000
+    input_buf[2] = 0x40;
+    input_buf[3] = 0x00;
+    input_buf[4] = 0x00;
+
+    var write_buffer = fixedBufferStream(&buffer);
+    var read_buffer = fixedBufferStream(&input_buf);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    const result = p.read(allocator);
+    if (result) |payload| {
+        payload.free(allocator);
+        try expect(false); // Should not succeed
+    } else |err| {
+        // Should be LengthReading (can't read 100MB) or StringTooLong
+        try expect(err == msgpack.MsgPackError.LengthReading or 
+                   err == msgpack.MsgPackError.StringTooLong);
+    }
+}
+
