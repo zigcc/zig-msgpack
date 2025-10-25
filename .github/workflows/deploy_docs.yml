@@ -1,8 +1,14 @@
-name: DeployDocs
+name: Documentation
 
 on:
     push:
         branches: [main]
+    workflow_run:
+        workflows: ["Unit Tests"]
+        types:
+            - completed
+        branches:
+            - main
 
     # Allows you to run this workflow manually from the Actions tab
     workflow_dispatch:
@@ -30,6 +36,11 @@ jobs:
     # Build job
     generate_docs:
         runs-on: ubuntu-latest
+        # 只在 push 到 main 或 unit test 成功后执行
+        if: |
+            github.event_name == 'workflow_dispatch' ||
+            github.event_name == 'push' ||
+            (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
         steps:
             - name: Checkout
               uses: actions/checkout@v3

@@ -1,0 +1,45 @@
+name: Performance Benchmark
+
+on:
+    push:
+        branches:
+            - main
+    pull_request:
+    workflow_run:
+        workflows: ["Unit Tests"]
+        types:
+            - completed
+    workflow_dispatch:
+
+jobs:
+    benchmark:
+        name: Run Benchmarks
+        # 依赖 unit test 成功，或手动触发
+        if: |
+            github.event_name == 'workflow_dispatch' ||
+            github.event_name == 'push' ||
+            github.event_name == 'pull_request' ||
+            (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Setup Zig
+              uses: goto-bus-stop/setup-zig@v2
+              with:
+                  version: 0.15.1
+
+            - name: Build benchmark
+              run: zig build bench -Doptimize=ReleaseFast
+
+            - name: Run benchmark
+              run: zig-out/bin/msgpack-bench > benchmark-results.txt
+
+            - name: Upload benchmark results
+              uses: actions/upload-artifact@v4
+              with:
+                  name: benchmark-results-${{ github.sha }}
+                  path: benchmark-results.txt
+                  retention-days: 7
+

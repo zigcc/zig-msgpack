@@ -1,0 +1,47 @@
+name: Unit Tests
+
+on:
+    push:
+        branches:
+            - main
+    pull_request:
+    schedule:
+        # 每天凌晨 2 点执行
+        - cron: "0 2 * * *"
+    workflow_dispatch:
+    workflow_run:
+        workflows: ["Code Format Check"]
+        types:
+            - completed
+
+jobs:
+    test:
+        name: Unit Test
+        # 依赖 format check，但定时任务或手动触发时跳过
+        if: |
+            github.event_name == 'schedule' ||
+            github.event_name == 'workflow_dispatch' ||
+            (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+            github.event_name == 'push' ||
+            github.event_name == 'pull_request'
+        strategy:
+            matrix:
+                os: [ubuntu-latest]
+                # 定时任务只测试 master 版本，其他情况测试所有版本
+                version: ${{ github.event_name == 'schedule' && fromJSON('["master"]') || fromJSON('["0.14.1", "0.15.1", "master"]') }}
+            fail-fast: false
+        runs-on: ${{ matrix.os }}
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - name: Setup Zig
+              uses: goto-bus-stop/setup-zig@v2
+              with:
+                  version: ${{ matrix.version }}
+
+            - name: Run unit tests
+              run: zig build test --summary all
+

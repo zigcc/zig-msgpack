@@ -1,0 +1,24 @@
+name: Code Format Check
+
+on:
+    push:
+        branches:
+            - main
+    pull_request:
+
+jobs:
+    format:
+        name: Check Code Formatting
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Setup Zig
+              uses: goto-bus-stop/setup-zig@v2
+              with:
+                  version: 0.15.1
+
+            - name: Check code formatting
+              run: zig fmt --check .
+
