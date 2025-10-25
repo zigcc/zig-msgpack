@@ -16,7 +16,11 @@ jobs:
         if: |
             github.event_name == 'workflow_dispatch' ||
             (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
-        runs-on: ubuntu-latest
+        strategy:
+            matrix:
+                os: [ubuntu-latest, macos-latest, windows-latest]
+            fail-fast: false
+        runs-on: ${{ matrix.os }}
         steps:
             - name: Checkout code
               uses: actions/checkout@v4
@@ -26,16 +30,51 @@ jobs:
               with:
                   version: 0.15.1
 
-            - name: Build benchmark
-              run: zig build bench -Doptimize=ReleaseFast
+            - name: Display platform information
+              shell: bash
+              run: |
+                  echo "================================"
+                  echo "Platform Configuration"
+                  echo "================================"
+                  echo "OS: ${{ runner.os }}"
+                  echo "Runner: ${{ matrix.os }}"
+                  echo "Architecture: $(uname -m)"
+                  if [ "$RUNNER_OS" == "Linux" ]; then
+                    echo "Kernel: $(uname -r)"
+                    echo "Distribution: $(cat /etc/os-release | grep PRETTY_NAME | cut -d'=' -f2)"
+                    echo "CPU: $(lscpu | grep 'Model name' | cut -d':' -f2 | xargs)"
+                    echo "Total Memory: $(free -h | grep Mem | awk '{print $2}')"
+                  elif [ "$RUNNER_OS" == "macOS" ]; then
+                    echo "Kernel: $(uname -r)"
+                    echo "CPU: $(sysctl -n machdep.cpu.brand_string)"
+                    echo "Total Memory: $(sysctl -n hw.memsize | awk '{print $1/1024/1024/1024 " GB"}')"
+                  elif [ "$RUNNER_OS" == "Windows" ]; then
+                    echo "Kernel: $(uname -r)"
+                    echo "CPU: $(wmic cpu get name | sed -n 2p)"
+                    echo "Total Memory: $(wmic computersystem get totalphysicalmemory | sed -n 2p | awk '{print $1/1024/1024/1024 " GB"}')"
+                  fi
+                  echo "================================"
+                  echo ""
+
+            - name: Build benchmark binary
+              run: zig build -Doptimize=ReleaseFast
 
             - name: Run benchmark
-              run: zig-out/bin/msgpack-bench > benchmark-results.txt
+              shell: bash
+              run: |
+                  if [ "$RUNNER_OS" == "Windows" ]; then
+                    zig-out/bin/msgpack-bench.exe
+                  else
+                    zig-out/bin/msgpack-bench
+                  fi
 
-            - name: Upload benchmark results
+            - name: Upload benchmark binary
               uses: actions/upload-artifact@v4
               with:
-                  name: benchmark-results-${{ github.sha }}
-                  path: benchmark-results.txt
+                  name: msgpack-bench-${{ runner.os }}-${{ github.sha }}
+                  path: |
+                      zig-out/bin/msgpack-bench
+                      zig-out/bin/msgpack-bench.exe
                   retention-days: 7
+                  if-no-files-found: ignore
 
