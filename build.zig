@@ -63,6 +63,9 @@ pub fn build(b: *std.Build) void {
     });
     benchmark.root_module.addImport("msgpack", msgpack);
 
+    // Install benchmark binary to zig-out/bin
+    b.installArtifact(benchmark);
+
     const run_benchmark = b.addRunArtifact(benchmark);
     bench_step.dependOn(&run_benchmark.step);
 }
