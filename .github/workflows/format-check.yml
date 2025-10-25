@@ -1,5 +1,7 @@
 name: Code Format Check
 
+run-name: "🎨 Format Check · ${{ github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || github.ref_name }}"
+
 on:
     push:
         branches:

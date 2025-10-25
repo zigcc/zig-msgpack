@@ -1,10 +1,8 @@
 name: Performance Benchmark
 
+run-name: "⚡ Benchmark · ${{ github.event_name == 'workflow_dispatch' && 'Manual Run' || github.event.workflow_run.head_branch }}"
+
 on:
-    push:
-        branches:
-            - main
-    pull_request:
     workflow_run:
         workflows: ["Unit Tests"]
         types:
@@ -17,8 +15,6 @@ jobs:
         # 依赖 unit test 成功，或手动触发
         if: |
             github.event_name == 'workflow_dispatch' ||
-            github.event_name == 'push' ||
-            github.event_name == 'pull_request' ||
             (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
         runs-on: ubuntu-latest
         steps:

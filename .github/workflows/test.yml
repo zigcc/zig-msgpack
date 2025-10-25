@@ -1,10 +1,8 @@
 name: Unit Tests
 
+run-name: "🧪 Unit Tests · ${{ github.event_name == 'schedule' && 'Scheduled (master)' || (github.event_name == 'workflow_dispatch' && 'Manual Run' || github.event.workflow_run.head_branch) }}"
+
 on:
-    push:
-        branches:
-            - main
-    pull_request:
     schedule:
         # 每天凌晨 2 点执行
         - cron: "0 2 * * *"
@@ -17,13 +15,11 @@ on:
 jobs:
     test:
         name: Unit Test
-        # 依赖 format check，但定时任务或手动触发时跳过
+        # 依赖 format check 成功，或定时任务/手动触发时执行
         if: |
             github.event_name == 'schedule' ||
             github.event_name == 'workflow_dispatch' ||
-            (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
-            github.event_name == 'push' ||
-            github.event_name == 'pull_request'
+            (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
         strategy:
             matrix:
                 os: [ubuntu-latest]
