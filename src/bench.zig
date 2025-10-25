@@ -82,7 +82,7 @@ fn benchNilRead(allocator: std.mem.Allocator) !void {
     var p = pack.init(&write_buffer, &read_buffer);
 
     try p.write(Payload.nilToPayload());
-    
+
     read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
     const val = try p.read(allocator);
@@ -106,7 +106,7 @@ fn benchBoolRead(allocator: std.mem.Allocator) !void {
     var p = pack.init(&write_buffer, &read_buffer);
 
     try p.write(Payload.boolToPayload(true));
-    
+
     read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
     const val = try p.read(allocator);
@@ -130,7 +130,7 @@ fn benchSmallIntRead(allocator: std.mem.Allocator) !void {
     var p = pack.init(&write_buffer, &read_buffer);
 
     try p.write(Payload.intToPayload(42));
-    
+
     read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
     const val = try p.read(allocator);
@@ -154,7 +154,7 @@ fn benchLargeIntRead(allocator: std.mem.Allocator) !void {
     var p = pack.init(&write_buffer, &read_buffer);
 
     try p.write(Payload.intToPayload(9223372036854775807));
-    
+
     read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
     const val = try p.read(allocator);
@@ -178,7 +178,7 @@ fn benchFloatRead(allocator: std.mem.Allocator) !void {
     var p = pack.init(&write_buffer, &read_buffer);
 
     try p.write(Payload.floatToPayload(3.14159265359));
-    
+
     read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
     const val = try p.read(allocator);
@@ -209,7 +209,7 @@ fn benchShortStrRead(allocator: std.mem.Allocator) !void {
     const str = try Payload.strToPayload("hello", allocator);
     defer str.free(allocator);
     try p.write(str);
-    
+
     read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
     const val = try p.read(allocator);
@@ -238,7 +238,7 @@ fn benchMediumStrRead(allocator: std.mem.Allocator) !void {
     const str = try Payload.strToPayload(test_str, allocator);
     defer str.free(allocator);
     try p.write(str);
-    
+
     read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
     const val = try p.read(allocator);
@@ -271,7 +271,7 @@ fn benchSmallBinRead(allocator: std.mem.Allocator) !void {
     const bin = try Payload.binToPayload(&data, allocator);
     defer bin.free(allocator);
     try p.write(bin);
-    
+
     read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
     const val = try p.read(allocator);
@@ -306,7 +306,7 @@ fn benchLargeBinRead(allocator: std.mem.Allocator) !void {
     const bin = try Payload.binToPayload(data, allocator);
     defer bin.free(allocator);
     try p.write(bin);
-    
+
     read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
     const val = try p.read(allocator);
@@ -343,7 +343,7 @@ fn benchSmallArrayRead(allocator: std.mem.Allocator) !void {
         try array.setArrElement(i, Payload.intToPayload(@intCast(i)));
     }
     try p.write(array);
-    
+
     read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
     const val = try p.read(allocator);
@@ -376,7 +376,7 @@ fn benchMediumArrayRead(allocator: std.mem.Allocator) !void {
         try array.setArrElement(i, Payload.intToPayload(@intCast(i)));
     }
     try p.write(array);
-    
+
     read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
     const val = try p.read(allocator);
@@ -395,13 +395,13 @@ fn benchSmallMapWrite(allocator: std.mem.Allocator) !void {
 
     var map = Payload.mapPayload(allocator);
     defer map.free(allocator);
-    
+
     for (0..10) |i| {
         const key = try std.fmt.allocPrint(allocator, "key{d}", .{i});
         defer allocator.free(key);
         try map.mapPut(key, Payload.intToPayload(@intCast(i)));
     }
-    
+
     try p.write(map);
 }
 
@@ -413,15 +413,15 @@ fn benchSmallMapRead(allocator: std.mem.Allocator) !void {
 
     var map = Payload.mapPayload(allocator);
     defer map.free(allocator);
-    
+
     for (0..10) |i| {
         const key = try std.fmt.allocPrint(allocator, "key{d}", .{i});
         defer allocator.free(key);
         try map.mapPut(key, Payload.intToPayload(@intCast(i)));
     }
-    
+
     try p.write(map);
-    
+
     read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
     const val = try p.read(allocator);
@@ -436,13 +436,13 @@ fn benchMediumMapWrite(allocator: std.mem.Allocator) !void {
 
     var map = Payload.mapPayload(allocator);
     defer map.free(allocator);
-    
+
     for (0..50) |i| {
         const key = try std.fmt.allocPrint(allocator, "key{d}", .{i});
         defer allocator.free(key);
         try map.mapPut(key, Payload.intToPayload(@intCast(i)));
     }
-    
+
     try p.write(map);
 }
 
@@ -454,15 +454,15 @@ fn benchMediumMapRead(allocator: std.mem.Allocator) !void {
 
     var map = Payload.mapPayload(allocator);
     defer map.free(allocator);
-    
+
     for (0..50) |i| {
         const key = try std.fmt.allocPrint(allocator, "key{d}", .{i});
         defer allocator.free(key);
         try map.mapPut(key, Payload.intToPayload(@intCast(i)));
     }
-    
+
     try p.write(map);
-    
+
     read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
     const val = try p.read(allocator);
@@ -495,7 +495,7 @@ fn benchExtRead(allocator: std.mem.Allocator) !void {
     const ext = try Payload.extToPayload(42, &data, allocator);
     defer ext.free(allocator);
     try p.write(ext);
-    
+
     read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
     const val = try p.read(allocator);
@@ -525,7 +525,7 @@ fn benchTimestamp32Read(allocator: std.mem.Allocator) !void {
 
     const ts = Payload.timestampFromSeconds(1234567890);
     try p.write(ts);
-    
+
     read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
     const val = try p.read(allocator);
@@ -551,7 +551,7 @@ fn benchTimestamp64Read(allocator: std.mem.Allocator) !void {
 
     const ts = Payload.timestampToPayload(1234567890, 123456789);
     try p.write(ts);
-    
+
     read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
     const val = try p.read(allocator);
@@ -573,17 +573,17 @@ fn benchNestedStructureWrite(allocator: std.mem.Allocator) !void {
     defer root.free(allocator);
 
     var users = try Payload.arrPayload(2, allocator);
-    
+
     var user1 = Payload.mapPayload(allocator);
     try user1.mapPut("id", Payload.intToPayload(1));
     try user1.mapPut("name", try Payload.strToPayload("Alice", allocator));
     try users.setArrElement(0, user1);
-    
+
     var user2 = Payload.mapPayload(allocator);
     try user2.mapPut("id", Payload.intToPayload(2));
     try user2.mapPut("name", try Payload.strToPayload("Bob", allocator));
     try users.setArrElement(1, user2);
-    
+
     try root.mapPut("users", users);
     try p.write(root);
 }
@@ -598,20 +598,20 @@ fn benchNestedStructureRead(allocator: std.mem.Allocator) !void {
     defer root.free(allocator);
 
     var users = try Payload.arrPayload(2, allocator);
-    
+
     var user1 = Payload.mapPayload(allocator);
     try user1.mapPut("id", Payload.intToPayload(1));
     try user1.mapPut("name", try Payload.strToPayload("Alice", allocator));
     try users.setArrElement(0, user1);
-    
+
     var user2 = Payload.mapPayload(allocator);
     try user2.mapPut("id", Payload.intToPayload(2));
     try user2.mapPut("name", try Payload.strToPayload("Bob", allocator));
     try users.setArrElement(1, user2);
-    
+
     try root.mapPut("users", users);
     try p.write(root);
-    
+
     read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
     const val = try p.read(allocator);
@@ -626,28 +626,28 @@ fn benchMixedTypesWrite(allocator: std.mem.Allocator) !void {
 
     var mixed = try Payload.arrPayload(10, allocator);
     defer mixed.free(allocator);
-    
+
     try mixed.setArrElement(0, Payload.nilToPayload());
     try mixed.setArrElement(1, Payload.boolToPayload(true));
     try mixed.setArrElement(2, Payload.intToPayload(-100));
     try mixed.setArrElement(3, Payload.uintToPayload(200));
     try mixed.setArrElement(4, Payload.floatToPayload(3.14));
     try mixed.setArrElement(5, try Payload.strToPayload("hello", allocator));
-    
+
     var bin_data = [_]u8{1} ** 8;
     try mixed.setArrElement(6, try Payload.binToPayload(&bin_data, allocator));
-    
+
     var inner_arr = try Payload.arrPayload(2, allocator);
     try inner_arr.setArrElement(0, Payload.intToPayload(1));
     try inner_arr.setArrElement(1, Payload.intToPayload(2));
     try mixed.setArrElement(7, inner_arr);
-    
+
     var inner_map = Payload.mapPayload(allocator);
     try inner_map.mapPut("key", Payload.intToPayload(42));
     try mixed.setArrElement(8, inner_map);
-    
+
     try mixed.setArrElement(9, Payload.timestampFromSeconds(1000000));
-    
+
     try p.write(mixed);
 }
 
@@ -659,30 +659,30 @@ fn benchMixedTypesRead(allocator: std.mem.Allocator) !void {
 
     var mixed = try Payload.arrPayload(10, allocator);
     defer mixed.free(allocator);
-    
+
     try mixed.setArrElement(0, Payload.nilToPayload());
     try mixed.setArrElement(1, Payload.boolToPayload(true));
     try mixed.setArrElement(2, Payload.intToPayload(-100));
     try mixed.setArrElement(3, Payload.uintToPayload(200));
     try mixed.setArrElement(4, Payload.floatToPayload(3.14));
     try mixed.setArrElement(5, try Payload.strToPayload("hello", allocator));
-    
+
     var bin_data = [_]u8{1} ** 8;
     try mixed.setArrElement(6, try Payload.binToPayload(&bin_data, allocator));
-    
+
     var inner_arr = try Payload.arrPayload(2, allocator);
     try inner_arr.setArrElement(0, Payload.intToPayload(1));
     try inner_arr.setArrElement(1, Payload.intToPayload(2));
     try mixed.setArrElement(7, inner_arr);
-    
+
     var inner_map = Payload.mapPayload(allocator);
     try inner_map.mapPut("key", Payload.intToPayload(42));
     try mixed.setArrElement(8, inner_map);
-    
+
     try mixed.setArrElement(9, Payload.timestampFromSeconds(1000000));
-    
+
     try p.write(mixed);
-    
+
     read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
     const val = try p.read(allocator);

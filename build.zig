@@ -17,7 +17,7 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step("test", "Run unit tests");
 
-const bench_step = b.step("bench", "Run benchmarks");
+    const bench_step = b.step("bench", "Run benchmarks");
 
     const msgpack_unit_tests = if (builtin.zig_version.minor == 14) b.addTest(.{
         .root_source_file = b.path(b.pathJoin(&.{ "src", "test.zig" })),

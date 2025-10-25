@@ -590,11 +590,11 @@ pub const MsgPackError = error{
     Internal,
 
     // New safety errors for iterative parser
-    MaxDepthExceeded,      // Nesting depth exceeded limit
-    ArrayTooLarge,         // Array has too many elements
-    MapTooLarge,           // Map has too many key-value pairs
-    StringTooLong,         // String exceeds length limit
-    ExtDataTooLarge,       // Extension data exceeds length limit
+    MaxDepthExceeded, // Nesting depth exceeded limit
+    ArrayTooLarge, // Array has too many elements
+    MapTooLarge, // Map has too many key-value pairs
+    StringTooLong, // String exceeds length limit
+    ExtDataTooLarge, // Extension data exceeds length limit
 };
 
 /// Create an instance of msgpack_pack with custom limits
@@ -1632,22 +1632,22 @@ pub fn PackWithLimits(
             // Handle EXT8 special case (need to read length first)
             if (marker == .EXT8) {
                 const len_info = try self.readExt8Length();
-                
+
                 // If not timestamp length, read as regular EXT
                 if (!len_info.is_timestamp_candidate) {
                     const ext_type = try self.readI8Value();
                     return try self.readRegularExt(ext_type, len_info.len, allocator);
                 }
             }
-            
+
             // Read extension type to determine if it's a timestamp
             const ext_type = try self.readI8Value();
-            
+
             // Timestamp type: read timestamp data
             if (ext_type == TIMESTAMP_EXT_TYPE) {
                 return try self.readTimestampPayload(marker);
             }
-            
+
             // Regular EXT: read remaining data
             const actual_len = if (marker == .EXT8) TIMESTAMP96_DATA_LEN else getExtLength(marker);
             return try self.readRegularExt(ext_type, actual_len, allocator);
@@ -1693,9 +1693,9 @@ pub fn PackWithLimits(
         /// Parse state for iterative parsing
         const ParseState = struct {
             container_type: enum {
-                array,      // Parsing array elements
-                map_key,    // Expecting map key (must be string)
-                map_value,  // Expecting map value
+                array, // Parsing array elements
+                map_key, // Expecting map key (must be string)
+                map_value, // Expecting map value
             },
             data: union(enum) {
                 array: ArrayState,

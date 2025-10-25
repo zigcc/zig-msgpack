@@ -2247,7 +2247,7 @@ test "sequential read write multiple objects" {
 /// Generate random payload of random type
 fn generateRandomPayload(random: std.Random, alloc: std.mem.Allocator, max_depth: u8) !Payload {
     const payload_type = random.intRangeAtMost(u8, 0, 10);
-    
+
     return switch (payload_type) {
         0 => Payload.nilToPayload(),
         1 => Payload.boolToPayload(random.boolean()),
@@ -2263,8 +2263,8 @@ fn generateRandomPayload(random: std.Random, alloc: std.mem.Allocator, max_depth
         },
         4 => blk: {
             // Generate reasonable float values
-            const val = @as(f64, @floatFromInt(random.intRangeAtMost(i32, -10000, 10000))) + 
-                       random.float(f64);
+            const val = @as(f64, @floatFromInt(random.intRangeAtMost(i32, -10000, 10000))) +
+                random.float(f64);
             break :blk Payload.floatToPayload(val);
         },
         5 => blk: {
@@ -2339,7 +2339,7 @@ fn generateRandomPayload(random: std.Random, alloc: std.mem.Allocator, max_depth
 fn payloadEqual(a: Payload, b: Payload) bool {
     const a_tag = @as(std.meta.Tag(Payload), a);
     const b_tag = @as(std.meta.Tag(Payload), b);
-    
+
     // Handle integer type conversions ONLY when types differ
     // (MessagePack may encode the same value as uint or int depending on the range)
     if ((a_tag == .int or a_tag == .uint) and (b_tag == .int or b_tag == .uint)) {
@@ -2351,9 +2351,9 @@ fn payloadEqual(a: Payload, b: Payload) bool {
         }
         // Same type - fall through to direct comparison
     }
-    
+
     if (a_tag != b_tag) return false;
-    
+
     return switch (a) {
         .nil => true,
         .bool => a.bool == b.bool,
@@ -2393,7 +2393,7 @@ fn payloadEqual(a: Payload, b: Payload) bool {
         },
         .timestamp => blk: {
             break :blk a.timestamp.seconds == b.timestamp.seconds and
-                       a.timestamp.nanoseconds == b.timestamp.nanoseconds;
+                a.timestamp.nanoseconds == b.timestamp.nanoseconds;
         },
     };
 }
@@ -2402,15 +2402,15 @@ fn payloadEqual(a: Payload, b: Payload) bool {
 test "fuzz: random basic types" {
     var prng = std.Random.DefaultPrng.init(0x12345678);
     const random = prng.random();
-    
+
     var arr: [10000]u8 = undefined;
-    
+
     for (0..100) |_| {
         @memset(&arr, 0);
         var write_buffer = fixedBufferStream(&arr);
         var read_buffer = fixedBufferStream(&arr);
         var p = pack.init(&write_buffer, &read_buffer);
-        
+
         // Generate random basic type
         const payload_type = random.intRangeAtMost(u8, 0, 4);
         const original = switch (payload_type) {
@@ -2422,27 +2422,27 @@ test "fuzz: random basic types" {
                 break :blk Payload.intToPayload(val);
             },
             3 => blk: {
-                // Use moderate range to avoid overflow issues  
+                // Use moderate range to avoid overflow issues
                 const val = random.intRangeAtMost(u64, 0, std.math.maxInt(u32));
                 break :blk Payload.uintToPayload(val);
             },
             4 => blk: {
                 // Generate reasonable float values (not extreme inf/nan)
-                const val = @as(f64, @floatFromInt(random.intRangeAtMost(i32, -10000, 10000))) + 
-                           random.float(f64);
+                const val = @as(f64, @floatFromInt(random.intRangeAtMost(i32, -10000, 10000))) +
+                    random.float(f64);
                 break :blk Payload.floatToPayload(val);
             },
             else => unreachable,
         };
-        
+
         try p.write(original);
-        
+
         read_buffer = fixedBufferStream(&arr);
         p = pack.init(&write_buffer, &read_buffer);
-        
+
         const decoded = try p.read(allocator);
         defer decoded.free(allocator);
-        
+
         try expect(payloadEqual(original, decoded));
     }
 }
@@ -2451,35 +2451,35 @@ test "fuzz: random basic types" {
 test "fuzz: random strings" {
     var prng = std.Random.DefaultPrng.init(0x87654321);
     const random = prng.random();
-    
+
     var arr: [10000]u8 = undefined;
-    
+
     for (0..50) |_| {
         @memset(&arr, 0);
         var write_buffer = fixedBufferStream(&arr);
         var read_buffer = fixedBufferStream(&arr);
         var p = pack.init(&write_buffer, &read_buffer);
-        
+
         // Generate random length string (ASCII printable)
         const len = random.intRangeAtMost(usize, 0, 1000);
         const str_data = try allocator.alloc(u8, len);
         defer allocator.free(str_data);
-        
+
         for (str_data) |*byte| {
             byte.* = random.intRangeAtMost(u8, 32, 126);
         }
-        
+
         const original = try Payload.strToPayload(str_data, allocator);
         defer original.free(allocator);
-        
+
         try p.write(original);
-        
+
         read_buffer = fixedBufferStream(&arr);
         p = pack.init(&write_buffer, &read_buffer);
-        
+
         const decoded = try p.read(allocator);
         defer decoded.free(allocator);
-        
+
         try expect(payloadEqual(original, decoded));
     }
 }
@@ -2488,32 +2488,32 @@ test "fuzz: random strings" {
 test "fuzz: random binary data" {
     var prng = std.Random.DefaultPrng.init(0xABCDEF01);
     const random = prng.random();
-    
+
     var arr: [10000]u8 = undefined;
-    
+
     for (0..50) |_| {
         @memset(&arr, 0);
         var write_buffer = fixedBufferStream(&arr);
         var read_buffer = fixedBufferStream(&arr);
         var p = pack.init(&write_buffer, &read_buffer);
-        
+
         // Generate random binary data
         const len = random.intRangeAtMost(usize, 0, 1000);
         const bin_data = try allocator.alloc(u8, len);
         defer allocator.free(bin_data);
         random.bytes(bin_data);
-        
+
         const original = try Payload.binToPayload(bin_data, allocator);
         defer original.free(allocator);
-        
+
         try p.write(original);
-        
+
         read_buffer = fixedBufferStream(&arr);
         p = pack.init(&write_buffer, &read_buffer);
-        
+
         const decoded = try p.read(allocator);
         defer decoded.free(allocator);
-        
+
         try expect(payloadEqual(original, decoded));
     }
 }
@@ -2522,20 +2522,20 @@ test "fuzz: random binary data" {
 test "fuzz: random arrays" {
     var prng = std.Random.DefaultPrng.init(0xDEADBEEF);
     const random = prng.random();
-    
+
     var arr: [10000]u8 = undefined;
-    
+
     for (0..30) |_| {
         @memset(&arr, 0);
         var write_buffer = fixedBufferStream(&arr);
         var read_buffer = fixedBufferStream(&arr);
         var p = pack.init(&write_buffer, &read_buffer);
-        
+
         // Generate random array with random basic types
         const len = random.intRangeAtMost(usize, 0, 50);
         var original = try Payload.arrPayload(len, allocator);
         defer original.free(allocator);
-        
+
         for (0..len) |i| {
             const elem_type = random.intRangeAtMost(u8, 0, 4);
             original.arr[i] = switch (elem_type) {
@@ -2547,15 +2547,15 @@ test "fuzz: random arrays" {
                 else => unreachable,
             };
         }
-        
+
         try p.write(original);
-        
+
         read_buffer = fixedBufferStream(&arr);
         p = pack.init(&write_buffer, &read_buffer);
-        
+
         const decoded = try p.read(allocator);
         defer decoded.free(allocator);
-        
+
         try expect(payloadEqual(original, decoded));
     }
 }
@@ -2564,24 +2564,24 @@ test "fuzz: random arrays" {
 test "fuzz: random maps" {
     var prng = std.Random.DefaultPrng.init(0xCAFEBABE);
     const random = prng.random();
-    
+
     var arr: [10000]u8 = undefined;
-    
+
     for (0..30) |_| {
         @memset(&arr, 0);
         var write_buffer = fixedBufferStream(&arr);
         var read_buffer = fixedBufferStream(&arr);
         var p = pack.init(&write_buffer, &read_buffer);
-        
+
         // Generate random map
         const count = random.intRangeAtMost(usize, 0, 20);
         var original = Payload.mapPayload(allocator);
         defer original.free(allocator);
-        
+
         for (0..count) |i| {
             const key = try std.fmt.allocPrint(allocator, "key{d}", .{i});
             defer allocator.free(key);
-            
+
             const val_type = random.intRangeAtMost(u8, 0, 4);
             const val = switch (val_type) {
                 0 => Payload.nilToPayload(),
@@ -2591,18 +2591,18 @@ test "fuzz: random maps" {
                 4 => Payload.floatToPayload(@as(f64, @floatFromInt(random.intRangeAtMost(i32, -1000, 1000)))),
                 else => unreachable,
             };
-            
+
             try original.mapPut(key, val);
         }
-        
+
         try p.write(original);
-        
+
         read_buffer = fixedBufferStream(&arr);
         p = pack.init(&write_buffer, &read_buffer);
-        
+
         const decoded = try p.read(allocator);
         defer decoded.free(allocator);
-        
+
         try expect(payloadEqual(original, decoded));
     }
 }
@@ -2611,37 +2611,37 @@ test "fuzz: random maps" {
 test "fuzz: random ext types" {
     var prng = std.Random.DefaultPrng.init(0x13579BDF);
     const random = prng.random();
-    
+
     var arr: [10000]u8 = undefined;
-    
+
     for (0..50) |_| {
         @memset(&arr, 0);
         var write_buffer = fixedBufferStream(&arr);
         var read_buffer = fixedBufferStream(&arr);
         var p = pack.init(&write_buffer, &read_buffer);
-        
+
         // Generate random EXT (avoid type -1 as it's timestamp)
         var ext_type = random.int(i8);
         while (ext_type == -1) {
             ext_type = random.int(i8);
         }
-        
+
         const len = random.intRangeAtMost(usize, 0, 500);
         const ext_data = try allocator.alloc(u8, len);
         defer allocator.free(ext_data);
         random.bytes(ext_data);
-        
+
         const original = try Payload.extToPayload(ext_type, ext_data, allocator);
         defer original.free(allocator);
-        
+
         try p.write(original);
-        
+
         read_buffer = fixedBufferStream(&arr);
         p = pack.init(&write_buffer, &read_buffer);
-        
+
         const decoded = try p.read(allocator);
         defer decoded.free(allocator);
-        
+
         try expect(payloadEqual(original, decoded));
     }
 }
@@ -2650,30 +2650,30 @@ test "fuzz: random ext types" {
 test "fuzz: random timestamps" {
     var prng = std.Random.DefaultPrng.init(0xFEDCBA98);
     const random = prng.random();
-    
+
     var arr: [10000]u8 = undefined;
-    
+
     for (0..100) |_| {
         @memset(&arr, 0);
         var write_buffer = fixedBufferStream(&arr);
         var read_buffer = fixedBufferStream(&arr);
         var p = pack.init(&write_buffer, &read_buffer);
-        
+
         // Generate random timestamp
         // Use reasonable range: -2^32 to 2^34 (covers all 3 timestamp formats)
         const seconds = random.intRangeAtMost(i64, -(1 << 32), (1 << 34));
         const nanoseconds = random.intRangeAtMost(u32, 0, 999_999_999);
-        
+
         const original = Payload.timestampToPayload(seconds, nanoseconds);
-        
+
         try p.write(original);
-        
+
         read_buffer = fixedBufferStream(&arr);
         p = pack.init(&write_buffer, &read_buffer);
-        
+
         const decoded = try p.read(allocator);
         defer decoded.free(allocator);
-        
+
         try expect(payloadEqual(original, decoded));
     }
 }
@@ -2682,27 +2682,27 @@ test "fuzz: random timestamps" {
 test "fuzz: nested structures" {
     var prng = std.Random.DefaultPrng.init(0x24681357);
     const random = prng.random();
-    
+
     var arr: [50000]u8 = undefined;
-    
+
     for (0..20) |_| {
         @memset(&arr, 0);
         var write_buffer = fixedBufferStream(&arr);
         var read_buffer = fixedBufferStream(&arr);
         var p = pack.init(&write_buffer, &read_buffer);
-        
+
         // Generate random nested structure (max depth 3)
         const original = try generateRandomPayload(random, allocator, 3);
         defer original.free(allocator);
-        
+
         try p.write(original);
-        
+
         read_buffer = fixedBufferStream(&arr);
         p = pack.init(&write_buffer, &read_buffer);
-        
+
         const decoded = try p.read(allocator);
         defer decoded.free(allocator);
-        
+
         try expect(payloadEqual(original, decoded));
     }
 }
@@ -2711,9 +2711,9 @@ test "fuzz: nested structures" {
 test "fuzz: boundary values" {
     var prng = std.Random.DefaultPrng.init(0x11223344);
     const random = prng.random();
-    
+
     var arr: [10000]u8 = undefined;
-    
+
     // Test various boundary values
     const test_cases = [_]struct { min: i64, max: i64 }{
         .{ .min = -32, .max = 127 }, // fixint range
@@ -2721,25 +2721,25 @@ test "fuzz: boundary values" {
         .{ .min = -32768, .max = 65535 }, // i16/u16 range
         .{ .min = std.math.minInt(i32), .max = std.math.maxInt(i32) }, // i32 range
     };
-    
+
     for (test_cases) |case| {
         for (0..10) |_| {
             @memset(&arr, 0);
             var write_buffer = fixedBufferStream(&arr);
             var read_buffer = fixedBufferStream(&arr);
             var p = pack.init(&write_buffer, &read_buffer);
-            
+
             const val = random.intRangeAtMost(i64, case.min, case.max);
             const original = Payload.intToPayload(val);
-            
+
             try p.write(original);
-            
+
             read_buffer = fixedBufferStream(&arr);
             p = pack.init(&write_buffer, &read_buffer);
-            
+
             const decoded = try p.read(allocator);
             defer decoded.free(allocator);
-            
+
             try expect(payloadEqual(original, decoded));
         }
     }
@@ -2749,14 +2749,14 @@ test "fuzz: boundary values" {
 test "fuzz: mixed payload sequence" {
     var prng = std.Random.DefaultPrng.init(0x99887766);
     const random = prng.random();
-    
+
     var arr: [100000]u8 = undefined;
     @memset(&arr, 0);
-    
+
     var write_buffer = fixedBufferStream(&arr);
     var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
-    
+
     // Generate and write multiple random payloads
     const count = 50;
     var payloads = if (builtin.zig_version.minor == 14)
@@ -2769,7 +2769,7 @@ test "fuzz: mixed payload sequence" {
         }
         if (builtin.zig_version.minor == 14) payloads.deinit() else payloads.deinit(allocator);
     }
-    
+
     for (0..count) |_| {
         const payload = try generateRandomPayload(random, allocator, 2);
         if (builtin.zig_version.minor == 14) {
@@ -2779,11 +2779,11 @@ test "fuzz: mixed payload sequence" {
         }
         try p.write(payload);
     }
-    
+
     // Read back and verify all payloads
     read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
-    
+
     for (payloads.items) |original| {
         const decoded = try p.read(allocator);
         defer decoded.free(allocator);
@@ -2938,7 +2938,7 @@ test "iterative parser: deep nested maps" {
         if (builtin.zig_version.minor == 14) {
             try input.append(0x81); // fixmap with 1 pair
             try input.append(0xa1); // fixstr len 1
-            try input.append('a');  // key "a"
+            try input.append('a'); // key "a"
         } else {
             try input.append(allocator, 0x81);
             try input.append(allocator, 0xa1);
@@ -2984,7 +2984,7 @@ test "iterative free: deeply nested payload" {
 
 test "large data: array with 1000 elements" {
     const allocator_heap = std.heap.page_allocator;
-    
+
     var buffer: [100000]u8 = undefined;
     var write_buffer = fixedBufferStream(&buffer);
     var read_buffer = fixedBufferStream(&buffer);
@@ -3011,7 +3011,7 @@ test "large data: array with 1000 elements" {
 
 test "large data: map with 500 pairs" {
     const allocator_heap = std.heap.page_allocator;
-    
+
     var buffer: [100000]u8 = undefined;
     var write_buffer = fixedBufferStream(&buffer);
     var read_buffer = fixedBufferStream(&buffer);
@@ -3417,7 +3417,6 @@ test "stress: rapid allocation and deallocation" {
     }
 }
 
-
 test "corrupted: nested arrays with mismatched counts" {
     var buffer: [1000]u8 = undefined;
     var write_buffer = fixedBufferStream(&buffer);
@@ -3458,11 +3457,10 @@ test "corrupted: nested arrays with mismatched counts" {
     }
 }
 
-
 test "malicious: str32 with excessive length claim" {
     var buffer: [1000]u8 = undefined;
     var input_buf: [10]u8 = undefined;
-    
+
     // str32 claiming 100MB (will be rejected by limit)
     input_buf[0] = 0xdb; // str32
     input_buf[1] = 0x06; // 100MB = 0x06400000
@@ -3480,8 +3478,7 @@ test "malicious: str32 with excessive length claim" {
         try expect(false); // Should not succeed
     } else |err| {
         // Should be LengthReading (can't read 100MB) or StringTooLong
-        try expect(err == msgpack.MsgPackError.LengthReading or 
-                   err == msgpack.MsgPackError.StringTooLong);
+        try expect(err == msgpack.MsgPackError.LengthReading or
+            err == msgpack.MsgPackError.StringTooLong);
     }
 }
-
