@@ -1245,46 +1245,59 @@ pub fn PackWithLimits(
             return val;
         }
 
+        /// Precomputed lookup table for marker byte to Markers enum conversion
+        /// This eliminates branch misprediction overhead from switch statements
+        const MARKER_LOOKUP_TABLE: [256]Markers = blk: {
+            var table: [256]Markers = undefined;
+            var i: usize = 0;
+            while (i < 256) : (i += 1) {
+                const byte: u8 = @intCast(i);
+                table[i] = switch (byte) {
+                    0x00...0x7f => .POSITIVE_FIXINT,
+                    0x80...0x8f => .FIXMAP,
+                    0x90...0x9f => .FIXARRAY,
+                    0xa0...0xbf => .FIXSTR,
+                    0xc0 => .NIL,
+                    0xc1 => .NIL, // Reserved byte, treat as NIL
+                    0xc2 => .FALSE,
+                    0xc3 => .TRUE,
+                    0xc4 => .BIN8,
+                    0xc5 => .BIN16,
+                    0xc6 => .BIN32,
+                    0xc7 => .EXT8,
+                    0xc8 => .EXT16,
+                    0xc9 => .EXT32,
+                    0xca => .FLOAT32,
+                    0xcb => .FLOAT64,
+                    0xcc => .UINT8,
+                    0xcd => .UINT16,
+                    0xce => .UINT32,
+                    0xcf => .UINT64,
+                    0xd0 => .INT8,
+                    0xd1 => .INT16,
+                    0xd2 => .INT32,
+                    0xd3 => .INT64,
+                    0xd4 => .FIXEXT1,
+                    0xd5 => .FIXEXT2,
+                    0xd6 => .FIXEXT4,
+                    0xd7 => .FIXEXT8,
+                    0xd8 => .FIXEXT16,
+                    0xd9 => .STR8,
+                    0xda => .STR16,
+                    0xdb => .STR32,
+                    0xdc => .ARRAY16,
+                    0xdd => .ARRAY32,
+                    0xde => .MAP16,
+                    0xdf => .MAP32,
+                    0xe0...0xff => .NEGATIVE_FIXINT,
+                };
+            }
+            break :blk table;
+        };
+
+        /// Fast marker type lookup using precomputed table (O(1) with no branches)
         inline fn markerU8To(_: Self, marker_u8: u8) Markers {
-            return switch (marker_u8) {
-                0x00...0x7f => .POSITIVE_FIXINT,
-                0x80...0x8f => .FIXMAP,
-                0x90...0x9f => .FIXARRAY,
-                0xa0...0xbf => .FIXSTR,
-                0xc0 => .NIL,
-                0xc1 => .NIL, // Reserved byte, treat as NIL
-                0xc2 => .FALSE,
-                0xc3 => .TRUE,
-                0xc4 => .BIN8,
-                0xc5 => .BIN16,
-                0xc6 => .BIN32,
-                0xc7 => .EXT8,
-                0xc8 => .EXT16,
-                0xc9 => .EXT32,
-                0xca => .FLOAT32,
-                0xcb => .FLOAT64,
-                0xcc => .UINT8,
-                0xcd => .UINT16,
-                0xce => .UINT32,
-                0xcf => .UINT64,
-                0xd0 => .INT8,
-                0xd1 => .INT16,
-                0xd2 => .INT32,
-                0xd3 => .INT64,
-                0xd4 => .FIXEXT1,
-                0xd5 => .FIXEXT2,
-                0xd6 => .FIXEXT4,
-                0xd7 => .FIXEXT8,
-                0xd8 => .FIXEXT16,
-                0xd9 => .STR8,
-                0xda => .STR16,
-                0xdb => .STR32,
-                0xdc => .ARRAY16,
-                0xdd => .ARRAY32,
-                0xde => .MAP16,
-                0xdf => .MAP32,
-                0xe0...0xff => .NEGATIVE_FIXINT,
-            };
+            return MARKER_LOOKUP_TABLE[marker_u8];
         }
 
         fn readTypeMarker(self: Self) !Markers {
@@ -1805,9 +1818,55 @@ pub fn PackWithLimits(
 
         // ========== End of State Machine Helpers ==========
 
+        /// Fast path for simple types that don't require heap allocation or complex state management
+        inline fn readSimpleTypeFast(self: Self, marker: Markers, marker_u8: u8) !?Payload {
+            return switch (marker) {
+                .NIL => Payload{ .nil = void{} },
+                .TRUE => Payload{ .bool = true },
+                .FALSE => Payload{ .bool = false },
+
+                .POSITIVE_FIXINT => Payload{ .uint = marker_u8 },
+                .NEGATIVE_FIXINT => Payload{ .int = @as(i8, @bitCast(marker_u8)) },
+
+                .UINT8 => Payload{ .uint = try self.readV8Value() },
+                .UINT16 => Payload{ .uint = try self.readU16Value() },
+                .UINT32 => Payload{ .uint = try self.readU32Value() },
+                .UINT64 => Payload{ .uint = try self.readU64Value() },
+
+                .INT8 => Payload{ .int = try self.readI8Value() },
+                .INT16 => Payload{ .int = try self.readI16Value() },
+                .INT32 => Payload{ .int = try self.readI32Value() },
+                .INT64 => Payload{ .int = try self.readI64Value() },
+
+                .FLOAT32 => Payload{ .float = try self.readF32Value() },
+                .FLOAT64 => Payload{ .float = try self.readF64Value() },
+
+                // Note: FIXEXT4/FIXEXT8 could be timestamps, but we need to read ext_type first
+                // Since we can't "unread" in the stream, we handle all EXT types in the complex path
+                // to avoid consuming bytes that need to be re-processed.
+
+                else => null, // Not a simple type, needs complex handling
+            };
+        }
+
         /// read a payload, please use payload.free to free the memory
         /// This is an iterative implementation that avoids stack overflow from deep nesting
         pub fn read(self: Self, allocator: Allocator) !Payload {
+            // Fast path optimization: handle simple types without state machine overhead
+            const first_marker_u8 = try self.readTypeMarkerU8();
+            const first_marker = self.markerU8To(first_marker_u8);
+
+            // Try fast path for simple types (no containers, no allocation needed)
+            if (try self.readSimpleTypeFast(first_marker, first_marker_u8)) |simple_payload| {
+                return simple_payload;
+            }
+
+            // Complex types: use full iterative parser
+            return self.readComplex(allocator, first_marker, first_marker_u8);
+        }
+
+        /// Internal iterative parser for complex types (arrays, maps, strings, etc.)
+        fn readComplex(self: Self, allocator: Allocator, first_marker: Markers, first_marker_u8: u8) !Payload {
             // Explicit stack for iterative parsing (on heap)
             var parse_stack = if (current_zig.minor == 14)
                 std.ArrayList(ParseState).init(allocator)
@@ -1818,7 +1877,13 @@ pub fn PackWithLimits(
             // Root payload to return
             var root: ?Payload = null;
 
+            // Start with the already-read first marker
+            var marker_u8 = first_marker_u8;
+            var marker = first_marker;
+
             // Main loop (replaces recursion)
+            // Process first marker directly, then read subsequent markers in loop
+            var is_first = true;
             while (true) {
                 // Check depth limit
                 if (parse_stack.items.len >= parse_limits.max_depth) {
@@ -1826,9 +1891,12 @@ pub fn PackWithLimits(
                     return MsgPackError.MaxDepthExceeded;
                 }
 
-                // Read type marker
-                const marker_u8 = try self.readTypeMarkerU8();
-                const marker = self.markerU8To(marker_u8);
+                // Read next type marker (skip on first iteration)
+                if (!is_first) {
+                    marker_u8 = try self.readTypeMarkerU8();
+                    marker = self.markerU8To(marker_u8);
+                }
+                is_first = false;
 
                 // Current payload being constructed
                 var current_payload: Payload = undefined;
