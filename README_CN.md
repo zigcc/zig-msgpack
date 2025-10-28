@@ -1,6 +1,6 @@
 # zig-msgpack
 
-[![CI](https://github.com/zigcc/zig-msgpack/actions/workflows/ci.yml/badge.svg)](https://github.com/zigcc/zig-msgpack/actions/workflows/ci.yml)
+[![CI](https://github.com/zigcc/zig-msgpack/actions/workflows/test.yml/badge.svg)](https://github.com/zigcc/zig-msgpack/actions/workflows/test.yml)
 
 Zig 编程语言的 MessagePack 实现。此库提供了一种简单高效的方式来使用 MessagePack 格式序列化和反序列化数据。
 

@@ -1,6 +1,6 @@
 # zig-msgpack
 
-[![CI](https://github.com/zigcc/zig-msgpack/actions/workflows/ci.yml/badge.svg)](https://github.com/zigcc/zig-msgpack/actions/workflows/ci.yml)
+[![CI](https://github.com/zigcc/zig-msgpack/actions/workflows/test.yml/badge.svg)](https://github.com/zigcc/zig-msgpack/actions/workflows/test.yml)
 
 A MessagePack implementation for the Zig programming language. This library provides a simple and efficient way to serialize and deserialize data using the MessagePack format.
 
