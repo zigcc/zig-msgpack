@@ -103,8 +103,11 @@ pub const ParseLimits = struct {
     /// Maximum map size (default 1 million key-value pairs)
     max_map_size: usize = 1_000_000,
 
-    /// Maximum string/binary data length (default 100MB)
+    /// Maximum string data length (default 100MB)
     max_string_length: usize = 100 * 1024 * 1024,
+
+    /// Maximum binary data length (default 100MB)
+    max_bin_length: usize = 100 * 1024 * 1024,
 
     /// Maximum extension data length (default 100MB)
     max_ext_length: usize = 100 * 1024 * 1024,
@@ -1153,7 +1156,7 @@ pub fn PackWithLimits(
                         try self.writeTypeMarker(.ARRAY32);
                         try self.writeU32Value(@as(u32, @intCast(len)));
                     } else {
-                        return MsgPackError.MapLengthTooLong;
+                        return MsgPackError.ArrayLengthTooLong;
                     }
                     for (arr) |val| {
                         try self.write(val);
@@ -1509,8 +1512,15 @@ pub fn PackWithLimits(
             }
         }
 
+        inline fn validateBinLength(len: usize) !void {
+            if (len > parse_limits.max_bin_length) {
+                return MsgPackError.BinDataLengthTooLong;
+            }
+        }
+
         fn readBin8Value(self: Self, allocator: Allocator) ![]u8 {
             const len = try self.readV8Value();
+            try validateBinLength(len);
             const bin = try self.readData(allocator, len);
 
             return bin;
@@ -1518,6 +1528,7 @@ pub fn PackWithLimits(
 
         fn readBin16Value(self: Self, allocator: Allocator) ![]u8 {
             const len = try self.readU16Value();
+            try validateBinLength(len);
             const bin = try self.readData(allocator, len);
 
             return bin;
@@ -1525,6 +1536,7 @@ pub fn PackWithLimits(
 
         fn readBin32Value(self: Self, allocator: Allocator) ![]u8 {
             const len = try self.readU32Value();
+            try validateBinLength(len);
             const bin = try self.readData(allocator, len);
 
             return bin;
@@ -1545,7 +1557,14 @@ pub fn PackWithLimits(
             }
         }
 
+        inline fn validateExtLength(len: usize) !void {
+            if (len > parse_limits.max_ext_length) {
+                return MsgPackError.ExtDataTooLarge;
+            }
+        }
+
         inline fn readExtData(self: Self, allocator: Allocator, len: usize) !EXT {
+            try validateExtLength(len);
             const ext_type = try self.readI8Value();
             const data = try self.readData(allocator, len);
             return EXT{
@@ -1582,6 +1601,7 @@ pub fn PackWithLimits(
 
         /// Read non-timestamp EXT data
         inline fn readRegularExt(self: Self, ext_type: i8, len: usize, allocator: Allocator) !Payload {
+            try validateExtLength(len);
             const ext_data = try allocator.alloc(u8, len);
             errdefer allocator.free(ext_data);
             _ = try self.readFrom(ext_data);
@@ -1612,6 +1632,13 @@ pub fn PackWithLimits(
 
         /// Read timestamp payload based on marker
         inline fn readTimestampPayload(self: Self, marker: Markers) !Payload {
+            const required_len: usize = switch (marker) {
+                .FIXEXT4 => FIXEXT4_LEN,
+                .FIXEXT8 => FIXEXT8_LEN,
+                .EXT8 => TIMESTAMP96_DATA_LEN,
+                else => unreachable,
+            };
+            try validateExtLength(required_len);
             const timestamp: Timestamp = switch (marker) {
                 .FIXEXT4 => try self.readTimestamp32(),
                 .FIXEXT8 => try self.readTimestamp64(),
@@ -1844,7 +1871,7 @@ pub fn PackWithLimits(
                         const val = try self.readBinValue(marker, allocator);
 
                         // Validate binary length
-                        if (val.len > parse_limits.max_string_length) {
+                        if (val.len > parse_limits.max_bin_length) {
                             allocator.free(val);
                             cleanupParseStack(&parse_stack, allocator);
                             return MsgPackError.BinDataLengthTooLong;
@@ -1901,7 +1928,15 @@ pub fn PackWithLimits(
                             current_payload = Payload{ .map = Map.init(allocator) };
                         } else {
                             // Initialize map
-                            const map = Map.init(allocator);
+                            var map = Map.init(allocator);
+                            var map_owned = false;
+                            errdefer if (!map_owned) map.deinit();
+
+                            const capacity = std.math.cast(u32, len) orelse {
+                                cleanupParseStack(&parse_stack, allocator);
+                                return MsgPackError.MapTooLarge;
+                            };
+                            try map.ensureTotalCapacity(capacity);
 
                             // Push to stack
                             try appendToStack(&parse_stack, allocator, .{
@@ -1912,6 +1947,7 @@ pub fn PackWithLimits(
                                     .remaining_pairs = len,
                                 } },
                             });
+                            map_owned = true;
 
                             needs_parent_fill = false;
                             continue; // Continue to read first key

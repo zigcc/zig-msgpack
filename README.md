@@ -190,6 +190,8 @@ const StrictPacker = msgpack.PackWithLimits(
         .max_array_length = 10_000,   // Max 10K array elements
         .max_map_size = 10_000,       // Max 10K map pairs
         .max_string_length = 1024 * 1024,  // Max 1MB strings
+        .max_bin_length = 1024 * 1024,     // Max 1MB binary blobs
+        .max_ext_length = 512 * 1024,      // Max 512KB extension data
     },
 );
 ```
@@ -207,7 +209,9 @@ Possible security errors:
 msgpack.MsgPackError.MaxDepthExceeded    // Nesting too deep
 msgpack.MsgPackError.ArrayTooLarge       // Array claims too many elements
 msgpack.MsgPackError.MapTooLarge         // Map claims too many pairs
-msgpack.MsgPackError.StringTooLong       // String/binary data too large
+msgpack.MsgPackError.StringTooLong       // String data too large
+msgpack.MsgPackError.BinDataLengthTooLong // Binary blob too large
+msgpack.MsgPackError.ExtDataTooLarge     // Extension payload too large
 ```
 
 ## API Overview

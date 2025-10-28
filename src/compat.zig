@@ -45,6 +45,9 @@ pub const BufferStream = if (current_zig.minor >= 16) struct {
     }
 
     pub fn seekTo(self: *Self, pos: usize) !void {
+        if (pos > self.buffer.len) {
+            return error.OutOfBounds;
+        }
         self.pos = pos;
     }
 
@@ -53,7 +56,7 @@ pub const BufferStream = if (current_zig.minor >= 16) struct {
     }
 
     pub fn getEndPos(self: Self) usize {
-        return self.pos;
+        return self.buffer.len;
     }
 } else std.io.FixedBufferStream([]u8);
 

@@ -190,6 +190,8 @@ const StrictPacker = msgpack.PackWithLimits(
         .max_array_length = 10_000,           // 最大 1 万个数组元素
         .max_map_size = 10_000,               // 最大 1 万个 map 键值对
         .max_string_length = 1024 * 1024,     // 最大 1MB 字符串
+        .max_bin_length = 1024 * 1024,        // 最大 1MB 二进制数据
+        .max_ext_length = 512 * 1024,         // 最大 512KB 扩展类型数据
     },
 );
 ```
@@ -207,7 +209,9 @@ const StrictPacker = msgpack.PackWithLimits(
 msgpack.MsgPackError.MaxDepthExceeded    // 嵌套过深
 msgpack.MsgPackError.ArrayTooLarge       // 数组声称过多元素
 msgpack.MsgPackError.MapTooLarge         // Map 声称过多键值对
-msgpack.MsgPackError.StringTooLong       // 字符串/二进制数据过大
+msgpack.MsgPackError.StringTooLong       // 字符串过长
+msgpack.MsgPackError.BinDataLengthTooLong // 二进制数据过大
+msgpack.MsgPackError.ExtDataTooLarge     // 扩展类型数据过大
 ```
 
 ## API 概览
