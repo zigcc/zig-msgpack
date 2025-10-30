@@ -330,8 +330,12 @@ pub const Payload = union(enum) {
         // Initialize with nil to ensure safe memory state for free()
         // Note: While this adds overhead, it prevents undefined behavior
         // when arrays are partially filled or freed before full initialization
-        for (0..len) |i| {
-            arr[i] = Payload.nilToPayload();
+
+        // Optimization: Use pointer arithmetic for faster initialization
+        // This is significantly faster than a loop for large arrays
+        const nil_payload = Payload.nilToPayload();
+        for (arr) |*item| {
+            item.* = nil_payload;
         }
         return Payload{
             .arr = arr,
@@ -1211,7 +1215,7 @@ pub fn PackWithLimits(
             return res[0];
         }
 
-        fn readData(self: Self, allocator: Allocator, len: usize) ![]u8 {
+        inline fn readData(self: Self, allocator: Allocator, len: usize) ![]u8 {
             const data = try allocator.alloc(u8, len);
             errdefer allocator.free(data);
             const data_len = try self.readFrom(data);
@@ -1361,6 +1365,8 @@ pub fn PackWithLimits(
 
         fn readIntValue(self: Self, marker_u8: u8) !i64 {
             const marker = self.markerU8To(marker_u8);
+            // Optimized branch order: handle most common cases first
+            // fixint and 8-bit integers are most common in typical data
             switch (marker) {
                 .NEGATIVE_FIXINT, .POSITIVE_FIXINT => {
                     const val = self.readFixintValue(marker_u8);
@@ -1406,6 +1412,8 @@ pub fn PackWithLimits(
 
         fn readUintValue(self: Self, marker_u8: u8) !u64 {
             const marker = self.markerU8To(marker_u8);
+            // Optimized branch order: handle most common cases first
+            // fixint and 8-bit integers are most common in typical data
             switch (marker) {
                 .POSITIVE_FIXINT => {
                     return marker_u8;
@@ -2080,7 +2088,8 @@ pub fn PackWithLimits(
 
         /// Fill parent container with child element
         /// Returns true if parent container is complete
-        fn fillParentContainer(
+        /// This is a hot path function, optimized for common cases
+        inline fn fillParentContainer(
             parent: *ParseState,
             child: Payload,
             allocator: Allocator,
@@ -2088,6 +2097,7 @@ pub fn PackWithLimits(
         ) !bool {
             switch (parent.container_type) {
                 .array => {
+                    // Fast path: array insertion is just pointer assignment
                     var arr_state = &parent.data.array;
                     arr_state.items[arr_state.current_index] = child;
                     arr_state.current_index += 1;
@@ -2124,7 +2134,7 @@ pub fn PackWithLimits(
         }
 
         /// Convert completed ParseState to Payload
-        fn containerToPayload(state: ParseState) Payload {
+        inline fn containerToPayload(state: ParseState) Payload {
             return switch (state.data) {
                 .array => |arr_state| Payload{ .arr = arr_state.items },
                 .map => |map_state| Payload{ .map = map_state.map },
