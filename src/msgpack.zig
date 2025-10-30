@@ -127,7 +127,7 @@ pub const Str = struct {
 };
 
 /// this is for encode str in struct
-pub fn wrapStr(str: []const u8) Str {
+pub inline fn wrapStr(str: []const u8) Str {
     return Str{ .str = str };
 }
 
@@ -142,7 +142,7 @@ pub const Bin = struct {
 };
 
 /// this is wrapping for bin
-pub fn wrapBin(bin: []u8) Bin {
+pub inline fn wrapBin(bin: []u8) Bin {
     return Bin{ .bin = bin };
 }
 
@@ -153,7 +153,7 @@ pub const EXT = struct {
 };
 
 /// t is type, data is data
-pub fn wrapEXT(t: i8, data: []u8) EXT {
+pub inline fn wrapEXT(t: i8, data: []u8) EXT {
     return EXT{
         .type = t,
         .data = data,
@@ -171,7 +171,7 @@ pub const Timestamp = struct {
     nanoseconds: u32,
 
     /// Create a new timestamp
-    pub fn new(seconds: i64, nanoseconds: u32) Timestamp {
+    pub inline fn new(seconds: i64, nanoseconds: u32) Timestamp {
         return Timestamp{
             .seconds = seconds,
             .nanoseconds = nanoseconds,
@@ -179,7 +179,7 @@ pub const Timestamp = struct {
     }
 
     /// Create timestamp from seconds only (nanoseconds = 0)
-    pub fn fromSeconds(seconds: i64) Timestamp {
+    pub inline fn fromSeconds(seconds: i64) Timestamp {
         return Timestamp{
             .seconds = seconds,
             .nanoseconds = 0,
@@ -255,46 +255,48 @@ pub const Payload = union(enum) {
             return Error.NotMap;
         }
 
-        if (self.map.getKeyPtr(key)) |existing_key| {
-            try self.map.put(existing_key.*, val);
-        } else {
+        // Optimization: Use getOrPut to reduce from two hash lookups to one
+        const entry = try self.map.getOrPut(key);
+        if (!entry.found_existing) {
+            // New key: allocate and copy
             const new_key = try self.map.allocator.alloc(u8, key.len);
             errdefer self.map.allocator.free(new_key);
             @memcpy(new_key, key);
-            try self.map.put(new_key, val);
+            entry.key_ptr.* = new_key;
         }
+        entry.value_ptr.* = val;
     }
 
     /// get a NIL payload
-    pub fn nilToPayload() Payload {
+    pub inline fn nilToPayload() Payload {
         return Payload{
             .nil = void{},
         };
     }
 
     /// get a bool payload
-    pub fn boolToPayload(val: bool) Payload {
+    pub inline fn boolToPayload(val: bool) Payload {
         return Payload{
             .bool = val,
         };
     }
 
     /// get a int payload
-    pub fn intToPayload(val: i64) Payload {
+    pub inline fn intToPayload(val: i64) Payload {
         return Payload{
             .int = val,
         };
     }
 
     /// get a uint payload
-    pub fn uintToPayload(val: u64) Payload {
+    pub inline fn uintToPayload(val: u64) Payload {
         return Payload{
             .uint = val,
         };
     }
 
     /// get a float payload
-    pub fn floatToPayload(val: f64) Payload {
+    pub inline fn floatToPayload(val: f64) Payload {
         return Payload{
             .float = val,
         };
@@ -325,6 +327,9 @@ pub const Payload = union(enum) {
     /// get an array payload
     pub fn arrPayload(len: usize, allocator: Allocator) !Payload {
         const arr = try allocator.alloc(Payload, len);
+        // Initialize with nil to ensure safe memory state for free()
+        // Note: While this adds overhead, it prevents undefined behavior
+        // when arrays are partially filled or freed before full initialization
         for (0..len) |i| {
             arr[i] = Payload.nilToPayload();
         }
@@ -352,14 +357,14 @@ pub const Payload = union(enum) {
     }
 
     /// get a timestamp payload
-    pub fn timestampToPayload(seconds: i64, nanoseconds: u32) Payload {
+    pub inline fn timestampToPayload(seconds: i64, nanoseconds: u32) Payload {
         return Payload{
             .timestamp = Timestamp.new(seconds, nanoseconds),
         };
     }
 
     /// get a timestamp payload from seconds only
-    pub fn timestampFromSeconds(seconds: i64) Payload {
+    pub inline fn timestampFromSeconds(seconds: i64) Payload {
         return Payload{
             .timestamp = Timestamp.fromSeconds(seconds),
         };
@@ -1526,6 +1531,7 @@ pub fn PackWithLimits(
         }
 
         inline fn validateBinLength(len: usize) !void {
+            // Inline validation for hot path
             if (len > parse_limits.max_bin_length) {
                 return MsgPackError.BinDataLengthTooLong;
             }
@@ -1571,6 +1577,7 @@ pub fn PackWithLimits(
         }
 
         inline fn validateExtLength(len: usize) !void {
+            // Inline validation for hot path
             if (len > parse_limits.max_ext_length) {
                 return MsgPackError.ExtDataTooLarge;
             }
