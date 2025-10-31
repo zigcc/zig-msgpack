@@ -1997,6 +1997,53 @@ test "timestamp precision and conversion" {
     try expect(@abs(float_val4 - expected4) < 0.000000001);
 }
 
+// Test timestamp now() function
+test "timestamp now() function" {
+    var arr: [0xfffff]u8 = std.mem.zeroes([0xfffff]u8);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Get current timestamp
+    const now_ts = msgpack.Timestamp.now();
+
+    // Verify seconds is reasonable (after 2020-01-01 and before 2100-01-01)
+    const year_2020: i64 = 1577836800; // 2020-01-01 00:00:00 UTC
+    const year_2100: i64 = 4102444800; // 2100-01-01 00:00:00 UTC
+    try expect(now_ts.seconds > year_2020);
+    try expect(now_ts.seconds < year_2100);
+
+    // Verify nanoseconds is in valid range
+    try expect(now_ts.nanoseconds >= 0);
+    try expect(now_ts.nanoseconds <= 999_999_999);
+
+    // Test serialization and deserialization
+    const payload = msgpack.Payload{ .timestamp = now_ts };
+    try p.write(payload);
+
+    read_buffer = fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+
+    const decoded = try p.read(allocator);
+    defer decoded.free(allocator);
+
+    try expect(decoded == .timestamp);
+    try expect(decoded.timestamp.seconds == now_ts.seconds);
+    try expect(decoded.timestamp.nanoseconds == now_ts.nanoseconds);
+
+    // Test toFloat conversion
+    const float_val = now_ts.toFloat();
+    const expected_float = @as(f64, @floatFromInt(now_ts.seconds)) + 
+        @as(f64, @floatFromInt(now_ts.nanoseconds)) / 1_000_000_000.0;
+    try expect(@abs(float_val - expected_float) < 0.000000001);
+
+    // Test that calling now() twice gives increasing or equal timestamps
+    const now_ts2 = msgpack.Timestamp.now();
+    const float1 = now_ts.toFloat();
+    const float2 = now_ts2.toFloat();
+    try expect(float2 >= float1);
+}
+
 // ============================================================================
 // Additional tests from test_additional.zig
 // ============================================================================

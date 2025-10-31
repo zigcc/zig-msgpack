@@ -201,6 +201,18 @@ pub const Timestamp = struct {
         };
     }
 
+    /// Get current timestamp (now)
+    pub fn now() Timestamp {
+        const ns = std.time.nanoTimestamp();
+        const ns_i64: i64 = @intCast(@divFloor(ns, std.time.ns_per_s));
+        const nano_remainder: i64 = @intCast(@mod(ns, std.time.ns_per_s));
+        const nanoseconds: u32 = @intCast(if (nano_remainder < 0) nano_remainder + std.time.ns_per_s else nano_remainder);
+        return Timestamp{
+            .seconds = if (nano_remainder < 0) ns_i64 - 1 else ns_i64,
+            .nanoseconds = nanoseconds,
+        };
+    }
+
     /// Get total seconds as f64 (including fractional nanoseconds)
     pub fn toFloat(self: Timestamp) f64 {
         return @as(f64, @floatFromInt(self.seconds)) + @as(f64, @floatFromInt(self.nanoseconds)) / NANOSECONDS_PER_SECOND;
