@@ -203,22 +203,10 @@ pub const Timestamp = struct {
 
     /// Create timestamp from nanoseconds since Unix epoch
     /// This is useful for converting from various time sources
-    /// Example: Timestamp.fromNanos(std.time.nanoTimestamp())
+    /// Example: Timestamp.fromNanos(some_nanosecond_value)
     pub fn fromNanos(nanos: i128) Timestamp {
         const ns_i64: i64 = @intCast(@divFloor(nanos, std.time.ns_per_s));
         const nano_remainder: i64 = @intCast(@mod(nanos, std.time.ns_per_s));
-        const nanoseconds: u32 = @intCast(if (nano_remainder < 0) nano_remainder + std.time.ns_per_s else nano_remainder);
-        return Timestamp{
-            .seconds = if (nano_remainder < 0) ns_i64 - 1 else ns_i64,
-            .nanoseconds = nanoseconds,
-        };
-    }
-
-    /// Get current timestamp (now)
-    pub fn now() Timestamp {
-        const ns = std.time.nanoTimestamp();
-        const ns_i64: i64 = @intCast(@divFloor(ns, std.time.ns_per_s));
-        const nano_remainder: i64 = @intCast(@mod(ns, std.time.ns_per_s));
         const nanoseconds: u32 = @intCast(if (nano_remainder < 0) nano_remainder + std.time.ns_per_s else nano_remainder);
         return Timestamp{
             .seconds = if (nano_remainder < 0) ns_i64 - 1 else ns_i64,

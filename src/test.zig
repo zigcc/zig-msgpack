@@ -1997,53 +1997,6 @@ test "timestamp precision and conversion" {
     try expect(@abs(float_val4 - expected4) < 0.000000001);
 }
 
-// Test timestamp now() function
-test "timestamp now() function" {
-    var arr: [0xfffff]u8 = std.mem.zeroes([0xfffff]u8);
-    var write_buffer = fixedBufferStream(&arr);
-    var read_buffer = fixedBufferStream(&arr);
-    var p = pack.init(&write_buffer, &read_buffer);
-
-    // Get current timestamp
-    const now_ts = msgpack.Timestamp.now();
-
-    // Verify seconds is reasonable (after 2020-01-01 and before 2100-01-01)
-    const year_2020: i64 = 1577836800; // 2020-01-01 00:00:00 UTC
-    const year_2100: i64 = 4102444800; // 2100-01-01 00:00:00 UTC
-    try expect(now_ts.seconds > year_2020);
-    try expect(now_ts.seconds < year_2100);
-
-    // Verify nanoseconds is in valid range
-    try expect(now_ts.nanoseconds >= 0);
-    try expect(now_ts.nanoseconds <= 999_999_999);
-
-    // Test serialization and deserialization
-    const payload = msgpack.Payload{ .timestamp = now_ts };
-    try p.write(payload);
-
-    read_buffer = fixedBufferStream(&arr);
-    p = pack.init(&write_buffer, &read_buffer);
-
-    const decoded = try p.read(allocator);
-    defer decoded.free(allocator);
-
-    try expect(decoded == .timestamp);
-    try expect(decoded.timestamp.seconds == now_ts.seconds);
-    try expect(decoded.timestamp.nanoseconds == now_ts.nanoseconds);
-
-    // Test toFloat conversion
-    const float_val = now_ts.toFloat();
-    const expected_float = @as(f64, @floatFromInt(now_ts.seconds)) +
-        @as(f64, @floatFromInt(now_ts.nanoseconds)) / 1_000_000_000.0;
-    try expect(@abs(float_val - expected_float) < 0.000000001);
-
-    // Test that calling now() twice gives increasing or equal timestamps
-    const now_ts2 = msgpack.Timestamp.now();
-    const float1 = now_ts.toFloat();
-    const float2 = now_ts2.toFloat();
-    try expect(float2 >= float1);
-}
-
 // Test timestamp fromNanos() function
 test "timestamp fromNanos() conversion" {
     var arr: [0xfffff]u8 = std.mem.zeroes([0xfffff]u8);
@@ -2051,9 +2004,9 @@ test "timestamp fromNanos() conversion" {
     var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
-    // Test with current time
-    const current_nanos = std.time.nanoTimestamp();
-    const ts = msgpack.Timestamp.fromNanos(current_nanos);
+    // Test with a fixed timestamp value (2024-01-01 00:00:00 UTC + 123456789 nanoseconds)
+    const test_nanos: i128 = 1704067200 * std.time.ns_per_s + 123456789;
+    const ts = msgpack.Timestamp.fromNanos(test_nanos);
 
     // Verify seconds is reasonable (after 2020-01-01 and before 2100-01-01)
     const year_2020: i64 = 1577836800;
@@ -2066,8 +2019,8 @@ test "timestamp fromNanos() conversion" {
     try expect(ts.nanoseconds <= 999_999_999);
 
     // Test with known values
-    const test_nanos: i128 = 1704067200_123456789; // 2024-01-01 00:00:00.123456789 UTC
-    const test_ts = msgpack.Timestamp.fromNanos(test_nanos);
+    const known_nanos: i128 = 1704067200_123456789; // 2024-01-01 00:00:00.123456789 UTC
+    const test_ts = msgpack.Timestamp.fromNanos(known_nanos);
     try expect(test_ts.seconds == 1704067200);
     try expect(test_ts.nanoseconds == 123456789);
 
@@ -2078,7 +2031,7 @@ test "timestamp fromNanos() conversion" {
     try expect(negative_ts.nanoseconds == 500000000);
 
     // Test Payload.timestampFromNanos() convenience method
-    const payload = msgpack.Payload.timestampFromNanos(current_nanos);
+    const payload = msgpack.Payload.timestampFromNanos(test_nanos);
     try expect(payload == .timestamp);
     try expect(payload.timestamp.seconds == ts.seconds);
     try expect(payload.timestamp.nanoseconds == ts.nanoseconds);

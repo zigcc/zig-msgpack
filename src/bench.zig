@@ -17,19 +17,6 @@ const pack = msgpack.Pack(
 );
 
 /// Benchmark timer helper
-const Timer = struct {
-    start: i128,
-
-    fn begin() Timer {
-        return .{ .start = std.time.nanoTimestamp() };
-    }
-
-    fn end(self: Timer) u64 {
-        const now = std.time.nanoTimestamp();
-        return @intCast(now - self.start);
-    }
-};
-
 /// Run a benchmark and print results
 fn benchmark(
     comptime name: []const u8,
@@ -46,11 +33,11 @@ fn benchmark(
     }
 
     // Actual benchmark
-    const timer = Timer.begin();
+    var timer = try std.time.Timer.start();
     for (0..iterations) |_| {
         try func(allocator);
     }
-    const elapsed_ns = timer.end();
+    const elapsed_ns = timer.read();
 
     const avg_ns = elapsed_ns / iterations;
     const ops_per_sec = if (avg_ns > 0) (1_000_000_000 / avg_ns) else 0;
