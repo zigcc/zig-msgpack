@@ -113,7 +113,7 @@ pub const ParseLimits = struct {
     max_ext_length: usize = 100 * 1024 * 1024,
 };
 
-/// Default parse limits (for backward compatibility)
+/// Default parse limits
 pub const DEFAULT_LIMITS = ParseLimits{};
 
 /// the Str Type
