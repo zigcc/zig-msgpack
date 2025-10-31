@@ -3369,7 +3369,7 @@ test "corrupted: truncated array data" {
     if (result) |payload| payload.free(allocator) else |_| {}
 }
 
-test "corrupted: invalid map key (non-string)" {
+test "map with non-string key (integer key)" {
     var buffer: [1000]u8 = undefined;
     var write_buffer = fixedBufferStream(&buffer);
     var read_buffer = fixedBufferStream(&buffer);
@@ -3380,11 +3380,11 @@ test "corrupted: invalid map key (non-string)" {
         std.ArrayList(u8){};
     defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
 
-    // map with integer key (invalid - must be string)
+    // map with integer key (now valid - keys can be any Payload type)
     if (builtin.zig_version.minor == 14) {
         try input.append(0x81); // fixmap with 1 pair
-        try input.append(0x2a); // int 42 as key (INVALID!)
-        try input.append(0x00); // value
+        try input.append(0x2a); // int 42 as key
+        try input.append(0x00); // int 0 as value
     } else {
         try input.append(allocator, 0x81);
         try input.append(allocator, 0x2a);
@@ -3395,9 +3395,18 @@ test "corrupted: invalid map key (non-string)" {
 
     var p = pack.init(&write_buffer, &read_buffer);
 
-    // Should return error, not crash
-    const result = p.read(allocator);
-    try std.testing.expectError(msgpack.MsgPackError.InvalidType, result);
+    // Should successfully parse with integer key
+    const result = try p.read(allocator);
+    defer result.free(allocator);
+
+    try expect(result == .map);
+    try expect(result.map.count() == 1);
+
+    // Verify the integer key works
+    const key = Payload{ .uint = 42 };
+    const value = try result.mapGetGeneric(key);
+    try expect(value != null);
+    try expect(value.?.uint == 0);
 }
 
 test "malicious: mixed depth and breadth attack" {
@@ -3586,4 +3595,584 @@ test "malicious: str32 with excessive length claim" {
         try expect(err == msgpack.MsgPackError.LengthReading or
             err == msgpack.MsgPackError.StringTooLong);
     }
+}
+
+// ========== Tests for Generic Map Keys (Non-String Keys) ==========
+
+test "map with integer keys" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Create a map with integer keys
+    var test_map = Payload.mapPayload(allocator);
+    defer test_map.free(allocator);
+
+    try test_map.mapPutGeneric(Payload.intToPayload(1), Payload.uintToPayload(100));
+    try test_map.mapPutGeneric(Payload.intToPayload(2), Payload.uintToPayload(200));
+    try test_map.mapPutGeneric(Payload.intToPayload(3), Payload.uintToPayload(300));
+
+    // Serialize
+    try p.write(test_map);
+
+    // Deserialize
+    const result = try p.read(allocator);
+    defer result.free(allocator);
+
+    try expect(result == .map);
+    try expect(result.map.count() == 3);
+
+    // Verify values using generic key access
+    // Note: positive integers are serialized as uint (optimized format)
+    const val1 = try result.mapGetGeneric(Payload.uintToPayload(1));
+    try expect(val1 != null);
+    try expect(val1.?.uint == 100);
+
+    const val2 = try result.mapGetGeneric(Payload.uintToPayload(2));
+    try expect(val2 != null);
+    try expect(val2.?.uint == 200);
+
+    const val3 = try result.mapGetGeneric(Payload.uintToPayload(3));
+    try expect(val3 != null);
+    try expect(val3.?.uint == 300);
+}
+
+test "map with boolean keys" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Create a map with boolean keys
+    var test_map = Payload.mapPayload(allocator);
+    defer test_map.free(allocator);
+
+    try test_map.mapPutGeneric(Payload.boolToPayload(true), try Payload.strToPayload("yes", allocator));
+    try test_map.mapPutGeneric(Payload.boolToPayload(false), try Payload.strToPayload("no", allocator));
+
+    // Serialize
+    try p.write(test_map);
+
+    // Deserialize
+    const result = try p.read(allocator);
+    defer result.free(allocator);
+
+    try expect(result == .map);
+    try expect(result.map.count() == 2);
+
+    // Verify values
+    const val_true = try result.mapGetGeneric(Payload.boolToPayload(true));
+    try expect(val_true != null);
+    try expect(u8eql(val_true.?.str.value(), "yes"));
+
+    const val_false = try result.mapGetGeneric(Payload.boolToPayload(false));
+    try expect(val_false != null);
+    try expect(u8eql(val_false.?.str.value(), "no"));
+}
+
+test "map with mixed key types" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Create a map with mixed key types
+    var test_map = Payload.mapPayload(allocator);
+    defer test_map.free(allocator);
+
+    // String key (backward compatible API)
+    try test_map.mapPut("name", try Payload.strToPayload("Alice", allocator));
+
+    // Integer keys
+    try test_map.mapPutGeneric(Payload.intToPayload(1), Payload.uintToPayload(100));
+    try test_map.mapPutGeneric(Payload.uintToPayload(42), Payload.floatToPayload(3.14));
+
+    // Boolean key
+    try test_map.mapPutGeneric(Payload.boolToPayload(true), Payload.nilToPayload());
+
+    // Serialize
+    try p.write(test_map);
+
+    // Deserialize
+    const result = try p.read(allocator);
+    defer result.free(allocator);
+
+    try expect(result == .map);
+    try expect(result.map.count() == 4);
+
+    // Verify string key (backward compatible)
+    const name = try result.mapGet("name");
+    try expect(name != null);
+    try expect(u8eql(name.?.str.value(), "Alice"));
+
+    // Verify integer keys (positive integers become uint after serialization)
+    const val1 = try result.mapGetGeneric(Payload.uintToPayload(1));
+    try expect(val1 != null);
+    try expect(val1.?.uint == 100);
+
+    const val42 = try result.mapGetGeneric(Payload.uintToPayload(42));
+    try expect(val42 != null);
+    try expect(std.math.approxEqAbs(f64, val42.?.float, 3.14, 0.0001));
+
+    // Verify boolean key
+    const val_bool = try result.mapGetGeneric(Payload.boolToPayload(true));
+    try expect(val_bool != null);
+    try expect(val_bool.? == .nil);
+}
+
+test "map with float keys" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Create a map with float keys
+    var test_map = Payload.mapPayload(allocator);
+    defer test_map.free(allocator);
+
+    try test_map.mapPutGeneric(Payload.floatToPayload(1.5), Payload.intToPayload(15));
+    try test_map.mapPutGeneric(Payload.floatToPayload(2.5), Payload.intToPayload(25));
+
+    // Serialize
+    try p.write(test_map);
+
+    // Deserialize
+    const result = try p.read(allocator);
+    defer result.free(allocator);
+
+    try expect(result == .map);
+    try expect(result.map.count() == 2);
+
+    // Verify values (positive integers become uint after serialization)
+    const val1 = try result.mapGetGeneric(Payload.floatToPayload(1.5));
+    try expect(val1 != null);
+    try expect(val1.?.uint == 15);
+
+    const val2 = try result.mapGetGeneric(Payload.floatToPayload(2.5));
+    try expect(val2 != null);
+    try expect(val2.?.uint == 25);
+}
+
+test "backward compatibility: string keys still work with new implementation" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Use old API (string keys only)
+    var test_map = Payload.mapPayload(allocator);
+    defer test_map.free(allocator);
+
+    try test_map.mapPut("key1", Payload.intToPayload(42));
+    try test_map.mapPut("key2", Payload.boolToPayload(true));
+    try test_map.mapPut("key3", try Payload.strToPayload("value", allocator));
+
+    // Serialize
+    try p.write(test_map);
+
+    // Deserialize
+    const result = try p.read(allocator);
+    defer result.free(allocator);
+
+    try expect(result == .map);
+    try expect(result.map.count() == 3);
+
+    // Use old API to get values
+    // Note: 42 is a positive integer, serialized as uint
+    const val1 = try result.mapGet("key1");
+    try expect(val1 != null);
+    try expect(val1.?.uint == 42);
+
+    const val2 = try result.mapGet("key2");
+    try expect(val2 != null);
+    try expect(val2.?.bool == true);
+
+    const val3 = try result.mapGet("key3");
+    try expect(val3 != null);
+    try expect(u8eql(val3.?.str.value(), "value"));
+}
+
+// ========== Tests for Complex Key Types (ext, array, map, etc.) ==========
+
+test "map with ext keys" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Create a map with ext keys
+    var test_map = Payload.mapPayload(allocator);
+    defer test_map.free(allocator);
+
+    var ext1_data = [_]u8{ 1, 2, 3 };
+    var ext2_data = [_]u8{ 4, 5, 6 };
+
+    try test_map.mapPutGeneric(
+        Payload{ .ext = msgpack.EXT{ .type = 1, .data = &ext1_data } },
+        try Payload.strToPayload("value1", allocator),
+    );
+    try test_map.mapPutGeneric(
+        Payload{ .ext = msgpack.EXT{ .type = 2, .data = &ext2_data } },
+        try Payload.strToPayload("value2", allocator),
+    );
+
+    // Serialize
+    try p.write(test_map);
+
+    // Deserialize
+    const result = try p.read(allocator);
+    defer result.free(allocator);
+
+    try expect(result == .map);
+    try expect(result.map.count() == 2);
+
+    // Verify values using ext keys
+    const val1 = try result.mapGetGeneric(Payload{ .ext = msgpack.EXT{ .type = 1, .data = &ext1_data } });
+    try expect(val1 != null);
+    try expect(u8eql(val1.?.str.value(), "value1"));
+
+    const val2 = try result.mapGetGeneric(Payload{ .ext = msgpack.EXT{ .type = 2, .data = &ext2_data } });
+    try expect(val2 != null);
+    try expect(u8eql(val2.?.str.value(), "value2"));
+}
+
+test "map with array keys" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Create a map with array keys
+    var test_map = Payload.mapPayload(allocator);
+    defer test_map.free(allocator);
+
+    // Create array key 1: [1, 2, 3]
+    var arr1 = try Payload.arrPayload(3, allocator);
+    defer arr1.free(allocator); // Free after put (put will clone it)
+    try arr1.setArrElement(0, Payload.uintToPayload(1));
+    try arr1.setArrElement(1, Payload.uintToPayload(2));
+    try arr1.setArrElement(2, Payload.uintToPayload(3));
+
+    // Create array key 2: [4, 5]
+    var arr2 = try Payload.arrPayload(2, allocator);
+    defer arr2.free(allocator); // Free after put (put will clone it)
+    try arr2.setArrElement(0, Payload.uintToPayload(4));
+    try arr2.setArrElement(1, Payload.uintToPayload(5));
+
+    try test_map.mapPutGeneric(arr1, try Payload.strToPayload("array1", allocator));
+    try test_map.mapPutGeneric(arr2, try Payload.strToPayload("array2", allocator));
+
+    // Serialize
+    try p.write(test_map);
+
+    // Deserialize
+    const result = try p.read(allocator);
+    defer result.free(allocator);
+
+    try expect(result == .map);
+    try expect(result.map.count() == 2);
+
+    // Create matching array keys for lookup
+    var lookup_arr1 = try Payload.arrPayload(3, allocator);
+    defer lookup_arr1.free(allocator);
+    try lookup_arr1.setArrElement(0, Payload.uintToPayload(1));
+    try lookup_arr1.setArrElement(1, Payload.uintToPayload(2));
+    try lookup_arr1.setArrElement(2, Payload.uintToPayload(3));
+
+    var lookup_arr2 = try Payload.arrPayload(2, allocator);
+    defer lookup_arr2.free(allocator);
+    try lookup_arr2.setArrElement(0, Payload.uintToPayload(4));
+    try lookup_arr2.setArrElement(1, Payload.uintToPayload(5));
+
+    // Verify values
+    const val1 = try result.mapGetGeneric(lookup_arr1);
+    try expect(val1 != null);
+    try expect(u8eql(val1.?.str.value(), "array1"));
+
+    const val2 = try result.mapGetGeneric(lookup_arr2);
+    try expect(val2 != null);
+    try expect(u8eql(val2.?.str.value(), "array2"));
+}
+
+test "map with nested map keys" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Create outer map
+    var outer_map = Payload.mapPayload(allocator);
+    defer outer_map.free(allocator);
+
+    // Create inner map as key 1: {"a": 1}
+    var inner_map1 = Payload.mapPayload(allocator);
+    defer inner_map1.free(allocator); // Free after put (put will clone it)
+    try inner_map1.mapPut("a", Payload.uintToPayload(1));
+
+    // Create inner map as key 2: {"b": 2}
+    var inner_map2 = Payload.mapPayload(allocator);
+    defer inner_map2.free(allocator); // Free after put (put will clone it)
+    try inner_map2.mapPut("b", Payload.uintToPayload(2));
+
+    try outer_map.mapPutGeneric(inner_map1, try Payload.strToPayload("value1", allocator));
+    try outer_map.mapPutGeneric(inner_map2, try Payload.strToPayload("value2", allocator));
+
+    // Serialize
+    try p.write(outer_map);
+
+    // Deserialize
+    const result = try p.read(allocator);
+    defer result.free(allocator);
+
+    try expect(result == .map);
+    try expect(result.map.count() == 2);
+
+    // Create matching map keys for lookup
+    var lookup_map1 = Payload.mapPayload(allocator);
+    defer lookup_map1.free(allocator);
+    try lookup_map1.mapPut("a", Payload.uintToPayload(1));
+
+    var lookup_map2 = Payload.mapPayload(allocator);
+    defer lookup_map2.free(allocator);
+    try lookup_map2.mapPut("b", Payload.uintToPayload(2));
+
+    // Verify values
+    const val1 = try result.mapGetGeneric(lookup_map1);
+    try expect(val1 != null);
+    try expect(u8eql(val1.?.str.value(), "value1"));
+
+    const val2 = try result.mapGetGeneric(lookup_map2);
+    try expect(val2 != null);
+    try expect(u8eql(val2.?.str.value(), "value2"));
+}
+
+test "map with bin keys" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Create a map with binary keys
+    var test_map = Payload.mapPayload(allocator);
+    defer test_map.free(allocator);
+
+    var bin1 = [_]u8{ 0x01, 0x02, 0x03 };
+    var bin2 = [_]u8{ 0xFF, 0xFE };
+
+    try test_map.mapPutGeneric(
+        Payload{ .bin = msgpack.Bin{ .bin = &bin1 } },
+        try Payload.strToPayload("binary1", allocator),
+    );
+    try test_map.mapPutGeneric(
+        Payload{ .bin = msgpack.Bin{ .bin = &bin2 } },
+        try Payload.strToPayload("binary2", allocator),
+    );
+
+    // Serialize
+    try p.write(test_map);
+
+    // Deserialize
+    const result = try p.read(allocator);
+    defer result.free(allocator);
+
+    try expect(result == .map);
+    try expect(result.map.count() == 2);
+
+    // Verify values using bin keys
+    const val1 = try result.mapGetGeneric(Payload{ .bin = msgpack.Bin{ .bin = &bin1 } });
+    try expect(val1 != null);
+    try expect(u8eql(val1.?.str.value(), "binary1"));
+
+    const val2 = try result.mapGetGeneric(Payload{ .bin = msgpack.Bin{ .bin = &bin2 } });
+    try expect(val2 != null);
+    try expect(u8eql(val2.?.str.value(), "binary2"));
+}
+
+test "map with timestamp keys" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Create a map with timestamp keys
+    var test_map = Payload.mapPayload(allocator);
+    defer test_map.free(allocator);
+
+    const ts1 = msgpack.Timestamp.new(1234567890, 0);
+    const ts2 = msgpack.Timestamp.new(9876543210, 123456789);
+
+    try test_map.mapPutGeneric(Payload{ .timestamp = ts1 }, try Payload.strToPayload("time1", allocator));
+    try test_map.mapPutGeneric(Payload{ .timestamp = ts2 }, try Payload.strToPayload("time2", allocator));
+
+    // Serialize
+    try p.write(test_map);
+
+    // Deserialize
+    const result = try p.read(allocator);
+    defer result.free(allocator);
+
+    try expect(result == .map);
+    try expect(result.map.count() == 2);
+
+    // Verify values using timestamp keys
+    const val1 = try result.mapGetGeneric(Payload{ .timestamp = ts1 });
+    try expect(val1 != null);
+    try expect(u8eql(val1.?.str.value(), "time1"));
+
+    const val2 = try result.mapGetGeneric(Payload{ .timestamp = ts2 });
+    try expect(val2 != null);
+    try expect(u8eql(val2.?.str.value(), "time2"));
+}
+
+test "map with nil key" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Create a map with nil as a key
+    var test_map = Payload.mapPayload(allocator);
+    defer test_map.free(allocator);
+
+    try test_map.mapPutGeneric(Payload.nilToPayload(), try Payload.strToPayload("nil_value", allocator));
+    try test_map.mapPut("string_key", try Payload.strToPayload("string_value", allocator));
+
+    // Serialize
+    try p.write(test_map);
+
+    // Deserialize
+    const result = try p.read(allocator);
+    defer result.free(allocator);
+
+    try expect(result == .map);
+    try expect(result.map.count() == 2);
+
+    // Verify nil key
+    const nil_val = try result.mapGetGeneric(Payload.nilToPayload());
+    try expect(nil_val != null);
+    try expect(u8eql(nil_val.?.str.value(), "nil_value"));
+
+    // Verify string key still works
+    const str_val = try result.mapGet("string_key");
+    try expect(str_val != null);
+    try expect(u8eql(str_val.?.str.value(), "string_value"));
+}
+
+// ========== SIMD Optimization Tests ==========
+
+test "SIMD string comparison: short strings" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    var test_map = Payload.mapPayload(allocator);
+    defer test_map.free(allocator);
+
+    // Short keys (< 16 bytes) - should use scalar path
+    try test_map.mapPut("a", Payload.intToPayload(1));
+    try test_map.mapPut("ab", Payload.intToPayload(2));
+    try test_map.mapPut("abc", Payload.intToPayload(3));
+    try test_map.mapPut("short_key", Payload.intToPayload(4));
+
+    try p.write(test_map);
+    const result = try p.read(allocator);
+    defer result.free(allocator);
+
+    try expect((try result.mapGet("a")).?.uint == 1);
+    try expect((try result.mapGet("ab")).?.uint == 2);
+    try expect((try result.mapGet("abc")).?.uint == 3);
+    try expect((try result.mapGet("short_key")).?.uint == 4);
+}
+
+test "SIMD string comparison: medium strings (16-32 bytes)" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    var test_map = Payload.mapPayload(allocator);
+    defer test_map.free(allocator);
+
+    // Medium keys (16-32 bytes) - should use SIMD path
+    try test_map.mapPut("this_is_16_bytes", Payload.intToPayload(16));
+    try test_map.mapPut("this_is_exactly_20ch", Payload.intToPayload(20));
+    try test_map.mapPut("this_is_a_32_byte_long_key!!", Payload.intToPayload(32));
+
+    try p.write(test_map);
+    const result = try p.read(allocator);
+    defer result.free(allocator);
+
+    try expect((try result.mapGet("this_is_16_bytes")).?.uint == 16);
+    try expect((try result.mapGet("this_is_exactly_20ch")).?.uint == 20);
+    try expect((try result.mapGet("this_is_a_32_byte_long_key!!")).?.uint == 32);
+}
+
+test "SIMD string comparison: long strings (64+ bytes)" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    var test_map = Payload.mapPayload(allocator);
+    defer test_map.free(allocator);
+
+    // Long keys (64+ bytes) - SIMD should provide significant speedup
+    const long_key1 = "this_is_a_very_long_key_that_exceeds_64_bytes_and_should_benefit_from_SIMD";
+    const long_key2 = "another_super_long_key_name_for_testing_SIMD_performance_optimization!!";
+
+    try test_map.mapPut(long_key1, Payload.intToPayload(100));
+    try test_map.mapPut(long_key2, Payload.intToPayload(200));
+
+    try p.write(test_map);
+    const result = try p.read(allocator);
+    defer result.free(allocator);
+
+    try expect((try result.mapGet(long_key1)).?.uint == 100);
+    try expect((try result.mapGet(long_key2)).?.uint == 200);
+}
+
+test "SIMD binary comparison: ext with large data" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    var test_map = Payload.mapPayload(allocator);
+    defer test_map.free(allocator);
+
+    // Create large ext data (64 bytes) to test SIMD binary comparison
+    var ext_data1: [64]u8 = undefined;
+    for (&ext_data1, 0..) |*byte, i| {
+        byte.* = @intCast(i);
+    }
+
+    var ext_data2: [64]u8 = undefined;
+    for (&ext_data2, 0..) |*byte, i| {
+        byte.* = @intCast(i + 100);
+    }
+
+    try test_map.mapPutGeneric(
+        Payload{ .ext = msgpack.EXT{ .type = 1, .data = &ext_data1 } },
+        Payload.intToPayload(1),
+    );
+    try test_map.mapPutGeneric(
+        Payload{ .ext = msgpack.EXT{ .type = 1, .data = &ext_data2 } },
+        Payload.intToPayload(2),
+    );
+
+    try p.write(test_map);
+    const result = try p.read(allocator);
+    defer result.free(allocator);
+
+    try expect(result.map.count() == 2);
+
+    const val1 = try result.mapGetGeneric(Payload{ .ext = msgpack.EXT{ .type = 1, .data = &ext_data1 } });
+    try expect(val1 != null);
+    try expect(val1.?.uint == 1);
+
+    const val2 = try result.mapGetGeneric(Payload{ .ext = msgpack.EXT{ .type = 1, .data = &ext_data2 } });
+    try expect(val2 != null);
+    try expect(val2.?.uint == 2);
 }

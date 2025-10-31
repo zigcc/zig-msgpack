@@ -232,8 +232,417 @@ pub const Timestamp = struct {
     }
 };
 
-/// the map of payload
-pub const Map = std.StringHashMap(Payload);
+/// Key-Value pair for map entries
+pub const KeyValuePair = struct {
+    key: Payload,
+    value: Payload,
+};
+
+/// SIMD-optimized string equality comparison
+/// Uses vector operations for strings >= 16 bytes, falls back to scalar for shorter strings
+fn stringEqualSIMD(a: []const u8, b: []const u8) bool {
+    if (a.len != b.len) return false;
+    if (a.len == 0) return true;
+
+    const len = a.len;
+
+    // For very short strings, scalar comparison is faster (avoid SIMD setup overhead)
+    if (len < 16) {
+        return std.mem.eql(u8, a, b);
+    }
+
+    // Use 16-byte SIMD vectors (supported on SSE2/NEON - universally available)
+    const Vec16 = @Vector(16, u8);
+    const chunk_size = 16;
+
+    var i: usize = 0;
+
+    // Process 16-byte chunks with SIMD
+    while (i + chunk_size <= len) : (i += chunk_size) {
+        const vec_a: Vec16 = a[i..][0..chunk_size].*;
+        const vec_b: Vec16 = b[i..][0..chunk_size].*;
+
+        // Compare vectors: returns a vector of bools
+        const cmp_result = vec_a == vec_b;
+
+        // Check if all elements are equal
+        // Use @reduce to check if all comparisons are true
+        if (!@reduce(.And, cmp_result)) {
+            return false;
+        }
+    }
+
+    // Process remaining bytes with scalar comparison
+    if (i < len) {
+        return std.mem.eql(u8, a[i..], b[i..]);
+    }
+
+    return true;
+}
+
+/// SIMD-optimized binary data equality comparison (same as string)
+inline fn binaryEqualSIMD(a: []const u8, b: []const u8) bool {
+    return stringEqualSIMD(a, b);
+}
+
+/// Helper to check if two Payloads are equal (deep equality)
+/// Note: For performance, consider limiting the use of arrays/maps as keys
+fn payloadEqual(a: Payload, b: Payload) bool {
+    return payloadEqualDepth(a, b, 0);
+}
+
+/// Internal helper for deep equality checking with depth tracking
+/// max_depth prevents infinite recursion for cyclic structures
+fn payloadEqualDepth(a: Payload, b: Payload, depth: usize) bool {
+    // Prevent excessive recursion (e.g., deeply nested structures)
+    const MAX_DEPTH = 100;
+    if (depth > MAX_DEPTH) {
+        return false;
+    }
+
+    // Compare by type first
+    if (@as(@typeInfo(@TypeOf(a)).@"union".tag_type.?, a) != @as(@typeInfo(@TypeOf(b)).@"union".tag_type.?, b)) {
+        return false;
+    }
+
+    return switch (a) {
+        .nil => true,
+        .bool => |av| av == b.bool,
+        .int => |av| av == b.int,
+        .uint => |av| av == b.uint,
+        .float => |av| av == b.float,
+        .str => |av| stringEqualSIMD(av.value(), b.str.value()),
+        .bin => |av| binaryEqualSIMD(av.value(), b.bin.value()),
+        .timestamp => |av| av.seconds == b.timestamp.seconds and av.nanoseconds == b.timestamp.nanoseconds,
+        .ext => |av| av.type == b.ext.type and binaryEqualSIMD(av.data, b.ext.data),
+
+        // Deep equality for arrays
+        .arr => |av| {
+            const bv = b.arr;
+            if (av.len != bv.len) return false;
+            for (av, bv) |a_item, b_item| {
+                if (!payloadEqualDepth(a_item, b_item, depth + 1)) {
+                    return false;
+                }
+            }
+            return true;
+        },
+
+        // Deep equality for maps
+        .map => |av| {
+            const bv = b.map;
+            if (av.count() != bv.count()) return false;
+
+            // Check that all entries in 'a' exist in 'b' with same values
+            for (av.entries.items) |a_entry| {
+                var found = false;
+                for (bv.entries.items) |b_entry| {
+                    if (payloadEqualDepth(a_entry.key, b_entry.key, depth + 1)) {
+                        if (!payloadEqualDepth(a_entry.value, b_entry.value, depth + 1)) {
+                            return false; // Key found but value differs
+                        }
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) return false; // Key not found in b
+            }
+            return true;
+        },
+    };
+}
+
+/// Deep clone a Payload (allocates new memory for dynamic types)
+fn clonePayload(payload: Payload, allocator: Allocator) !Payload {
+    return switch (payload) {
+        .nil, .bool, .int, .uint, .float, .timestamp => payload, // Value types, no allocation needed
+
+        .str => |s| try Payload.strToPayload(s.value(), allocator),
+        .bin => |b| try Payload.binToPayload(b.value(), allocator),
+        .ext => |e| try Payload.extToPayload(e.type, e.data, allocator),
+
+        .arr => |arr| {
+            const new_arr = try allocator.alloc(Payload, arr.len);
+            errdefer allocator.free(new_arr);
+            for (arr, 0..) |item, i| {
+                new_arr[i] = try clonePayload(item, allocator);
+            }
+            return Payload{ .arr = new_arr };
+        },
+
+        .map => |m| {
+            var new_map = Map.init(allocator);
+            errdefer new_map.deinit();
+
+            // Clone all entries
+            for (m.entries.items) |entry| {
+                const cloned_key = try clonePayload(entry.key, allocator);
+                errdefer cloned_key.free(allocator);
+                const cloned_value = try clonePayload(entry.value, allocator);
+                errdefer cloned_value.free(allocator);
+
+                // Directly append without calling put (avoid recursive error set issues)
+                if (current_zig.minor == 14) {
+                    try new_map.entries.append(KeyValuePair{ .key = cloned_key, .value = cloned_value });
+                } else {
+                    try new_map.entries.append(allocator, KeyValuePair{ .key = cloned_key, .value = cloned_value });
+                }
+            }
+            return Payload{ .map = new_map };
+        },
+    };
+}
+
+/// Map type supporting any Payload as key
+pub const Map = struct {
+    entries: std.ArrayList(KeyValuePair),
+    allocator: Allocator,
+
+    const Self = @This();
+
+    /// Iterator for Map entries
+    pub const Iterator = struct {
+        items: []KeyValuePair,
+        index: usize,
+
+        pub const Entry = struct {
+            key_ptr: *Payload,
+            value_ptr: *Payload,
+        };
+
+        pub fn next(self: *Iterator) ?Entry {
+            if (self.index >= self.items.len) {
+                return null;
+            }
+            const entry = &self.items[self.index];
+            self.index += 1;
+            return Entry{
+                .key_ptr = &entry.key,
+                .value_ptr = &entry.value,
+            };
+        }
+    };
+
+    pub fn init(allocator: Allocator) Self {
+        if (current_zig.minor == 14) {
+            return Self{
+                .entries = std.ArrayList(KeyValuePair).init(allocator),
+                .allocator = allocator,
+            };
+        } else {
+            return Self{
+                .entries = std.ArrayList(KeyValuePair){},
+                .allocator = allocator,
+            };
+        }
+    }
+
+    pub fn deinit(self: *Self) void {
+        if (current_zig.minor == 14) {
+            self.entries.deinit();
+        } else {
+            self.entries.deinit(self.allocator);
+        }
+    }
+
+    pub fn count(self: Self) usize {
+        return self.entries.items.len;
+    }
+
+    /// Get value by Payload key (optimized with fast path for simple types)
+    pub fn get(self: Self, key: Payload) ?Payload {
+        // Fast path for simple types (avoid function call overhead)
+        // Most common keys are int/uint/bool, so optimize for these first
+        switch (key) {
+            .int => |kv| {
+                for (self.entries.items) |entry| {
+                    if (entry.key == .int and entry.key.int == kv) {
+                        return entry.value;
+                    }
+                }
+                return null;
+            },
+            .uint => |kv| {
+                for (self.entries.items) |entry| {
+                    if (entry.key == .uint and entry.key.uint == kv) {
+                        return entry.value;
+                    }
+                }
+                return null;
+            },
+            .bool => |kv| {
+                for (self.entries.items) |entry| {
+                    if (entry.key == .bool and entry.key.bool == kv) {
+                        return entry.value;
+                    }
+                }
+                return null;
+            },
+            .nil => {
+                for (self.entries.items) |entry| {
+                    if (entry.key == .nil) {
+                        return entry.value;
+                    }
+                }
+                return null;
+            },
+            .float => |kv| {
+                for (self.entries.items) |entry| {
+                    if (entry.key == .float and entry.key.float == kv) {
+                        return entry.value;
+                    }
+                }
+                return null;
+            },
+            // Slow path for complex types (str, bin, array, map, ext, timestamp)
+            else => {
+                for (self.entries.items) |entry| {
+                    if (payloadEqual(entry.key, key)) {
+                        return entry.value;
+                    }
+                }
+                return null;
+            },
+        }
+    }
+
+    /// Get pointer to value by Payload key
+    pub fn getPtr(self: Self, key: Payload) ?*Payload {
+        for (self.entries.items) |*entry| {
+            if (payloadEqual(entry.key, key)) {
+                return &entry.value;
+            }
+        }
+        return null;
+    }
+
+    /// Get value by string key (for backward compatibility)
+    /// Optimized: SIMD-accelerated string comparison, skipping non-string entries
+    pub fn getByString(self: Self, key: []const u8) ?Payload {
+        // Fast path: directly compare string keys without creating Payload
+        for (self.entries.items) |entry| {
+            // Skip non-string keys immediately
+            if (entry.key != .str) continue;
+
+            // SIMD-optimized string comparison
+            if (stringEqualSIMD(entry.key.str.value(), key)) {
+                return entry.value;
+            }
+        }
+        return null;
+    }
+
+    /// Put or update a key-value pair (internal, no cloning)
+    /// Used by deserialization where keys are already allocated
+    fn putInternal(self: *Self, key: Payload, value: Payload) !void {
+        // Check if key already exists
+        for (self.entries.items) |*entry| {
+            if (payloadEqual(entry.key, key)) {
+                // Update existing value, free old value and key
+                entry.key.free(self.allocator);
+                entry.value = value;
+                entry.key = key;
+                return;
+            }
+        }
+
+        // Add new entry without cloning
+        if (current_zig.minor == 14) {
+            try self.entries.append(KeyValuePair{ .key = key, .value = value });
+        } else {
+            try self.entries.append(self.allocator, KeyValuePair{ .key = key, .value = value });
+        }
+    }
+
+    /// Put or update a key-value pair
+    /// Note: The key will be deep-cloned to ensure the map owns it
+    pub fn put(self: *Self, key: Payload, value: Payload) !void {
+        // Clone the key to ensure map owns it
+        const cloned_key = try clonePayload(key, self.allocator);
+        errdefer cloned_key.free(self.allocator);
+
+        // Use internal put (which won't clone again)
+        try self.putInternal(cloned_key, value);
+    }
+
+    /// Put or update with string key (for backward compatibility)
+    /// This allocates memory for the key string
+    pub fn putString(self: *Self, key: []const u8, value: Payload) !void {
+        // Check if key already exists (as string)
+        for (self.entries.items) |*entry| {
+            if (entry.key == .str and std.mem.eql(u8, entry.key.str.value(), key)) {
+                // Update existing value
+                entry.value = value;
+                return;
+            }
+        }
+
+        // Add new entry with allocated key string
+        const new_key = try self.allocator.alloc(u8, key.len);
+        errdefer self.allocator.free(new_key);
+        @memcpy(new_key, key);
+
+        const key_payload_owned = Payload{ .str = Str.init(new_key) };
+        if (current_zig.minor == 14) {
+            try self.entries.append(KeyValuePair{ .key = key_payload_owned, .value = value });
+        } else {
+            try self.entries.append(self.allocator, KeyValuePair{ .key = key_payload_owned, .value = value });
+        }
+    }
+
+    /// Get or create an entry, returning pointers to key and value
+    pub fn getOrPut(self: *Self, key: []const u8) !struct { found_existing: bool, key_ptr: *[]const u8, value_ptr: *Payload } {
+        // Look for existing entry
+        for (self.entries.items) |*entry| {
+            if (entry.key == .str and std.mem.eql(u8, entry.key.str.value(), key)) {
+                // Cast to mutable for API compatibility
+                const key_str_ptr: *[]const u8 = @constCast(&entry.key.str.str);
+                return .{
+                    .found_existing = true,
+                    .key_ptr = key_str_ptr,
+                    .value_ptr = &entry.value,
+                };
+            }
+        }
+
+        // Create new entry with uninitialized key (caller will set it)
+        const new_entry = KeyValuePair{
+            .key = Payload{ .str = Str.init(key) }, // Temporary, caller will replace
+            .value = Payload{ .nil = void{} }, // Temporary, caller will replace
+        };
+
+        if (current_zig.minor == 14) {
+            try self.entries.append(new_entry);
+        } else {
+            try self.entries.append(self.allocator, new_entry);
+        }
+
+        const last_entry = &self.entries.items[self.entries.items.len - 1];
+        const key_str_ptr: *[]const u8 = @constCast(&last_entry.key.str.str);
+        return .{
+            .found_existing = false,
+            .key_ptr = key_str_ptr,
+            .value_ptr = &last_entry.value,
+        };
+    }
+
+    /// Ensure capacity for at least the specified number of entries
+    pub fn ensureTotalCapacity(self: *Self, new_capacity: u32) !void {
+        if (current_zig.minor == 14) {
+            try self.entries.ensureTotalCapacity(new_capacity);
+        } else {
+            try self.entries.ensureTotalCapacity(self.allocator, new_capacity);
+        }
+    }
+
+    /// Get an iterator over map entries
+    pub fn iterator(self: Self) Iterator {
+        return Iterator{
+            .items = self.entries.items,
+            .index = 0,
+        };
+    }
+};
 
 /// Entity to store msgpack
 ///
@@ -273,8 +682,16 @@ pub const Payload = union(enum) {
         return self.arr.len;
     }
 
-    /// get map's element
+    /// get map's element by string key (backward compatible)
     pub fn mapGet(self: Payload, key: []const u8) !?Payload {
+        if (self != .map) {
+            return Error.NotMap;
+        }
+        return self.map.getByString(key);
+    }
+
+    /// get map's element by Payload key (supports any key type)
+    pub fn mapGetGeneric(self: Payload, key: Payload) !?Payload {
         if (self != .map) {
             return Error.NotMap;
         }
@@ -289,22 +706,22 @@ pub const Payload = union(enum) {
         self.arr[index] = val;
     }
 
-    /// put a new element to map payload
+    /// put a new element to map payload with string key (backward compatible)
     pub fn mapPut(self: *Payload, key: []const u8, val: Payload) !void {
         if (self.* != .map) {
             return Error.NotMap;
         }
+        try self.map.putString(key, val);
+    }
 
-        // Optimization: Use getOrPut to reduce from two hash lookups to one
-        const entry = try self.map.getOrPut(key);
-        if (!entry.found_existing) {
-            // New key: allocate and copy
-            const new_key = try self.map.allocator.alloc(u8, key.len);
-            errdefer self.map.allocator.free(new_key);
-            @memcpy(new_key, key);
-            entry.key_ptr.* = new_key;
+    /// put a new element to map payload with Payload key (supports any key type)
+    /// Note: The key Payload will be stored directly, caller is responsible for
+    /// managing key's memory if needed (e.g., for str/bin/ext types)
+    pub fn mapPutGeneric(self: *Payload, key: Payload, val: Payload) !void {
+        if (self.* != .map) {
+            return Error.NotMap;
         }
-        entry.value_ptr.* = val;
+        try self.map.put(key, val);
     }
 
     /// get a NIL payload
@@ -464,14 +881,19 @@ pub const Payload = union(enum) {
                 .map => |map| {
                     var map_copy = map;
                     defer map_copy.deinit();
-                    var iter = map_copy.iterator();
-                    while (iter.next()) |entry| {
-                        defer allocator.free(entry.key_ptr.*);
+                    // Push both keys and values to stack for recursive freeing
+                    for (map_copy.entries.items) |entry| {
+                        // Push key to stack
+                        if (current_zig.minor == 14) {
+                            stack.append(entry.key) catch {};
+                        } else {
+                            stack.append(allocator, entry.key) catch {};
+                        }
                         // Push value to stack
                         if (current_zig.minor == 14) {
-                            stack.append(entry.value_ptr.*) catch {};
+                            stack.append(entry.value) catch {};
                         } else {
-                            stack.append(allocator, entry.value_ptr.*) catch {};
+                            stack.append(allocator, entry.value) catch {};
                         }
                     }
                 },
@@ -1232,9 +1654,10 @@ pub fn PackWithLimits(
                     } else {
                         return MsgPackError.MapLengthTooLong;
                     }
+                    // Write key-value pairs, key can be any Payload type
                     var itera = map.iterator();
                     while (itera.next()) |entry| {
-                        try self.writeStr(Str.init(entry.key_ptr.*));
+                        try self.write(entry.key_ptr.*);
                         try self.write(entry.value_ptr.*);
                     }
                 },
@@ -1813,7 +2236,7 @@ pub fn PackWithLimits(
 
         const MapState = struct {
             map: Map,
-            current_key: ?[]const u8,
+            current_key: ?Payload,
             remaining_pairs: usize,
         };
 
@@ -1834,15 +2257,14 @@ pub fn PackWithLimits(
                     .map => |map_state| {
                         // Free current_key if it exists (orphaned key waiting for value)
                         if (map_state.current_key) |key| {
-                            allocator.free(key);
+                            key.free(allocator);
                         }
                         // Free the map and its contents
                         var map_copy = map_state.map;
                         defer map_copy.deinit();
-                        var iter = map_copy.iterator();
-                        while (iter.next()) |entry| {
-                            allocator.free(entry.key_ptr.*);
-                            entry.value_ptr.free(allocator);
+                        for (map_copy.entries.items) |entry| {
+                            entry.key.free(allocator);
+                            entry.value.free(allocator);
                         }
                     },
                 }
@@ -2139,8 +2561,8 @@ pub fn PackWithLimits(
         inline fn fillParentContainer(
             parent: *ParseState,
             child: Payload,
-            allocator: Allocator,
-            stack: *std.ArrayList(ParseState),
+            _: Allocator,
+            _: *std.ArrayList(ParseState),
         ) !bool {
             switch (parent.container_type) {
                 .array => {
@@ -2152,13 +2574,8 @@ pub fn PackWithLimits(
                 },
 
                 .map_key => {
-                    // Child must be a string (key)
-                    if (child != .str) {
-                        child.free(allocator); // Free the invalid child first
-                        cleanupParseStack(stack, allocator);
-                        return MsgPackError.InvalidType;
-                    }
-                    parent.data.map.current_key = child.str.value();
+                    // Key can be any Payload type (not just string)
+                    parent.data.map.current_key = child;
                     parent.container_type = .map_value;
                     return false; // Still need to read value
                 },
@@ -2166,7 +2583,8 @@ pub fn PackWithLimits(
                 .map_value => {
                     var map_state = &parent.data.map;
                     const key = map_state.current_key orelse return MsgPackError.Internal;
-                    try map_state.map.put(key, child);
+                    // Use putInternal to avoid cloning already-allocated deserialized keys
+                    try map_state.map.putInternal(key, child);
                     map_state.current_key = null;
                     map_state.remaining_pairs -= 1;
 
