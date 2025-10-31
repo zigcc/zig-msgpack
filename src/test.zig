@@ -2033,7 +2033,7 @@ test "timestamp now() function" {
 
     // Test toFloat conversion
     const float_val = now_ts.toFloat();
-    const expected_float = @as(f64, @floatFromInt(now_ts.seconds)) + 
+    const expected_float = @as(f64, @floatFromInt(now_ts.seconds)) +
         @as(f64, @floatFromInt(now_ts.nanoseconds)) / 1_000_000_000.0;
     try expect(@abs(float_val - expected_float) < 0.000000001);
 
