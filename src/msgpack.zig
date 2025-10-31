@@ -238,29 +238,121 @@ pub const KeyValuePair = struct {
     value: Payload,
 };
 
+/// Compute hash for Payload (used for HashMap)
+/// Note: For performance, consider using simple types as map keys (int, uint, str)
+fn payloadHash(payload: Payload) u64 {
+    return payloadHashDepth(payload, 0);
+}
+
+/// Internal helper for hashing with depth tracking to prevent infinite recursion
+fn payloadHashDepth(payload: Payload, depth: usize) u64 {
+    // Prevent excessive recursion for deeply nested structures
+    const MAX_DEPTH = 100;
+    if (depth > MAX_DEPTH) {
+        return 0;
+    }
+
+    const Wyhash = std.hash.Wyhash;
+
+    return switch (payload) {
+        .nil => 0,
+        .bool => |v| if (v) 1 else 0,
+        .int => |v| @bitCast(@as(i64, v)),
+        .uint => |v| v,
+        .float => |v| @bitCast(v),
+        .timestamp => |t| {
+            var h = Wyhash.init(0);
+            h.update(std.mem.asBytes(&t.seconds));
+            h.update(std.mem.asBytes(&t.nanoseconds));
+            return h.final();
+        },
+        .str => |s| {
+            return Wyhash.hash(0, s.value());
+        },
+        .bin => |b| {
+            return Wyhash.hash(0, b.value());
+        },
+        .ext => |e| {
+            var h = Wyhash.init(0);
+            h.update(std.mem.asBytes(&e.type));
+            h.update(e.data);
+            return h.final();
+        },
+        .arr => |arr| {
+            var h = Wyhash.init(0);
+            h.update(std.mem.asBytes(&arr.len));
+            for (arr) |item| {
+                const item_hash = payloadHashDepth(item, depth + 1);
+                h.update(std.mem.asBytes(&item_hash));
+            }
+            return h.final();
+        },
+        .map => |m| {
+            var h = Wyhash.init(0);
+            const count = m.count();
+            h.update(std.mem.asBytes(&count));
+            // Hash map entries (order-independent by XOR)
+            var hash_acc: u64 = 0;
+            var it = m.map.iterator();
+            while (it.next()) |entry| {
+                const key_hash = payloadHashDepth(entry.key_ptr.*, depth + 1);
+                const value_hash = payloadHashDepth(entry.value_ptr.*, depth + 1);
+                // XOR makes hash order-independent
+                hash_acc ^= key_hash ^ value_hash;
+            }
+            h.update(std.mem.asBytes(&hash_acc));
+            return h.final();
+        },
+    };
+}
+
+/// Detect best SIMD vector size at compile time based on target features
+/// Returns the optimal chunk size for SIMD operations
+fn detectSIMDChunkSize() comptime_int {
+    // Check target features for best available SIMD support
+    const has_avx512 = std.Target.x86.featureSetHas(builtin.cpu.features, .avx512f);
+    const has_avx2 = std.Target.x86.featureSetHas(builtin.cpu.features, .avx2);
+    const has_sse2 = std.Target.x86.featureSetHas(builtin.cpu.features, .sse2);
+    const has_neon = builtin.cpu.arch.isAARCH64();
+
+    // Prefer larger vectors for better throughput
+    if (has_avx512) {
+        return 64; // AVX-512: 512 bits = 64 bytes
+    } else if (has_avx2) {
+        return 32; // AVX2: 256 bits = 32 bytes
+    } else if (has_sse2 or has_neon) {
+        return 16; // SSE2/NEON: 128 bits = 16 bytes
+    } else {
+        return 0; // No SIMD support, use scalar only
+    }
+}
+
 /// SIMD-optimized string equality comparison
-/// Uses vector operations for strings >= 16 bytes, falls back to scalar for shorter strings
+/// Automatically uses the best available SIMD instruction set (AVX-512, AVX2, SSE2, or NEON)
+/// For strings >= chunk_size bytes, uses vector operations; otherwise falls back to scalar
 fn stringEqualSIMD(a: []const u8, b: []const u8) bool {
     if (a.len != b.len) return false;
     if (a.len == 0) return true;
 
     const len = a.len;
 
-    // For very short strings, scalar comparison is faster (avoid SIMD setup overhead)
-    if (len < 16) {
+    // Detect optimal SIMD chunk size at compile time
+    const chunk_size = comptime detectSIMDChunkSize();
+
+    // For very short strings or no SIMD support, use scalar comparison
+    if (chunk_size == 0 or len < chunk_size) {
         return std.mem.eql(u8, a, b);
     }
 
-    // Use 16-byte SIMD vectors (supported on SSE2/NEON - universally available)
-    const Vec16 = @Vector(16, u8);
-    const chunk_size = 16;
+    // Use compile-time detected vector size
+    const VecType = @Vector(chunk_size, u8);
 
     var i: usize = 0;
 
-    // Process 16-byte chunks with SIMD
+    // Process chunks with SIMD
     while (i + chunk_size <= len) : (i += chunk_size) {
-        const vec_a: Vec16 = a[i..][0..chunk_size].*;
-        const vec_b: Vec16 = b[i..][0..chunk_size].*;
+        const vec_a: VecType = a[i..][0..chunk_size].*;
+        const vec_b: VecType = b[i..][0..chunk_size].*;
 
         // Compare vectors: returns a vector of bools
         const cmp_result = vec_a == vec_b;
@@ -283,6 +375,36 @@ fn stringEqualSIMD(a: []const u8, b: []const u8) bool {
 /// SIMD-optimized binary data equality comparison (same as string)
 inline fn binaryEqualSIMD(a: []const u8, b: []const u8) bool {
     return stringEqualSIMD(a, b);
+}
+
+/// SIMD-optimized memory copy for binary data
+/// Uses larger vector operations when available for better throughput
+/// Note: For small copies, std.mem.copy is likely faster due to overhead
+fn memcpySIMD(dest: []u8, src: []const u8) void {
+    std.debug.assert(dest.len >= src.len);
+
+    const len = src.len;
+    const chunk_size = comptime detectSIMDChunkSize();
+
+    // For small copies or no SIMD, use standard memcpy
+    if (chunk_size == 0 or len < chunk_size * 2) {
+        @memcpy(dest[0..len], src);
+        return;
+    }
+
+    const VecType = @Vector(chunk_size, u8);
+    var i: usize = 0;
+
+    // Process chunks with SIMD
+    while (i + chunk_size <= len) : (i += chunk_size) {
+        const vec: VecType = src[i..][0..chunk_size].*;
+        dest[i..][0..chunk_size].* = vec;
+    }
+
+    // Copy remaining bytes
+    if (i < len) {
+        @memcpy(dest[i..len], src[i..]);
+    }
 }
 
 /// Helper to check if two Payloads are equal (deep equality)
@@ -334,18 +456,16 @@ fn payloadEqualDepth(a: Payload, b: Payload, depth: usize) bool {
             if (av.count() != bv.count()) return false;
 
             // Check that all entries in 'a' exist in 'b' with same values
-            for (av.entries.items) |a_entry| {
-                var found = false;
-                for (bv.entries.items) |b_entry| {
-                    if (payloadEqualDepth(a_entry.key, b_entry.key, depth + 1)) {
-                        if (!payloadEqualDepth(a_entry.value, b_entry.value, depth + 1)) {
-                            return false; // Key found but value differs
-                        }
-                        found = true;
-                        break;
+            var it = av.map.iterator();
+            while (it.next()) |a_entry| {
+                // Look up the key in map b
+                if (bv.map.get(a_entry.key_ptr.*)) |b_value| {
+                    if (!payloadEqualDepth(a_entry.value_ptr.*, b_value, depth + 1)) {
+                        return false; // Key found but value differs
                     }
+                } else {
+                    return false; // Key not found in b
                 }
-                if (!found) return false; // Key not found in b
             }
             return true;
         },
@@ -375,271 +495,188 @@ fn clonePayload(payload: Payload, allocator: Allocator) !Payload {
             errdefer new_map.deinit();
 
             // Clone all entries
-            for (m.entries.items) |entry| {
-                const cloned_key = try clonePayload(entry.key, allocator);
+            var it = m.map.iterator();
+            while (it.next()) |entry| {
+                const cloned_key = try clonePayload(entry.key_ptr.*, allocator);
                 errdefer cloned_key.free(allocator);
-                const cloned_value = try clonePayload(entry.value, allocator);
+                const cloned_value = try clonePayload(entry.value_ptr.*, allocator);
                 errdefer cloned_value.free(allocator);
 
-                // Directly append without calling put (avoid recursive error set issues)
-                if (current_zig.minor == 14) {
-                    try new_map.entries.append(KeyValuePair{ .key = cloned_key, .value = cloned_value });
-                } else {
-                    try new_map.entries.append(allocator, KeyValuePair{ .key = cloned_key, .value = cloned_value });
-                }
+                // Use putInternal to insert without additional cloning
+                try new_map.putInternal(cloned_key, cloned_value);
             }
             return Payload{ .map = new_map };
         },
     };
 }
 
+/// HashMap context for Payload keys
+const PayloadHashContext = struct {
+    pub fn hash(_: PayloadHashContext, key: Payload) u64 {
+        return payloadHash(key);
+    }
+
+    pub fn eql(_: PayloadHashContext, a: Payload, b: Payload) bool {
+        return payloadEqual(a, b);
+    }
+};
+
+/// Internal HashMap type alias for cleaner code
+const PayloadHashMap = std.HashMap(Payload, Payload, PayloadHashContext, std.hash_map.default_max_load_percentage);
+
 /// Map type supporting any Payload as key
+/// Now uses HashMap for O(1) average case lookups instead of O(n) linear search
 pub const Map = struct {
-    entries: std.ArrayList(KeyValuePair),
+    map: PayloadHashMap,
     allocator: Allocator,
 
     const Self = @This();
 
     /// Iterator for Map entries
     pub const Iterator = struct {
-        items: []KeyValuePair,
-        index: usize,
+        inner: PayloadHashMap.Iterator,
 
         pub const Entry = struct {
-            key_ptr: *Payload,
+            key_ptr: *const Payload,
             value_ptr: *Payload,
         };
 
         pub fn next(self: *Iterator) ?Entry {
-            if (self.index >= self.items.len) {
-                return null;
-            }
-            const entry = &self.items[self.index];
-            self.index += 1;
+            const entry = self.inner.next() orelse return null;
             return Entry{
-                .key_ptr = &entry.key,
-                .value_ptr = &entry.value,
+                .key_ptr = entry.key_ptr,
+                .value_ptr = entry.value_ptr,
             };
         }
     };
 
     pub fn init(allocator: Allocator) Self {
-        if (current_zig.minor == 14) {
-            return Self{
-                .entries = std.ArrayList(KeyValuePair).init(allocator),
-                .allocator = allocator,
-            };
-        } else {
-            return Self{
-                .entries = std.ArrayList(KeyValuePair){},
-                .allocator = allocator,
-            };
-        }
+        return Self{
+            .map = PayloadHashMap.init(allocator),
+            .allocator = allocator,
+        };
     }
 
     pub fn deinit(self: *Self) void {
-        if (current_zig.minor == 14) {
-            self.entries.deinit();
-        } else {
-            self.entries.deinit(self.allocator);
-        }
+        self.map.deinit();
     }
 
     pub fn count(self: Self) usize {
-        return self.entries.items.len;
+        return self.map.count();
     }
 
-    /// Get value by Payload key (optimized with fast path for simple types)
+    /// Get value by Payload key
     pub fn get(self: Self, key: Payload) ?Payload {
-        // Fast path for simple types (avoid function call overhead)
-        // Most common keys are int/uint/bool, so optimize for these first
-        switch (key) {
-            .int => |kv| {
-                for (self.entries.items) |entry| {
-                    if (entry.key == .int and entry.key.int == kv) {
-                        return entry.value;
-                    }
-                }
-                return null;
-            },
-            .uint => |kv| {
-                for (self.entries.items) |entry| {
-                    if (entry.key == .uint and entry.key.uint == kv) {
-                        return entry.value;
-                    }
-                }
-                return null;
-            },
-            .bool => |kv| {
-                for (self.entries.items) |entry| {
-                    if (entry.key == .bool and entry.key.bool == kv) {
-                        return entry.value;
-                    }
-                }
-                return null;
-            },
-            .nil => {
-                for (self.entries.items) |entry| {
-                    if (entry.key == .nil) {
-                        return entry.value;
-                    }
-                }
-                return null;
-            },
-            .float => |kv| {
-                for (self.entries.items) |entry| {
-                    if (entry.key == .float and entry.key.float == kv) {
-                        return entry.value;
-                    }
-                }
-                return null;
-            },
-            // Slow path for complex types (str, bin, array, map, ext, timestamp)
-            else => {
-                for (self.entries.items) |entry| {
-                    if (payloadEqual(entry.key, key)) {
-                        return entry.value;
-                    }
-                }
-                return null;
-            },
-        }
+        return self.map.get(key);
     }
 
     /// Get pointer to value by Payload key
     pub fn getPtr(self: Self, key: Payload) ?*Payload {
-        for (self.entries.items) |*entry| {
-            if (payloadEqual(entry.key, key)) {
-                return &entry.value;
-            }
-        }
-        return null;
+        return self.map.getPtr(key);
     }
 
     /// Get value by string key (for backward compatibility)
-    /// Optimized: SIMD-accelerated string comparison, skipping non-string entries
     pub fn getByString(self: Self, key: []const u8) ?Payload {
-        // Fast path: directly compare string keys without creating Payload
-        for (self.entries.items) |entry| {
-            // Skip non-string keys immediately
-            if (entry.key != .str) continue;
-
-            // SIMD-optimized string comparison
-            if (stringEqualSIMD(entry.key.str.value(), key)) {
-                return entry.value;
-            }
-        }
-        return null;
+        const key_payload = Payload{ .str = Str.init(key) };
+        return self.map.get(key_payload);
     }
 
     /// Put or update a key-value pair (internal, no cloning)
     /// Used by deserialization where keys are already allocated
     fn putInternal(self: *Self, key: Payload, value: Payload) !void {
-        // Check if key already exists
-        for (self.entries.items) |*entry| {
-            if (payloadEqual(entry.key, key)) {
-                // Update existing value, free old value and key
-                entry.key.free(self.allocator);
-                entry.value = value;
-                entry.key = key;
-                return;
-            }
-        }
-
-        // Add new entry without cloning
-        if (current_zig.minor == 14) {
-            try self.entries.append(KeyValuePair{ .key = key, .value = value });
+        const gop = try self.map.getOrPut(key);
+        if (gop.found_existing) {
+            // Key already exists, free the old key and update value
+            gop.key_ptr.free(self.allocator);
+            gop.key_ptr.* = key;
+            gop.value_ptr.* = value;
         } else {
-            try self.entries.append(self.allocator, KeyValuePair{ .key = key, .value = value });
+            // New entry, set key and value
+            gop.key_ptr.* = key;
+            gop.value_ptr.* = value;
         }
     }
 
     /// Put or update a key-value pair
     /// Note: The key will be deep-cloned to ensure the map owns it
+    /// Optimization: Uses getOrPut to hash key only once instead of twice
     pub fn put(self: *Self, key: Payload, value: Payload) !void {
-        // Clone the key to ensure map owns it
-        const cloned_key = try clonePayload(key, self.allocator);
-        errdefer cloned_key.free(self.allocator);
-
-        // Use internal put (which won't clone again)
-        try self.putInternal(cloned_key, value);
+        // Use getOrPut to hash key only once (instead of getPtr + put)
+        const gop = try self.map.getOrPut(key);
+        if (gop.found_existing) {
+            // Key exists, just update the value without cloning
+            gop.value_ptr.* = value;
+        } else {
+            // Key doesn't exist, clone it and insert
+            const cloned_key = try clonePayload(key, self.allocator);
+            errdefer cloned_key.free(self.allocator);
+            gop.key_ptr.* = cloned_key;
+            gop.value_ptr.* = value;
+        }
     }
 
     /// Put or update with string key (for backward compatibility)
     /// This allocates memory for the key string
+    /// Optimization: Uses getOrPut to hash key only once instead of twice
     pub fn putString(self: *Self, key: []const u8, value: Payload) !void {
-        // Check if key already exists (as string)
-        for (self.entries.items) |*entry| {
-            if (entry.key == .str and std.mem.eql(u8, entry.key.str.value(), key)) {
-                // Update existing value
-                entry.value = value;
-                return;
-            }
-        }
+        const key_payload = Payload{ .str = Str.init(key) };
 
-        // Add new entry with allocated key string
-        const new_key = try self.allocator.alloc(u8, key.len);
-        errdefer self.allocator.free(new_key);
-        @memcpy(new_key, key);
-
-        const key_payload_owned = Payload{ .str = Str.init(new_key) };
-        if (current_zig.minor == 14) {
-            try self.entries.append(KeyValuePair{ .key = key_payload_owned, .value = value });
+        // Use getOrPut to hash key only once (instead of getPtr + put)
+        const gop = try self.map.getOrPut(key_payload);
+        if (gop.found_existing) {
+            // Key exists, just update the value
+            gop.value_ptr.* = value;
         } else {
-            try self.entries.append(self.allocator, KeyValuePair{ .key = key_payload_owned, .value = value });
+            // Key doesn't exist, allocate and insert
+            const new_key = try self.allocator.alloc(u8, key.len);
+            errdefer self.allocator.free(new_key);
+            @memcpy(new_key, key);
+
+            gop.key_ptr.* = Payload{ .str = Str.init(new_key) };
+            gop.value_ptr.* = value;
         }
     }
 
     /// Get or create an entry, returning pointers to key and value
     pub fn getOrPut(self: *Self, key: []const u8) !struct { found_existing: bool, key_ptr: *[]const u8, value_ptr: *Payload } {
-        // Look for existing entry
-        for (self.entries.items) |*entry| {
-            if (entry.key == .str and std.mem.eql(u8, entry.key.str.value(), key)) {
-                // Cast to mutable for API compatibility
-                const key_str_ptr: *[]const u8 = @constCast(&entry.key.str.str);
-                return .{
-                    .found_existing = true,
-                    .key_ptr = key_str_ptr,
-                    .value_ptr = &entry.value,
-                };
-            }
-        }
+        const key_payload = Payload{ .str = Str.init(key) };
 
-        // Create new entry with uninitialized key (caller will set it)
-        const new_entry = KeyValuePair{
-            .key = Payload{ .str = Str.init(key) }, // Temporary, caller will replace
-            .value = Payload{ .nil = void{} }, // Temporary, caller will replace
-        };
-
-        if (current_zig.minor == 14) {
-            try self.entries.append(new_entry);
+        const gop = try self.map.getOrPut(key_payload);
+        if (gop.found_existing) {
+            // Entry exists, return pointers
+            const key_str_ptr: *[]const u8 = @constCast(&gop.key_ptr.str.str);
+            return .{
+                .found_existing = true,
+                .key_ptr = key_str_ptr,
+                .value_ptr = gop.value_ptr,
+            };
         } else {
-            try self.entries.append(self.allocator, new_entry);
-        }
+            // New entry, allocate key and initialize
+            const new_key = try self.allocator.alloc(u8, key.len);
+            errdefer self.allocator.free(new_key);
+            @memcpy(new_key, key);
 
-        const last_entry = &self.entries.items[self.entries.items.len - 1];
-        const key_str_ptr: *[]const u8 = @constCast(&last_entry.key.str.str);
-        return .{
-            .found_existing = false,
-            .key_ptr = key_str_ptr,
-            .value_ptr = &last_entry.value,
-        };
+            gop.key_ptr.* = Payload{ .str = Str.init(new_key) };
+            gop.value_ptr.* = Payload{ .nil = void{} };
+
+            const key_str_ptr: *[]const u8 = @constCast(&gop.key_ptr.str.str);
+            return .{
+                .found_existing = false,
+                .key_ptr = key_str_ptr,
+                .value_ptr = gop.value_ptr,
+            };
+        }
     }
 
     /// Ensure capacity for at least the specified number of entries
     pub fn ensureTotalCapacity(self: *Self, new_capacity: u32) !void {
-        if (current_zig.minor == 14) {
-            try self.entries.ensureTotalCapacity(new_capacity);
-        } else {
-            try self.entries.ensureTotalCapacity(self.allocator, new_capacity);
-        }
+        try self.map.ensureTotalCapacity(new_capacity);
     }
 
     /// Get an iterator over map entries
-    pub fn iterator(self: Self) Iterator {
+    pub fn iterator(self: *const Self) Iterator {
         return Iterator{
-            .items = self.entries.items,
-            .index = 0,
+            .inner = self.map.iterator(),
         };
     }
 };
@@ -841,24 +878,95 @@ pub const Payload = union(enum) {
     /// free all memory for this payload and sub payloads
     /// the allocator is payload's allocator
     /// This is an iterative implementation that avoids stack overflow from deep nesting
+    /// Optimization: Uses stack-allocated buffer for shallow structures to avoid heap allocation during free
     pub fn free(self: Payload, allocator: Allocator) void {
-        // Use explicit stack for iterative freeing
-        var stack = if (current_zig.minor == 14)
-            std.ArrayList(Payload).init(allocator)
-        else
-            std.ArrayList(Payload){};
-        defer if (current_zig.minor == 14) stack.deinit() else stack.deinit(allocator);
+        // Use stack-allocated buffer for shallow structures (up to 256 items)
+        // This avoids heap allocation during memory cleanup for most common cases
+        const STACK_BUFFER_SIZE = 256;
+        var stack_buffer: [STACK_BUFFER_SIZE]Payload = undefined;
+        var stack_len: usize = 0;
+
+        // Fallback to heap if we exceed stack buffer
+        var heap_stack: ?std.ArrayList(Payload) = null;
+        defer if (heap_stack) |*hs| {
+            if (current_zig.minor == 14) {
+                hs.deinit();
+            } else {
+                hs.deinit(allocator);
+            }
+        };
+
+        // Helper to push to stack (tries stack first, falls back to heap)
+        const pushPayload = struct {
+            fn push(
+                buffer: []Payload,
+                len: *usize,
+                heap: *?std.ArrayList(Payload),
+                alloc: Allocator,
+                payload: Payload,
+            ) void {
+                if (heap.*) |*h| {
+                    // Already using heap
+                    if (current_zig.minor == 14) {
+                        h.append(payload) catch {};
+                    } else {
+                        h.append(alloc, payload) catch {};
+                    }
+                } else if (len.* < buffer.len) {
+                    // Stack buffer has space
+                    buffer[len.*] = payload;
+                    len.* += 1;
+                } else {
+                    // Stack buffer full, migrate to heap
+                    var new_heap = if (current_zig.minor == 14)
+                        std.ArrayList(Payload).init(alloc)
+                    else
+                        std.ArrayList(Payload){};
+
+                    // Copy existing items from stack buffer to heap
+                    for (buffer[0..len.*]) |item| {
+                        if (current_zig.minor == 14) {
+                            new_heap.append(item) catch return;
+                        } else {
+                            new_heap.append(alloc, item) catch return;
+                        }
+                    }
+                    // Add new item
+                    if (current_zig.minor == 14) {
+                        new_heap.append(payload) catch return;
+                    } else {
+                        new_heap.append(alloc, payload) catch return;
+                    }
+                    heap.* = new_heap;
+                    len.* = 0; // Clear stack buffer
+                }
+            }
+        }.push;
+
+        // Helper to pop from stack
+        const popPayload = struct {
+            fn pop(
+                buffer: []Payload,
+                len: *usize,
+                heap: *?std.ArrayList(Payload),
+            ) ?Payload {
+                if (heap.*) |*h| {
+                    if (h.items.len > 0) {
+                        return h.pop();
+                    }
+                }
+                if (len.* > 0) {
+                    len.* -= 1;
+                    return buffer[len.*];
+                }
+                return null;
+            }
+        }.pop;
 
         // Start with self
-        if (current_zig.minor == 14) {
-            stack.append(self) catch return;
-        } else {
-            stack.append(allocator, self) catch return;
-        }
+        pushPayload(&stack_buffer, &stack_len, &heap_stack, allocator, self);
 
-        while (stack.items.len > 0) {
-            const payload_item = stack.pop() orelse break;
-
+        while (popPayload(&stack_buffer, &stack_len, &heap_stack)) |payload_item| {
             switch (payload_item) {
                 .str => |s| allocator.free(s.value()),
                 .bin => |b| allocator.free(b.value()),
@@ -870,11 +978,7 @@ pub const Payload = union(enum) {
                     var i = arr.len;
                     while (i > 0) {
                         i -= 1;
-                        if (current_zig.minor == 14) {
-                            stack.append(arr[i]) catch {};
-                        } else {
-                            stack.append(allocator, arr[i]) catch {};
-                        }
+                        pushPayload(&stack_buffer, &stack_len, &heap_stack, allocator, arr[i]);
                     }
                 },
 
@@ -882,19 +986,10 @@ pub const Payload = union(enum) {
                     var map_copy = map;
                     defer map_copy.deinit();
                     // Push both keys and values to stack for recursive freeing
-                    for (map_copy.entries.items) |entry| {
-                        // Push key to stack
-                        if (current_zig.minor == 14) {
-                            stack.append(entry.key) catch {};
-                        } else {
-                            stack.append(allocator, entry.key) catch {};
-                        }
-                        // Push value to stack
-                        if (current_zig.minor == 14) {
-                            stack.append(entry.value) catch {};
-                        } else {
-                            stack.append(allocator, entry.value) catch {};
-                        }
+                    var it = map_copy.map.iterator();
+                    while (it.next()) |entry| {
+                        pushPayload(&stack_buffer, &stack_len, &heap_stack, allocator, entry.key_ptr.*);
+                        pushPayload(&stack_buffer, &stack_len, &heap_stack, allocator, entry.value_ptr.*);
                     }
                 },
 
@@ -1357,50 +1452,39 @@ pub fn PackWithLimits(
             try self.writeFixStrValue(str);
         }
 
+        /// Generic string writer for different size formats
+        /// Reduces code duplication for STR8/16/32
+        inline fn writeStrGeneric(self: Self, comptime LenType: type, comptime marker: Markers, str: []const u8) !void {
+            const max_len = std.math.maxInt(LenType);
+            if (str.len > max_len) {
+                return MsgPackError.StrDataLengthTooLong;
+            }
+            try self.writeTypeMarker(marker);
+            try self.writeDataWithLength(LenType, str);
+        }
+
         inline fn writeStr8Value(self: Self, str: []const u8) !void {
             try self.writeDataWithLength(u8, str);
         }
 
-        /// write str8
         fn writeStr8(self: Self, str: []const u8) !void {
-            const len = str.len;
-            if (len > MAX_UINT8) {
-                return MsgPackError.StrDataLengthTooLong;
-            }
-
-            try self.writeTypeMarker(.STR8);
-            try self.writeStr8Value(str);
+            try self.writeStrGeneric(u8, .STR8, str);
         }
 
         inline fn writeStr16Value(self: Self, str: []const u8) !void {
             try self.writeDataWithLength(u16, str);
         }
 
-        /// write str16
         fn writeStr16(self: Self, str: []const u8) !void {
-            const len = str.len;
-            if (len > MAX_UINT16) {
-                return MsgPackError.StrDataLengthTooLong;
-            }
-
-            try self.writeTypeMarker(.STR16);
-
-            try self.writeStr16Value(str);
+            try self.writeStrGeneric(u16, .STR16, str);
         }
 
         inline fn writeStr32Value(self: Self, str: []const u8) !void {
             try self.writeDataWithLength(u32, str);
         }
 
-        /// write str32
         fn writeStr32(self: Self, str: []const u8) !void {
-            const len = str.len;
-            if (len > MAX_UINT32) {
-                return MsgPackError.StrDataLengthTooLong;
-            }
-
-            try self.writeTypeMarker(.STR32);
-            try self.writeStr32Value(str);
+            try self.writeStrGeneric(u32, .STR32, str);
         }
 
         /// write str
@@ -1417,40 +1501,27 @@ pub fn PackWithLimits(
             }
         }
 
-        /// write bin8
+        /// Generic binary writer for different size formats
+        /// Reduces code duplication for BIN8/16/32
+        inline fn writeBinGeneric(self: Self, comptime LenType: type, comptime marker: Markers, bin: []const u8) !void {
+            const max_len = std.math.maxInt(LenType);
+            if (bin.len > max_len) {
+                return MsgPackError.BinDataLengthTooLong;
+            }
+            try self.writeTypeMarker(marker);
+            try self.writeDataWithLength(LenType, bin);
+        }
+
         fn writeBin8(self: Self, bin: []const u8) !void {
-            const len = bin.len;
-            if (len > MAX_UINT8) {
-                return MsgPackError.BinDataLengthTooLong;
-            }
-
-            try self.writeTypeMarker(.BIN8);
-
-            try self.writeStr8Value(bin);
+            try self.writeBinGeneric(u8, .BIN8, bin);
         }
 
-        /// write bin16
         fn writeBin16(self: Self, bin: []const u8) !void {
-            const len = bin.len;
-            if (len > MAX_UINT16) {
-                return MsgPackError.BinDataLengthTooLong;
-            }
-
-            try self.writeTypeMarker(.BIN16);
-
-            try self.writeStr16Value(bin);
+            try self.writeBinGeneric(u16, .BIN16, bin);
         }
 
-        /// write bin32
         fn writeBin32(self: Self, bin: []const u8) !void {
-            const len = bin.len;
-            if (len > MAX_UINT32) {
-                return MsgPackError.BinDataLengthTooLong;
-            }
-
-            try self.writeTypeMarker(.BIN32);
-
-            try self.writeStr32Value(bin);
+            try self.writeBinGeneric(u32, .BIN32, bin);
         }
 
         /// write bin
@@ -1470,73 +1541,62 @@ pub fn PackWithLimits(
             try self.writeData(ext.data);
         }
 
-        fn writeFixExt1(self: Self, ext: EXT) !void {
-            if (ext.data.len != FIXEXT1_LEN) {
+        /// Generic fixed-size extension writer
+        /// Reduces code duplication for FIXEXT1/2/4/8/16
+        inline fn writeFixExtGeneric(self: Self, comptime expected_len: usize, comptime marker: Markers, ext: EXT) !void {
+            if (ext.data.len != expected_len) {
                 return MsgPackError.ExtTypeLength;
             }
-            try self.writeTypeMarker(.FIXEXT1);
-
+            try self.writeTypeMarker(marker);
             try self.writeExtValue(ext);
+        }
+
+        fn writeFixExt1(self: Self, ext: EXT) !void {
+            try self.writeFixExtGeneric(FIXEXT1_LEN, .FIXEXT1, ext);
         }
 
         fn writeFixExt2(self: Self, ext: EXT) !void {
-            if (ext.data.len != FIXEXT2_LEN) {
-                return MsgPackError.ExtTypeLength;
-            }
-            try self.writeTypeMarker(.FIXEXT2);
-            try self.writeExtValue(ext);
+            try self.writeFixExtGeneric(FIXEXT2_LEN, .FIXEXT2, ext);
         }
 
         fn writeFixExt4(self: Self, ext: EXT) !void {
-            if (ext.data.len != FIXEXT4_LEN) {
-                return MsgPackError.ExtTypeLength;
-            }
-            try self.writeTypeMarker(.FIXEXT4);
-            try self.writeExtValue(ext);
+            try self.writeFixExtGeneric(FIXEXT4_LEN, .FIXEXT4, ext);
         }
 
         fn writeFixExt8(self: Self, ext: EXT) !void {
-            if (ext.data.len != FIXEXT8_LEN) {
-                return MsgPackError.ExtTypeLength;
-            }
-            try self.writeTypeMarker(.FIXEXT8);
-            try self.writeExtValue(ext);
+            try self.writeFixExtGeneric(FIXEXT8_LEN, .FIXEXT8, ext);
         }
 
         fn writeFixExt16(self: Self, ext: EXT) !void {
-            if (ext.data.len != FIXEXT16_LEN) {
+            try self.writeFixExtGeneric(FIXEXT16_LEN, .FIXEXT16, ext);
+        }
+
+        /// Generic extension writer for variable-size formats
+        /// Reduces code duplication for EXT8/16/32
+        inline fn writeExtGeneric(self: Self, comptime LenType: type, comptime marker: Markers, ext: EXT) !void {
+            const max_len = std.math.maxInt(LenType);
+            if (ext.data.len > max_len) {
                 return MsgPackError.ExtTypeLength;
             }
-            try self.writeTypeMarker(.FIXEXT16);
+            try self.writeTypeMarker(marker);
+
+            // Write length using appropriate size
+            const len_val: LenType = @intCast(ext.data.len);
+            try self.writeIntValue(LenType, len_val);
+
             try self.writeExtValue(ext);
         }
 
         fn writeExt8(self: Self, ext: EXT) !void {
-            if (ext.data.len > std.math.maxInt(u8)) {
-                return MsgPackError.ExtTypeLength;
-            }
-
-            try self.writeTypeMarker(.EXT8);
-            try self.writeU8Value(@intCast(ext.data.len));
-            try self.writeExtValue(ext);
+            try self.writeExtGeneric(u8, .EXT8, ext);
         }
 
         fn writeExt16(self: Self, ext: EXT) !void {
-            if (ext.data.len > std.math.maxInt(u16)) {
-                return MsgPackError.ExtTypeLength;
-            }
-            try self.writeTypeMarker(.EXT16);
-            try self.writeU16Value(@intCast(ext.data.len));
-            try self.writeExtValue(ext);
+            try self.writeExtGeneric(u16, .EXT16, ext);
         }
 
         fn writeExt32(self: Self, ext: EXT) !void {
-            if (ext.data.len > std.math.maxInt(u32)) {
-                return MsgPackError.ExtTypeLength;
-            }
-            try self.writeTypeMarker(.EXT32);
-            try self.writeU32Value(@intCast(ext.data.len));
-            try self.writeExtValue(ext);
+            try self.writeExtGeneric(u32, .EXT32, ext);
         }
 
         fn writeExt(self: Self, ext: EXT) !void {
@@ -1967,25 +2027,23 @@ pub fn PackWithLimits(
             return str;
         }
 
-        fn readStr8Value(self: Self, allocator: Allocator) ![]const u8 {
-            const len = try self.readV8Value();
-            const str = try self.readData(allocator, len);
+        /// Generic string reader for different size formats
+        /// Reduces code duplication for STR8/16/32
+        inline fn readStrValueGeneric(self: Self, comptime LenType: type, allocator: Allocator) ![]const u8 {
+            const len = try self.readTypedInt(LenType);
+            return try self.readData(allocator, len);
+        }
 
-            return str;
+        fn readStr8Value(self: Self, allocator: Allocator) ![]const u8 {
+            return try self.readStrValueGeneric(u8, allocator);
         }
 
         fn readStr16Value(self: Self, allocator: Allocator) ![]const u8 {
-            const len = try self.readU16Value();
-            const str = try self.readData(allocator, len);
-
-            return str;
+            return try self.readStrValueGeneric(u16, allocator);
         }
 
         fn readStr32Value(self: Self, allocator: Allocator) ![]const u8 {
-            const len = try self.readU32Value();
-            const str = try self.readData(allocator, len);
-
-            return str;
+            return try self.readStrValueGeneric(u32, allocator);
         }
 
         fn readStrValue(self: Self, marker_u8: u8, allocator: Allocator) ![]const u8 {
@@ -2015,28 +2073,24 @@ pub fn PackWithLimits(
             }
         }
 
-        fn readBin8Value(self: Self, allocator: Allocator) ![]u8 {
-            const len = try self.readV8Value();
+        /// Generic binary data reader for different size formats
+        /// Reduces code duplication for BIN8/16/32
+        inline fn readBinValueGeneric(self: Self, comptime LenType: type, allocator: Allocator) ![]u8 {
+            const len = try self.readTypedInt(LenType);
             try validateBinLength(len);
-            const bin = try self.readData(allocator, len);
+            return try self.readData(allocator, len);
+        }
 
-            return bin;
+        fn readBin8Value(self: Self, allocator: Allocator) ![]u8 {
+            return try self.readBinValueGeneric(u8, allocator);
         }
 
         fn readBin16Value(self: Self, allocator: Allocator) ![]u8 {
-            const len = try self.readU16Value();
-            try validateBinLength(len);
-            const bin = try self.readData(allocator, len);
-
-            return bin;
+            return try self.readBinValueGeneric(u16, allocator);
         }
 
         fn readBin32Value(self: Self, allocator: Allocator) ![]u8 {
-            const len = try self.readU32Value();
-            try validateBinLength(len);
-            const bin = try self.readData(allocator, len);
-
-            return bin;
+            return try self.readBinValueGeneric(u32, allocator);
         }
 
         fn readBinValue(self: Self, marker: Markers, allocator: Allocator) ![]u8 {
@@ -2262,33 +2316,45 @@ pub fn PackWithLimits(
                         // Free the map and its contents
                         var map_copy = map_state.map;
                         defer map_copy.deinit();
-                        for (map_copy.entries.items) |entry| {
-                            entry.key.free(allocator);
-                            entry.value.free(allocator);
+                        var it = map_copy.map.iterator();
+                        while (it.next()) |entry| {
+                            // Need to cast away const since we own the keys and need to free them
+                            const key_ptr_mut: *Payload = @constCast(entry.key_ptr);
+                            key_ptr_mut.free(allocator);
+                            entry.value_ptr.free(allocator);
                         }
                     },
                 }
             }
         }
 
-        /// Read array length based on marker
-        inline fn readArrayLength(self: Self, marker: Markers, marker_u8: u8) !usize {
+        /// Generic container length reader
+        /// Reduces code duplication for array and map length reading
+        inline fn readContainerLength(
+            self: Self,
+            marker: Markers,
+            marker_u8: u8,
+            comptime fix_marker: Markers,
+            comptime marker_16: Markers,
+            comptime marker_32: Markers,
+            comptime base: u8,
+        ) !usize {
             return switch (marker) {
-                .FIXARRAY => marker_u8 - FIXARRAY_BASE,
-                .ARRAY16 => try self.readU16Value(),
-                .ARRAY32 => try self.readU32Value(),
+                fix_marker => marker_u8 - base,
+                marker_16 => try self.readU16Value(),
+                marker_32 => try self.readU32Value(),
                 else => MsgPackError.InvalidType,
             };
         }
 
+        /// Read array length based on marker
+        inline fn readArrayLength(self: Self, marker: Markers, marker_u8: u8) !usize {
+            return self.readContainerLength(marker, marker_u8, .FIXARRAY, .ARRAY16, .ARRAY32, FIXARRAY_BASE);
+        }
+
         /// Read map length based on marker
         inline fn readMapLength(self: Self, marker: Markers, marker_u8: u8) !usize {
-            return switch (marker) {
-                .FIXMAP => marker_u8 - FIXMAP_BASE,
-                .MAP16 => try self.readU16Value(),
-                .MAP32 => try self.readU32Value(),
-                else => MsgPackError.InvalidType,
-            };
+            return self.readContainerLength(marker, marker_u8, .FIXMAP, .MAP16, .MAP32, FIXMAP_BASE);
         }
 
         /// Helper to append to parse stack (handles Zig version differences)
