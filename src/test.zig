@@ -2023,7 +2023,7 @@ test "timestamp now() function" {
 
     read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
-    
+
     const decoded = try p.read(allocator);
     defer decoded.free(allocator);
 
@@ -2054,48 +2054,48 @@ test "timestamp fromNanos() conversion" {
     // Test with current time
     const current_nanos = std.time.nanoTimestamp();
     const ts = msgpack.Timestamp.fromNanos(current_nanos);
-    
+
     // Verify seconds is reasonable (after 2020-01-01 and before 2100-01-01)
     const year_2020: i64 = 1577836800;
     const year_2100: i64 = 4102444800;
     try expect(ts.seconds > year_2020);
     try expect(ts.seconds < year_2100);
-    
+
     // Verify nanoseconds is in valid range
     try expect(ts.nanoseconds >= 0);
     try expect(ts.nanoseconds <= 999_999_999);
-    
+
     // Test with known values
     const test_nanos: i128 = 1704067200_123456789; // 2024-01-01 00:00:00.123456789 UTC
     const test_ts = msgpack.Timestamp.fromNanos(test_nanos);
     try expect(test_ts.seconds == 1704067200);
     try expect(test_ts.nanoseconds == 123456789);
-    
+
     // Test with negative timestamp (before Unix epoch)
     const negative_nanos: i128 = -1000000_500000000; // -1000000 seconds + 0.5 seconds
     const negative_ts = msgpack.Timestamp.fromNanos(negative_nanos);
     try expect(negative_ts.seconds == -1000001);
     try expect(negative_ts.nanoseconds == 500000000);
-    
+
     // Test Payload.timestampFromNanos() convenience method
     const payload = msgpack.Payload.timestampFromNanos(current_nanos);
     try expect(payload == .timestamp);
     try expect(payload.timestamp.seconds == ts.seconds);
     try expect(payload.timestamp.nanoseconds == ts.nanoseconds);
-    
+
     // Test serialization and deserialization
     try p.write(payload);
-    
+
     read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
 
     const decoded = try p.read(allocator);
     defer decoded.free(allocator);
-    
+
     try expect(decoded == .timestamp);
     try expect(decoded.timestamp.seconds == ts.seconds);
     try expect(decoded.timestamp.nanoseconds == ts.nanoseconds);
-    
+
     // Test that the toFloat() method works correctly
     const float_original = ts.toFloat();
     const float_decoded = decoded.timestamp.toFloat();
