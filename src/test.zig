@@ -129,7 +129,7 @@ test "bin write and read" {
 
     // u8 bin
     var test_bin = "This is a string that is more than 32 bytes long.".*;
-    try p.write(.{ .bin = msgpack.wrapBin(&test_bin) });
+    try p.write(.{ .bin = msgpack.Bin.init(&test_bin) });
     const val = try p.read(allocator);
     defer val.free(allocator);
     try expect(u8eql(&test_bin, val.bin.value()));
@@ -468,7 +468,7 @@ test "ext different sizes" {
 
     // Test fixext1
     var ext1_data = [1]u8{0x42};
-    try p.write(.{ .ext = msgpack.wrapEXT(1, &ext1_data) });
+    try p.write(.{ .ext = msgpack.EXT.init(1, &ext1_data) });
     {
         const val = try p.read(allocator);
         defer val.free(allocator);
@@ -484,7 +484,7 @@ test "ext different sizes" {
 
     // Test fixext2
     var ext2_data = [2]u8{ 0x42, 0x43 };
-    try p.write(.{ .ext = msgpack.wrapEXT(2, &ext2_data) });
+    try p.write(.{ .ext = msgpack.EXT.init(2, &ext2_data) });
     {
         const val = try p.read(allocator);
         defer val.free(allocator);
@@ -500,7 +500,7 @@ test "ext different sizes" {
 
     // Test fixext4
     var ext4_data = [4]u8{ 0x42, 0x43, 0x44, 0x45 };
-    try p.write(.{ .ext = msgpack.wrapEXT(3, &ext4_data) });
+    try p.write(.{ .ext = msgpack.EXT.init(3, &ext4_data) });
     {
         const val = try p.read(allocator);
         defer val.free(allocator);
@@ -516,7 +516,7 @@ test "ext different sizes" {
 
     // Test fixext8
     var ext8_data = [8]u8{ 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49 };
-    try p.write(.{ .ext = msgpack.wrapEXT(4, &ext8_data) });
+    try p.write(.{ .ext = msgpack.EXT.init(4, &ext8_data) });
     {
         const val = try p.read(allocator);
         defer val.free(allocator);
@@ -532,7 +532,7 @@ test "ext different sizes" {
 
     // Test fixext16
     var ext16_data = [16]u8{ 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F, 0x50, 0x51 };
-    try p.write(.{ .ext = msgpack.wrapEXT(5, &ext16_data) });
+    try p.write(.{ .ext = msgpack.EXT.init(5, &ext16_data) });
     {
         const val = try p.read(allocator);
         defer val.free(allocator);
@@ -904,7 +904,7 @@ test "bin16 and bin32 write and read" {
         byte.* = @intCast(i % 256);
     }
 
-    try p.write(.{ .bin = msgpack.wrapBin(test_bin16) });
+    try p.write(.{ .bin = msgpack.Bin.init(test_bin16) });
     {
         const val = try p.read(allocator);
         defer val.free(allocator);
@@ -926,7 +926,7 @@ test "bin16 and bin32 write and read" {
         byte.* = @intCast(i % 256);
     }
 
-    try p.write(.{ .bin = msgpack.wrapBin(test_bin32) });
+    try p.write(.{ .bin = msgpack.Bin.init(test_bin32) });
     {
         const val = try p.read(allocator);
         defer val.free(allocator);
@@ -1182,7 +1182,7 @@ test "ext8 ext16 ext32 formats" {
         byte.* = @intCast(i % 256);
     }
 
-    try p.write(.{ .ext = msgpack.wrapEXT(10, ext8_data) });
+    try p.write(.{ .ext = msgpack.EXT.init(10, ext8_data) });
     {
         const val = try p.read(allocator);
         defer val.free(allocator);
@@ -1205,7 +1205,7 @@ test "ext8 ext16 ext32 formats" {
         byte.* = @intCast(i % 256);
     }
 
-    try p.write(.{ .ext = msgpack.wrapEXT(20, ext16_data) });
+    try p.write(.{ .ext = msgpack.EXT.init(20, ext16_data) });
     {
         const val = try p.read(allocator);
         defer val.free(allocator);
@@ -1228,7 +1228,7 @@ test "ext8 ext16 ext32 formats" {
         byte.* = @intCast(i % 256);
     }
 
-    try p.write(.{ .ext = msgpack.wrapEXT(30, ext32_data) });
+    try p.write(.{ .ext = msgpack.EXT.init(30, ext32_data) });
     {
         const val = try p.read(allocator);
         defer val.free(allocator);
@@ -1374,7 +1374,7 @@ test "ext negative type ids" {
     var test_data = [4]u8{ 0x01, 0x02, 0x03, 0x04 };
     const negative_type: i8 = -42;
 
-    try p.write(.{ .ext = msgpack.wrapEXT(negative_type, &test_data) });
+    try p.write(.{ .ext = msgpack.EXT.init(negative_type, &test_data) });
     const val = try p.read(allocator);
     defer val.free(allocator);
 
@@ -1388,7 +1388,7 @@ test "ext negative type ids" {
     p = pack.init(&write_buffer, &read_buffer);
 
     const min_type: i8 = -128;
-    try p.write(.{ .ext = msgpack.wrapEXT(min_type, &test_data) });
+    try p.write(.{ .ext = msgpack.EXT.init(min_type, &test_data) });
     const val2 = try p.read(allocator);
     defer val2.free(allocator);
 
@@ -2103,7 +2103,7 @@ test "bin and str type compatibility" {
 
     // Test binary data uses bin format
     var binary_data = [_]u8{ 0xff, 0xfe, 0xfd, 0xfc, 0xfb };
-    try p.write(.{ .bin = msgpack.wrapBin(&binary_data) });
+    try p.write(.{ .bin = msgpack.Bin.init(&binary_data) });
 
     // Verify bin8 format (0xc4) is used
     try expect(arr[0] == 0xc4);
@@ -2131,13 +2131,13 @@ test "extension type reserved range" {
 
     // Test application-defined types (0-127)
     var app_data = [_]u8{ 0x01, 0x02 };
-    try p.write(.{ .ext = msgpack.wrapEXT(0, &app_data) });
-    try p.write(.{ .ext = msgpack.wrapEXT(127, &app_data) });
+    try p.write(.{ .ext = msgpack.EXT.init(0, &app_data) });
+    try p.write(.{ .ext = msgpack.EXT.init(127, &app_data) });
 
     // Test predefined types (-128 to -1)
-    try p.write(.{ .ext = msgpack.wrapEXT(-128, &app_data) });
+    try p.write(.{ .ext = msgpack.EXT.init(-128, &app_data) });
     // -1 is timestamp, already covered in other tests
-    try p.write(.{ .ext = msgpack.wrapEXT(-2, &app_data) });
+    try p.write(.{ .ext = msgpack.EXT.init(-2, &app_data) });
 
     // Read back and verify type values remain correct
     read_buffer = fixedBufferStream(&arr);
@@ -2179,7 +2179,7 @@ test "sequential read write multiple objects" {
     try p.write(str);
 
     var bin_data = [_]u8{ 1, 2, 3 };
-    try p.write(.{ .bin = msgpack.wrapBin(&bin_data) });
+    try p.write(.{ .bin = msgpack.Bin.init(&bin_data) });
 
     var test_arr = try Payload.arrPayload(2, allocator);
     defer test_arr.free(allocator);

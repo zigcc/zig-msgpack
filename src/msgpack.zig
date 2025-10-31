@@ -120,6 +120,11 @@ pub const DEFAULT_LIMITS = ParseLimits{};
 pub const Str = struct {
     str: []const u8,
 
+    /// Initialize a new Str instance
+    pub inline fn init(str: []const u8) Str {
+        return Str{ .str = str };
+    }
+
     /// get Str values
     pub fn value(self: Str) []const u8 {
         return self.str;
@@ -128,12 +133,17 @@ pub const Str = struct {
 
 /// this is for encode str in struct
 pub inline fn wrapStr(str: []const u8) Str {
-    return Str{ .str = str };
+    return Str.init(str);
 }
 
 /// the Bin Type
 pub const Bin = struct {
     bin: []u8,
+
+    /// Initialize a new Bin instance
+    pub inline fn init(bin: []u8) Bin {
+        return Bin{ .bin = bin };
+    }
 
     /// get bin values
     pub fn value(self: Bin) []u8 {
@@ -143,21 +153,26 @@ pub const Bin = struct {
 
 /// this is wrapping for bin
 pub inline fn wrapBin(bin: []u8) Bin {
-    return Bin{ .bin = bin };
+    return Bin.init(bin);
 }
 
 /// the EXT Type
 pub const EXT = struct {
     type: i8,
     data: []u8,
+
+    /// Initialize a new EXT instance
+    pub inline fn init(t: i8, data: []u8) EXT {
+        return EXT{
+            .type = t,
+            .data = data,
+        };
+    }
 };
 
 /// t is type, data is data
 pub inline fn wrapEXT(t: i8, data: []u8) EXT {
-    return EXT{
-        .type = t,
-        .data = data,
-    };
+    return EXT.init(t, data);
 }
 
 /// the Timestamp Type
@@ -309,7 +324,7 @@ pub const Payload = union(enum) {
         // copy the value
         @memcpy(new_str, val);
         return Payload{
-            .str = wrapStr(new_str),
+            .str = Str.init(new_str),
         };
     }
 
@@ -320,7 +335,7 @@ pub const Payload = union(enum) {
         // copy the value
         @memcpy(new_bin, val);
         return Payload{
-            .bin = wrapBin(new_bin),
+            .bin = Bin.init(new_bin),
         };
     }
 
@@ -356,7 +371,7 @@ pub const Payload = union(enum) {
         // copy the value
         @memcpy(new_data, data);
         return Payload{
-            .ext = wrapEXT(t, new_data),
+            .ext = EXT.init(t, new_data),
         };
     }
 
@@ -1187,7 +1202,7 @@ pub fn PackWithLimits(
                     }
                     var itera = map.iterator();
                     while (itera.next()) |entry| {
-                        try self.writeStr(wrapStr(entry.key_ptr.*));
+                        try self.writeStr(Str.init(entry.key_ptr.*));
                         try self.write(entry.value_ptr.*);
                     }
                 },
@@ -1948,7 +1963,7 @@ pub fn PackWithLimits(
                             return MsgPackError.StringTooLong;
                         }
 
-                        current_payload = Payload{ .str = wrapStr(val) };
+                        current_payload = Payload{ .str = Str.init(val) };
                     },
                     .BIN8, .BIN16, .BIN32 => {
                         const val = try self.readBinValue(marker, allocator);
@@ -1960,7 +1975,7 @@ pub fn PackWithLimits(
                             return MsgPackError.BinDataLengthTooLong;
                         }
 
-                        current_payload = Payload{ .bin = wrapBin(val) };
+                        current_payload = Payload{ .bin = Bin.init(val) };
                     },
 
                     // Container types: push to stack and continue
