@@ -14,7 +14,7 @@ on:
 
 jobs:
     test:
-        name: Unit Test (${{ matrix.os }} - ${{ matrix.arch }})
+        name: Unit Test (${{ matrix.os }} - ${{ matrix.arch }} - Zig ${{ matrix.version }})
         # 依赖 format check 成功，或定时任务/手动触发时执行
         if: |
             github.event_name == 'schedule' ||
@@ -22,29 +22,36 @@ jobs:
             (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
         strategy:
             matrix:
+                # 架构配置标识符
+                arch_config: [linux-x86_64, linux-aarch64, macos-x86_64, macos-arm64, windows-x86_64]
+                # 定时任务只测试 master 版本，其他情况测试所有版本
+                version: ${{ github.event_name == 'schedule' && fromJSON('["master"]') || fromJSON('["0.14.1", "0.15.1", "master"]') }}
                 include:
                     # Linux x86_64
-                    - os: ubuntu-latest
+                    - arch_config: linux-x86_64
+                      os: ubuntu-latest
                       arch: x86_64
                       runner: ubuntu-latest
                     # Linux aarch64
-                    - os: ubuntu-latest
+                    - arch_config: linux-aarch64
+                      os: ubuntu-latest
                       arch: aarch64
                       runner: ubuntu-24.04-arm
                     # macOS x86_64
-                    - os: macos-latest
+                    - arch_config: macos-x86_64
+                      os: macos-latest
                       arch: x86_64
                       runner: macos-13
                     # macOS arm64
-                    - os: macos-latest
+                    - arch_config: macos-arm64
+                      os: macos-latest
                       arch: arm64
                       runner: macos-14
                     # Windows x86_64
-                    - os: windows-latest
+                    - arch_config: windows-x86_64
+                      os: windows-latest
                       arch: x86_64
                       runner: windows-latest
-                # 定时任务只测试 master 版本，其他情况测试所有版本
-                version: ${{ github.event_name == 'schedule' && fromJSON('["master"]') || fromJSON('["0.14.1", "0.15.1", "master"]') }}
             fail-fast: false
         runs-on: ${{ matrix.runner }}
         steps:
