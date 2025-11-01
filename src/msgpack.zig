@@ -12,6 +12,64 @@ const native_endian = builtin.cpu.arch.endian();
 const big_endian = std.builtin.Endian.big;
 const little_endian = std.builtin.Endian.little;
 
+/// Cache line size for prefetch optimization
+const CACHE_LINE_SIZE: usize = 64;
+
+/// Prefetch hint for read-ahead optimization  
+/// Uses compiler intrinsics to hint CPU to prefetch data
+/// This is a performance hint and may be a no-op on some architectures
+inline fn prefetchRead(ptr: [*]const u8, comptime locality: u2) void {
+    _ = locality; // locality: 0=no temporal locality, 3=high temporal locality
+    // Check if we're on x86/x64 with SSE support for prefetch instructions
+    const has_prefetch = comptime blk: {
+        const arch = builtin.cpu.arch;
+        break :blk arch.isX86() and std.Target.x86.featureSetHas(builtin.cpu.features, .sse);
+    };
+    
+    if (has_prefetch) {
+        // Use inline assembly for prefetch on x86/x64
+        // PREFETCHT0 - prefetch to all cache levels
+        if (comptime builtin.cpu.arch.isX86()) {
+            asm volatile ("prefetcht0 %[ptr]"
+                :
+                : [ptr] "m" (@as(*const u8, ptr)),
+            );
+        }
+    }
+    // On other architectures or without SSE, this is a no-op (compiler may optimize)
+}
+
+/// Prefetch data for write operations
+inline fn prefetchWrite(ptr: [*]u8, comptime locality: u2) void {
+    _ = locality;
+    const has_prefetch = comptime blk: {
+        const arch = builtin.cpu.arch;
+        break :blk arch.isX86() and std.Target.x86.featureSetHas(builtin.cpu.features, .sse);
+    };
+    
+    if (has_prefetch) {
+        if (comptime builtin.cpu.arch.isX86()) {
+            // PREFETCHW - prefetch for write
+            // Note: Requires 3DNow! or later x86 extensions
+            asm volatile ("prefetcht0 %[ptr]"
+                :
+                : [ptr] "m" (@as(*u8, ptr)),
+            );
+        }
+    }
+}
+
+/// Prefetch multiple cache lines for large data operations
+/// Used for arrays/maps/strings >= 256 bytes
+inline fn prefetchLarge(ptr: [*]const u8, size: usize) void {
+    // Prefetch first few cache lines
+    const lines_to_prefetch = @min(size / CACHE_LINE_SIZE, 4); // Max 4 lines
+    var i: usize = 0;
+    while (i < lines_to_prefetch) : (i += 1) {
+        prefetchRead(ptr + i * CACHE_LINE_SIZE, 2); // Medium locality
+    }
+}
+
 /// MessagePack format limits for fix types
 pub const FixLimits = struct {
     pub const POSITIVE_INT_MAX: u8 = 0x7f;
