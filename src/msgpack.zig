@@ -15,23 +15,35 @@ const little_endian = std.builtin.Endian.little;
 /// Cache line size for prefetch optimization
 const CACHE_LINE_SIZE: usize = 64;
 
-/// Prefetch hint for read-ahead optimization  
+/// Prefetch hint for read-ahead optimization
 /// Uses compiler intrinsics to hint CPU to prefetch data
 /// This is a performance hint and may be a no-op on some architectures
 inline fn prefetchRead(ptr: [*]const u8, comptime locality: u2) void {
     // locality: 0=no temporal locality (NTA), 1=low (T2), 2=medium (T1), 3=high (T0)
     const arch = comptime builtin.cpu.arch;
-    
+
     // x86/x64: Check for SSE support (required for PREFETCH instructions)
     if (comptime arch.isX86()) {
         const has_sse = comptime std.Target.x86.featureSetHas(builtin.cpu.features, .sse);
         if (has_sse) {
             // Use different prefetch instructions based on locality
             switch (locality) {
-                3 => asm volatile ("prefetcht0 %[ptr]" : : [ptr] "m" (@as(*const u8, ptr))), // High locality -> L1+L2+L3
-                2 => asm volatile ("prefetcht1 %[ptr]" : : [ptr] "m" (@as(*const u8, ptr))), // Medium -> L2+L3
-                1 => asm volatile ("prefetcht2 %[ptr]" : : [ptr] "m" (@as(*const u8, ptr))), // Low -> L3 only
-                0 => asm volatile ("prefetchnta %[ptr]" : : [ptr] "m" (@as(*const u8, ptr))), // Non-temporal
+                3 => asm volatile ("prefetcht0 %[ptr]"
+                    :
+                    : [ptr] "m" (@as(*const u8, ptr)),
+                ), // High locality -> L1+L2+L3
+                2 => asm volatile ("prefetcht1 %[ptr]"
+                    :
+                    : [ptr] "m" (@as(*const u8, ptr)),
+                ), // Medium -> L2+L3
+                1 => asm volatile ("prefetcht2 %[ptr]"
+                    :
+                    : [ptr] "m" (@as(*const u8, ptr)),
+                ), // Low -> L3 only
+                0 => asm volatile ("prefetchnta %[ptr]"
+                    :
+                    : [ptr] "m" (@as(*const u8, ptr)),
+                ), // Non-temporal
             }
         }
     }
@@ -41,10 +53,22 @@ inline fn prefetchRead(ptr: [*]const u8, comptime locality: u2) void {
         // Syntax: prfm <prfop>, [<Xn|SP>{, #<pimm>}]
         // prfop encoding: PLD (prefetch for load) + locality hint
         switch (locality) {
-            3 => asm volatile ("prfm pldl1keep, [%[ptr]]" : : [ptr] "r" (ptr)), // Keep in L1
-            2 => asm volatile ("prfm pldl2keep, [%[ptr]]" : : [ptr] "r" (ptr)), // Keep in L2
-            1 => asm volatile ("prfm pldl3keep, [%[ptr]]" : : [ptr] "r" (ptr)), // Keep in L3
-            0 => asm volatile ("prfm pldl1strm, [%[ptr]]" : : [ptr] "r" (ptr)), // Streaming (non-temporal)
+            3 => asm volatile ("prfm pldl1keep, [%[ptr]]"
+                :
+                : [ptr] "r" (ptr),
+            ), // Keep in L1
+            2 => asm volatile ("prfm pldl2keep, [%[ptr]]"
+                :
+                : [ptr] "r" (ptr),
+            ), // Keep in L2
+            1 => asm volatile ("prfm pldl3keep, [%[ptr]]"
+                :
+                : [ptr] "r" (ptr),
+            ), // Keep in L3
+            0 => asm volatile ("prfm pldl1strm, [%[ptr]]"
+                :
+                : [ptr] "r" (ptr),
+            ), // Streaming (non-temporal)
         }
     }
     // Other architectures: no-op (compiler optimizes away)
@@ -54,34 +78,61 @@ inline fn prefetchRead(ptr: [*]const u8, comptime locality: u2) void {
 /// Prefetch data for write operations
 inline fn prefetchWrite(ptr: [*]u8, comptime locality: u2) void {
     const arch = comptime builtin.cpu.arch;
-    
+
     // x86/x64: Use PREFETCHW if available (3DNow!/SSE), fallback to read prefetch
     if (comptime arch.isX86()) {
         // PREFETCHW is part of 3DNow! (AMD) or PRFCHW feature (Intel Broadwell+)
         const has_prefetchw = comptime std.Target.x86.featureSetHas(builtin.cpu.features, .prfchw) or
-                                      std.Target.x86.featureSetHas(builtin.cpu.features, .@"3dnow");
+            std.Target.x86.featureSetHas(builtin.cpu.features, .@"3dnow");
         const has_sse = comptime std.Target.x86.featureSetHas(builtin.cpu.features, .sse);
-        
+
         if (has_prefetchw) {
             // Use write-specific prefetch (ignores locality for simplicity)
-            asm volatile ("prefetchw %[ptr]" : : [ptr] "m" (@as(*u8, ptr)));
+            asm volatile ("prefetchw %[ptr]"
+                :
+                : [ptr] "m" (@as(*u8, ptr)),
+            );
         } else if (has_sse) {
             // Fallback to read prefetch with specified locality
             switch (locality) {
-                3 => asm volatile ("prefetcht0 %[ptr]" : : [ptr] "m" (@as(*u8, ptr))),
-                2 => asm volatile ("prefetcht1 %[ptr]" : : [ptr] "m" (@as(*u8, ptr))),
-                1 => asm volatile ("prefetcht2 %[ptr]" : : [ptr] "m" (@as(*u8, ptr))),
-                0 => asm volatile ("prefetchnta %[ptr]" : : [ptr] "m" (@as(*u8, ptr))),
+                3 => asm volatile ("prefetcht0 %[ptr]"
+                    :
+                    : [ptr] "m" (@as(*u8, ptr)),
+                ),
+                2 => asm volatile ("prefetcht1 %[ptr]"
+                    :
+                    : [ptr] "m" (@as(*u8, ptr)),
+                ),
+                1 => asm volatile ("prefetcht2 %[ptr]"
+                    :
+                    : [ptr] "m" (@as(*u8, ptr)),
+                ),
+                0 => asm volatile ("prefetchnta %[ptr]"
+                    :
+                    : [ptr] "m" (@as(*u8, ptr)),
+                ),
             }
         }
     }
     // ARM64: Use PST (prefetch for store)
     else if (comptime arch.isAARCH64()) {
         switch (locality) {
-            3 => asm volatile ("prfm pstl1keep, [%[ptr]]" : : [ptr] "r" (ptr)),
-            2 => asm volatile ("prfm pstl2keep, [%[ptr]]" : : [ptr] "r" (ptr)),
-            1 => asm volatile ("prfm pstl3keep, [%[ptr]]" : : [ptr] "r" (ptr)),
-            0 => asm volatile ("prfm pstl1strm, [%[ptr]]" : : [ptr] "r" (ptr)),
+            3 => asm volatile ("prfm pstl1keep, [%[ptr]]"
+                :
+                : [ptr] "r" (ptr),
+            ),
+            2 => asm volatile ("prfm pstl2keep, [%[ptr]]"
+                :
+                : [ptr] "r" (ptr),
+            ),
+            1 => asm volatile ("prfm pstl3keep, [%[ptr]]"
+                :
+                : [ptr] "r" (ptr),
+            ),
+            0 => asm volatile ("prfm pstl1strm, [%[ptr]]"
+                :
+                : [ptr] "r" (ptr),
+            ),
         }
     }
 }
@@ -473,7 +524,7 @@ fn memcpySIMD(dest: []u8, src: []const u8) void {
     // Unaligned loads/stores can be 2-3x slower on some architectures
     const dest_addr = @intFromPtr(dest.ptr);
     const alignment_offset = dest_addr & (chunk_size - 1); // Modulo chunk_size
-    
+
     if (alignment_offset != 0 and len >= chunk_size) {
         // Calculate bytes needed to reach alignment
         const bytes_to_align = chunk_size - alignment_offset;
@@ -483,7 +534,7 @@ fn memcpySIMD(dest: []u8, src: []const u8) void {
             i = bytes_to_align;
         }
     }
-    
+
     // Process chunks with SIMD
     while (i + chunk_size <= len) : (i += chunk_size) {
         const vec: VecType = src[i..][0..chunk_size].*;
@@ -541,9 +592,9 @@ inline fn writeU64Aligned(ptr: *align(@alignOf(u64)) [8]u8, val: u64) void {
 /// Useful for copying strings, binary data >= 64 bytes
 inline fn memcpyLarge(dest: []u8, src: []const u8) void {
     std.debug.assert(dest.len >= src.len);
-    
+
     const len = src.len;
-    
+
     // For very large copies (>= 64 bytes), use SIMD-optimized copy
     if (len >= 64) {
         memcpySIMD(dest[0..len], src);
@@ -566,7 +617,7 @@ inline fn byteSwapU32SIMD(val: u32) u32 {
     }
 
     const chunk_size = comptime detectSIMDChunkSize();
-    
+
     // Use SIMD if available (SSE2+ or NEON)
     if (chunk_size >= 16) {
         // Zig's @byteSwap is optimized to use BSWAP on x86 or REV on ARM
@@ -584,7 +635,7 @@ inline fn byteSwapU64SIMD(val: u64) u64 {
     }
 
     const chunk_size = comptime detectSIMDChunkSize();
-    
+
     if (chunk_size >= 16) {
         return @byteSwap(val);
     } else {
@@ -621,34 +672,34 @@ inline fn readU64Fast(buffer: *const [8]u8) u64 {
 
 /// Batch convert u32 array to big-endian (optimized for array serialization)
 /// This is useful when writing arrays of integers with known format
-/// Returns the number of bytes written 
+/// Returns the number of bytes written
 /// Optimized with alignment-aware fast paths
 pub fn batchU32ToBigEndian(values: []const u32, output: []u8) usize {
     std.debug.assert(output.len >= values.len * 4);
-    
+
     if (!needsByteSwap()) {
         // Already big-endian, direct copy
-        @memcpy(output[0..values.len * 4], std.mem.sliceAsBytes(values));
+        @memcpy(output[0 .. values.len * 4], std.mem.sliceAsBytes(values));
         return values.len * 4;
     }
 
     const chunk_size = comptime detectSIMDChunkSize();
-    
+
     // SIMD optimization for batch conversion
     if (chunk_size >= 16) {
         // Check if output is aligned for faster writes
         const output_aligned = isAligned(output.ptr, @alignOf(u32));
-        
+
         // Process 4 u32s at a time (16 bytes = 128 bits)
         const VecType = @Vector(4, u32);
         var i: usize = 0;
-        
+
         while (i + 4 <= values.len) : (i += 4) {
             const vec: VecType = values[i..][0..4].*;
             const swapped = @byteSwap(vec);
-            
+
             const out_offset = i * 4;
-            
+
             if (output_aligned and isAligned(output.ptr + out_offset, 16)) {
                 // Fast path: aligned write (can be faster on some CPUs)
                 const dest_ptr: *align(16) [16]u8 = @ptrCast(@alignCast(output[out_offset..].ptr));
@@ -660,21 +711,21 @@ pub fn batchU32ToBigEndian(values: []const u32, output: []u8) usize {
                 @memcpy(output[out_offset..][0..16], swapped_bytes);
             }
         }
-        
+
         // Handle remaining elements
         while (i < values.len) : (i += 1) {
             var buffer: [4]u8 = undefined;
             writeU32Fast(&buffer, values[i]);
-            @memcpy(output[i * 4..][0..4], &buffer);
+            @memcpy(output[i * 4 ..][0..4], &buffer);
         }
-        
+
         return values.len * 4;
     } else {
         // Scalar fallback
         for (values, 0..) |val, i| {
             var buffer: [4]u8 = undefined;
             writeU32Fast(&buffer, val);
-            @memcpy(output[i * 4..][0..4], &buffer);
+            @memcpy(output[i * 4 ..][0..4], &buffer);
         }
         return values.len * 4;
     }
@@ -684,28 +735,28 @@ pub fn batchU32ToBigEndian(values: []const u32, output: []u8) usize {
 /// Optimized with alignment-aware fast paths
 pub fn batchU64ToBigEndian(values: []const u64, output: []u8) usize {
     std.debug.assert(output.len >= values.len * 8);
-    
+
     if (!needsByteSwap()) {
-        @memcpy(output[0..values.len * 8], std.mem.sliceAsBytes(values));
+        @memcpy(output[0 .. values.len * 8], std.mem.sliceAsBytes(values));
         return values.len * 8;
     }
 
     const chunk_size = comptime detectSIMDChunkSize();
-    
+
     if (chunk_size >= 16) {
         // Check if output is aligned for faster writes
         const output_aligned = isAligned(output.ptr, @alignOf(u64));
-        
+
         // Process 2 u64s at a time (16 bytes)
         const VecType = @Vector(2, u64);
         var i: usize = 0;
-        
+
         while (i + 2 <= values.len) : (i += 2) {
             const vec: VecType = values[i..][0..2].*;
             const swapped = @byteSwap(vec);
-            
+
             const out_offset = i * 8;
-            
+
             if (output_aligned and isAligned(output.ptr + out_offset, 16)) {
                 // Fast path: aligned write
                 const dest_ptr: *align(16) [16]u8 = @ptrCast(@alignCast(output[out_offset..].ptr));
@@ -717,20 +768,20 @@ pub fn batchU64ToBigEndian(values: []const u64, output: []u8) usize {
                 @memcpy(output[out_offset..][0..16], swapped_bytes);
             }
         }
-        
+
         // Handle remaining element
         if (i < values.len) {
             var buffer: [8]u8 = undefined;
             writeU64Fast(&buffer, values[i]);
-            @memcpy(output[i * 8..][0..8], &buffer);
+            @memcpy(output[i * 8 ..][0..8], &buffer);
         }
-        
+
         return values.len * 8;
     } else {
         for (values, 0..) |val, i| {
             var buffer: [8]u8 = undefined;
             writeU64Fast(&buffer, val);
-            @memcpy(output[i * 8..][0..8], &buffer);
+            @memcpy(output[i * 8 ..][0..8], &buffer);
         }
         return values.len * 8;
     }

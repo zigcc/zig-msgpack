@@ -4132,13 +4132,13 @@ test "SIMD binary comparison: ext with large data" {
 
 test "SIMD byte order conversion: batch u32 conversion" {
     const batchU32ToBigEndian = @import("msgpack").batchU32ToBigEndian;
-    
+
     // Test batch u32 conversion
     const test_values = [_]u32{ 0x12345678, 0xAABBCCDD, 0x11223344, 0xFFEEDDCC };
     var output: [16]u8 = undefined;
-    
+
     _ = batchU32ToBigEndian(&test_values, &output);
-    
+
     // Verify each value is correctly converted to big-endian
     for (test_values, 0..) |val, i| {
         const offset = i * 4;
@@ -4149,13 +4149,13 @@ test "SIMD byte order conversion: batch u32 conversion" {
 
 test "SIMD byte order conversion: batch u64 conversion" {
     const batchU64ToBigEndian = @import("msgpack").batchU64ToBigEndian;
-    
+
     // Test batch u64 conversion
     const test_values = [_]u64{ 0x123456789ABCDEF0, 0xAABBCCDDEEFF0011, 0x1122334455667788 };
     var output: [24]u8 = undefined;
-    
+
     _ = batchU64ToBigEndian(&test_values, &output);
-    
+
     // Verify each value is correctly converted to big-endian
     for (test_values, 0..) |val, i| {
         const offset = i * 8;
@@ -4231,13 +4231,13 @@ test "SIMD optimized integer array: mixed sizes" {
 
 test "memory alignment: aligned u32 batch conversion" {
     const batchU32ToBigEndian = @import("msgpack").batchU32ToBigEndian;
-    
+
     // Allocate aligned buffer (aligned to 16 bytes for SIMD)
     var aligned_output: [64]u8 align(16) = undefined;
     const test_values = [_]u32{ 0x12345678, 0xAABBCCDD, 0x11223344, 0xFFEEDDCC };
-    
+
     _ = batchU32ToBigEndian(&test_values, &aligned_output);
-    
+
     // Verify correctness
     for (test_values, 0..) |val, i| {
         const offset = i * 4;
@@ -4248,15 +4248,15 @@ test "memory alignment: aligned u32 batch conversion" {
 
 test "memory alignment: unaligned u32 batch conversion" {
     const batchU32ToBigEndian = @import("msgpack").batchU32ToBigEndian;
-    
+
     // Create intentionally unaligned buffer (offset by 1 byte)
     var buffer: [65]u8 align(16) = undefined;
     const unaligned_output = buffer[1..]; // Start at offset 1 (unaligned)
-    
+
     const test_values = [_]u32{ 0x12345678, 0xAABBCCDD, 0x11223344, 0xFFEEDDCC };
-    
+
     _ = batchU32ToBigEndian(&test_values, unaligned_output);
-    
+
     // Verify correctness (should still work correctly even unaligned)
     for (test_values, 0..) |val, i| {
         const offset = i * 4;
@@ -4267,13 +4267,13 @@ test "memory alignment: unaligned u32 batch conversion" {
 
 test "memory alignment: aligned u64 batch conversion" {
     const batchU64ToBigEndian = @import("msgpack").batchU64ToBigEndian;
-    
+
     // Allocate aligned buffer
     var aligned_output: [64]u8 align(16) = undefined;
     const test_values = [_]u64{ 0x123456789ABCDEF0, 0xAABBCCDDEEFF0011, 0x1122334455667788 };
-    
+
     _ = batchU64ToBigEndian(&test_values, &aligned_output);
-    
+
     // Verify correctness
     for (test_values, 0..) |val, i| {
         const offset = i * 8;
@@ -4303,7 +4303,7 @@ test "memory alignment: large binary data copy (aligned)" {
 
     try expect(result == .bin);
     try expect(result.bin.value().len == 256);
-    
+
     // Verify data integrity
     for (large_data, 0..) |expected, i| {
         try expect(result.bin.value()[i] == expected);
@@ -4318,7 +4318,7 @@ test "memory alignment: large string copy (mixed alignment)" {
 
     // Create a string > 64 bytes to trigger SIMD copy optimization
     const long_string = "This is a very long string that is designed to test the SIMD-optimized memory copy functionality with various alignment scenarios. It should be long enough to benefit from vectorized operations.";
-    
+
     const test_payload = try msgpack.Payload.strToPayload(long_string, allocator);
     defer test_payload.free(allocator);
 
@@ -4351,7 +4351,7 @@ test "memory alignment: large integer array serialization" {
     defer result.free(allocator);
 
     try expect(try result.getArrLen() == count);
-    
+
     // Verify all elements
     for (0..count) |i| {
         const elem = try result.getArrElement(i);
