@@ -4129,3 +4129,232 @@ test "SIMD binary comparison: ext with large data" {
     try expect(val2 != null);
     try expect(val2.?.uint == 2);
 }
+
+test "SIMD byte order conversion: batch u32 conversion" {
+    const batchU32ToBigEndian = @import("msgpack").batchU32ToBigEndian;
+    
+    // Test batch u32 conversion
+    const test_values = [_]u32{ 0x12345678, 0xAABBCCDD, 0x11223344, 0xFFEEDDCC };
+    var output: [16]u8 = undefined;
+    
+    _ = batchU32ToBigEndian(&test_values, &output);
+    
+    // Verify each value is correctly converted to big-endian
+    for (test_values, 0..) |val, i| {
+        const offset = i * 4;
+        const result = std.mem.readInt(u32, output[offset..][0..4], .big);
+        try expect(result == val);
+    }
+}
+
+test "SIMD byte order conversion: batch u64 conversion" {
+    const batchU64ToBigEndian = @import("msgpack").batchU64ToBigEndian;
+    
+    // Test batch u64 conversion
+    const test_values = [_]u64{ 0x123456789ABCDEF0, 0xAABBCCDDEEFF0011, 0x1122334455667788 };
+    var output: [24]u8 = undefined;
+    
+    _ = batchU64ToBigEndian(&test_values, &output);
+    
+    // Verify each value is correctly converted to big-endian
+    for (test_values, 0..) |val, i| {
+        const offset = i * 8;
+        const result = std.mem.readInt(u64, output[offset..][0..8], .big);
+        try expect(result == val);
+    }
+}
+
+test "SIMD optimized integer array: u32 array write and read" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Create an array of u32 values
+    const test_values = [_]u32{ 0x12345678, 0xAABBCCDD, 0x11223344, 0xFFEEDDCC, 0x00112233, 0x44556677, 0x8899AABB, 0xCCDDEEFF };
+    var test_payload = try Payload.arrPayload(test_values.len, allocator);
+    defer test_payload.free(allocator);
+
+    for (test_values, 0..) |v, i| {
+        try test_payload.setArrElement(i, Payload.uintToPayload(v));
+    }
+
+    try p.write(test_payload);
+    const result = try p.read(allocator);
+    defer result.free(allocator);
+
+    try expect(try result.getArrLen() == test_values.len);
+    for (test_values, 0..) |expected, i| {
+        const element = try result.getArrElement(i);
+        try expect(element.uint == expected);
+    }
+}
+
+test "SIMD optimized integer array: mixed sizes" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Test mixed integer sizes that will use different MessagePack formats
+    var test_payload = try Payload.arrPayload(10, allocator);
+    defer test_payload.free(allocator);
+
+    try test_payload.setArrElement(0, Payload.uintToPayload(0)); // fixint
+    try test_payload.setArrElement(1, Payload.uintToPayload(127)); // fixint max
+    try test_payload.setArrElement(2, Payload.uintToPayload(128)); // uint8
+    try test_payload.setArrElement(3, Payload.uintToPayload(255)); // uint8 max
+    try test_payload.setArrElement(4, Payload.uintToPayload(256)); // uint16
+    try test_payload.setArrElement(5, Payload.uintToPayload(65535)); // uint16 max
+    try test_payload.setArrElement(6, Payload.uintToPayload(65536)); // uint32
+    try test_payload.setArrElement(7, Payload.uintToPayload(0xFFFFFFFF)); // uint32 max
+    try test_payload.setArrElement(8, Payload.uintToPayload(0x100000000)); // uint64
+    try test_payload.setArrElement(9, Payload.uintToPayload(0xFFFFFFFFFFFFFFFF)); // uint64 max
+
+    try p.write(test_payload);
+    const result = try p.read(allocator);
+    defer result.free(allocator);
+
+    try expect((try result.getArrElement(0)).uint == 0);
+    try expect((try result.getArrElement(1)).uint == 127);
+    try expect((try result.getArrElement(2)).uint == 128);
+    try expect((try result.getArrElement(3)).uint == 255);
+    try expect((try result.getArrElement(4)).uint == 256);
+    try expect((try result.getArrElement(5)).uint == 65535);
+    try expect((try result.getArrElement(6)).uint == 65536);
+    try expect((try result.getArrElement(7)).uint == 0xFFFFFFFF);
+    try expect((try result.getArrElement(8)).uint == 0x100000000);
+    try expect((try result.getArrElement(9)).uint == 0xFFFFFFFFFFFFFFFF);
+}
+
+// ========== Memory Alignment Optimization Tests ==========
+
+test "memory alignment: aligned u32 batch conversion" {
+    const batchU32ToBigEndian = @import("msgpack").batchU32ToBigEndian;
+    
+    // Allocate aligned buffer (aligned to 16 bytes for SIMD)
+    var aligned_output: [64]u8 align(16) = undefined;
+    const test_values = [_]u32{ 0x12345678, 0xAABBCCDD, 0x11223344, 0xFFEEDDCC };
+    
+    _ = batchU32ToBigEndian(&test_values, &aligned_output);
+    
+    // Verify correctness
+    for (test_values, 0..) |val, i| {
+        const offset = i * 4;
+        const result = std.mem.readInt(u32, aligned_output[offset..][0..4], .big);
+        try expect(result == val);
+    }
+}
+
+test "memory alignment: unaligned u32 batch conversion" {
+    const batchU32ToBigEndian = @import("msgpack").batchU32ToBigEndian;
+    
+    // Create intentionally unaligned buffer (offset by 1 byte)
+    var buffer: [65]u8 align(16) = undefined;
+    const unaligned_output = buffer[1..]; // Start at offset 1 (unaligned)
+    
+    const test_values = [_]u32{ 0x12345678, 0xAABBCCDD, 0x11223344, 0xFFEEDDCC };
+    
+    _ = batchU32ToBigEndian(&test_values, unaligned_output);
+    
+    // Verify correctness (should still work correctly even unaligned)
+    for (test_values, 0..) |val, i| {
+        const offset = i * 4;
+        const result = std.mem.readInt(u32, unaligned_output[offset..][0..4], .big);
+        try expect(result == val);
+    }
+}
+
+test "memory alignment: aligned u64 batch conversion" {
+    const batchU64ToBigEndian = @import("msgpack").batchU64ToBigEndian;
+    
+    // Allocate aligned buffer
+    var aligned_output: [64]u8 align(16) = undefined;
+    const test_values = [_]u64{ 0x123456789ABCDEF0, 0xAABBCCDDEEFF0011, 0x1122334455667788 };
+    
+    _ = batchU64ToBigEndian(&test_values, &aligned_output);
+    
+    // Verify correctness
+    for (test_values, 0..) |val, i| {
+        const offset = i * 8;
+        const result = std.mem.readInt(u64, aligned_output[offset..][0..8], .big);
+        try expect(result == val);
+    }
+}
+
+test "memory alignment: large binary data copy (aligned)" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Create large binary data (256 bytes) to test aligned SIMD copy
+    var large_data: [256]u8 align(16) = undefined;
+    for (&large_data, 0..) |*byte, i| {
+        byte.* = @intCast(i & 0xFF);
+    }
+
+    const test_payload = try msgpack.Payload.binToPayload(&large_data, allocator);
+    defer test_payload.free(allocator);
+
+    try p.write(test_payload);
+    const result = try p.read(allocator);
+    defer result.free(allocator);
+
+    try expect(result == .bin);
+    try expect(result.bin.value().len == 256);
+    
+    // Verify data integrity
+    for (large_data, 0..) |expected, i| {
+        try expect(result.bin.value()[i] == expected);
+    }
+}
+
+test "memory alignment: large string copy (mixed alignment)" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Create a string > 64 bytes to trigger SIMD copy optimization
+    const long_string = "This is a very long string that is designed to test the SIMD-optimized memory copy functionality with various alignment scenarios. It should be long enough to benefit from vectorized operations.";
+    
+    const test_payload = try msgpack.Payload.strToPayload(long_string, allocator);
+    defer test_payload.free(allocator);
+
+    try p.write(test_payload);
+    const result = try p.read(allocator);
+    defer result.free(allocator);
+
+    try expect(result == .str);
+    try expect(u8eql(result.str.value(), long_string));
+}
+
+test "memory alignment: large integer array serialization" {
+    var arr: [0xfffff]u8 = std.mem.zeroes([0xfffff]u8);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Create a large array of u32 values to test batch conversion
+    const count = 100;
+    var test_payload = try msgpack.Payload.arrPayload(count, allocator);
+    defer test_payload.free(allocator);
+
+    for (0..count) |i| {
+        try test_payload.setArrElement(i, msgpack.Payload.uintToPayload(@as(u64, i)));
+    }
+
+    // Write and read back
+    try p.write(test_payload);
+    const result = try p.read(allocator);
+    defer result.free(allocator);
+
+    try expect(try result.getArrLen() == count);
+    
+    // Verify all elements
+    for (0..count) |i| {
+        const elem = try result.getArrElement(i);
+        try expect(elem.uint == i);
+    }
+}

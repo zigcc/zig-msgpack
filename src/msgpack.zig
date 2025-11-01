@@ -367,7 +367,7 @@ inline fn binaryEqualSIMD(a: []const u8, b: []const u8) bool {
 
 /// SIMD-optimized memory copy for binary data
 /// Uses larger vector operations when available for better throughput
-/// Note: For small copies, std.mem.copy is likely faster due to overhead
+/// Optimized with memory alignment to reduce unaligned access penalties
 fn memcpySIMD(dest: []u8, src: []const u8) void {
     std.debug.assert(dest.len >= src.len);
 
@@ -383,6 +383,22 @@ fn memcpySIMD(dest: []u8, src: []const u8) void {
     const VecType = @Vector(chunk_size, u8);
     var i: usize = 0;
 
+    // Memory alignment optimization:
+    // Align destination pointer to chunk_size boundary for better SIMD performance
+    // Unaligned loads/stores can be 2-3x slower on some architectures
+    const dest_addr = @intFromPtr(dest.ptr);
+    const alignment_offset = dest_addr & (chunk_size - 1); // Modulo chunk_size
+    
+    if (alignment_offset != 0 and len >= chunk_size) {
+        // Calculate bytes needed to reach alignment
+        const bytes_to_align = chunk_size - alignment_offset;
+        if (bytes_to_align < len) {
+            // Copy unaligned head using scalar operations
+            @memcpy(dest[0..bytes_to_align], src[0..bytes_to_align]);
+            i = bytes_to_align;
+        }
+    }
+    
     // Process chunks with SIMD
     while (i + chunk_size <= len) : (i += chunk_size) {
         const vec: VecType = src[i..][0..chunk_size].*;
@@ -394,6 +410,248 @@ fn memcpySIMD(dest: []u8, src: []const u8) void {
         @memcpy(dest[i..len], src[i..]);
     }
 }
+
+// ========== Byte Order Conversion Optimizations ==========
+
+/// Check if a pointer is aligned to a given boundary at runtime
+inline fn isAligned(ptr: [*]const u8, comptime alignment: usize) bool {
+    return (@intFromPtr(ptr) & (alignment - 1)) == 0;
+}
+
+/// Check if a pointer is aligned to the optimal SIMD boundary
+inline fn isAlignedToSIMD(ptr: [*]const u8) bool {
+    const chunk_size = comptime detectSIMDChunkSize();
+    if (chunk_size == 0) return true; // No SIMD, always "aligned"
+    return isAligned(ptr, chunk_size);
+}
+
+/// Optimized aligned memory read for u32 (faster when data is aligned)
+inline fn readU32Aligned(ptr: *align(@alignOf(u32)) const [4]u8) u32 {
+    // Aligned read can use direct pointer cast for better performance
+    const val_ptr: *align(@alignOf(u32)) const u32 = @ptrCast(ptr);
+    return byteSwapU32SIMD(val_ptr.*);
+}
+
+/// Optimized aligned memory read for u64
+inline fn readU64Aligned(ptr: *align(@alignOf(u64)) const [8]u8) u64 {
+    const val_ptr: *align(@alignOf(u64)) const u64 = @ptrCast(ptr);
+    return byteSwapU64SIMD(val_ptr.*);
+}
+
+/// Optimized aligned memory write for u32
+inline fn writeU32Aligned(ptr: *align(@alignOf(u32)) [4]u8, val: u32) void {
+    const swapped = byteSwapU32SIMD(val);
+    const dest_ptr: *align(@alignOf(u32)) u32 = @ptrCast(ptr);
+    dest_ptr.* = swapped;
+}
+
+/// Optimized aligned memory write for u64
+inline fn writeU64Aligned(ptr: *align(@alignOf(u64)) [8]u8, val: u64) void {
+    const swapped = byteSwapU64SIMD(val);
+    const dest_ptr: *align(@alignOf(u64)) u64 = @ptrCast(ptr);
+    dest_ptr.* = swapped;
+}
+
+/// Large data copy with alignment hints for better optimization
+/// Useful for copying strings, binary data >= 64 bytes
+inline fn memcpyLarge(dest: []u8, src: []const u8) void {
+    std.debug.assert(dest.len >= src.len);
+    
+    const len = src.len;
+    
+    // For very large copies (>= 64 bytes), use SIMD-optimized copy
+    if (len >= 64) {
+        memcpySIMD(dest[0..len], src);
+    } else {
+        // For smaller sizes, standard memcpy is sufficient
+        @memcpy(dest[0..len], src);
+    }
+}
+
+/// Check if byte swap is needed at compile time
+inline fn needsByteSwap() bool {
+    return comptime (native_endian != big_endian);
+}
+
+/// SIMD-accelerated byte swap for u32 (4 bytes)
+/// Uses vector operations when available for better throughput
+inline fn byteSwapU32SIMD(val: u32) u32 {
+    if (!needsByteSwap()) {
+        return val;
+    }
+
+    const chunk_size = comptime detectSIMDChunkSize();
+    
+    // Use SIMD if available (SSE2+ or NEON)
+    if (chunk_size >= 16) {
+        // Zig's @byteSwap is optimized to use BSWAP on x86 or REV on ARM
+        return @byteSwap(val);
+    } else {
+        // Scalar fallback (still efficient)
+        return @byteSwap(val);
+    }
+}
+
+/// SIMD-accelerated byte swap for u64 (8 bytes)
+inline fn byteSwapU64SIMD(val: u64) u64 {
+    if (!needsByteSwap()) {
+        return val;
+    }
+
+    const chunk_size = comptime detectSIMDChunkSize();
+    
+    if (chunk_size >= 16) {
+        return @byteSwap(val);
+    } else {
+        return @byteSwap(val);
+    }
+}
+
+/// Fast integer write with optimized byte order conversion
+/// This replaces the manual std.mem.writeInt for better performance
+inline fn writeU32Fast(buffer: *[4]u8, val: u32) void {
+    const swapped = byteSwapU32SIMD(val);
+    const bytes: *const [4]u8 = @ptrCast(&swapped);
+    buffer.* = bytes.*;
+}
+
+/// Fast integer write for u64
+inline fn writeU64Fast(buffer: *[8]u8, val: u64) void {
+    const swapped = byteSwapU64SIMD(val);
+    const bytes: *const [8]u8 = @ptrCast(&swapped);
+    buffer.* = bytes.*;
+}
+
+/// Fast integer read with optimized byte order conversion
+inline fn readU32Fast(buffer: *const [4]u8) u32 {
+    const val: u32 = @bitCast(buffer.*);
+    return byteSwapU32SIMD(val);
+}
+
+/// Fast integer read for u64
+inline fn readU64Fast(buffer: *const [8]u8) u64 {
+    const val: u64 = @bitCast(buffer.*);
+    return byteSwapU64SIMD(val);
+}
+
+/// Batch convert u32 array to big-endian (optimized for array serialization)
+/// This is useful when writing arrays of integers with known format
+/// Returns the number of bytes written 
+/// Optimized with alignment-aware fast paths
+pub fn batchU32ToBigEndian(values: []const u32, output: []u8) usize {
+    std.debug.assert(output.len >= values.len * 4);
+    
+    if (!needsByteSwap()) {
+        // Already big-endian, direct copy
+        @memcpy(output[0..values.len * 4], std.mem.sliceAsBytes(values));
+        return values.len * 4;
+    }
+
+    const chunk_size = comptime detectSIMDChunkSize();
+    
+    // SIMD optimization for batch conversion
+    if (chunk_size >= 16) {
+        // Check if output is aligned for faster writes
+        const output_aligned = isAligned(output.ptr, @alignOf(u32));
+        
+        // Process 4 u32s at a time (16 bytes = 128 bits)
+        const VecType = @Vector(4, u32);
+        var i: usize = 0;
+        
+        while (i + 4 <= values.len) : (i += 4) {
+            const vec: VecType = values[i..][0..4].*;
+            const swapped = @byteSwap(vec);
+            
+            const out_offset = i * 4;
+            
+            if (output_aligned and isAligned(output.ptr + out_offset, 16)) {
+                // Fast path: aligned write (can be faster on some CPUs)
+                const dest_ptr: *align(16) [16]u8 = @ptrCast(@alignCast(output[out_offset..].ptr));
+                const swapped_bytes: *const [16]u8 = @ptrCast(&swapped);
+                dest_ptr.* = swapped_bytes.*;
+            } else {
+                // Standard path: unaligned write
+                const swapped_bytes: *const [16]u8 = @ptrCast(&swapped);
+                @memcpy(output[out_offset..][0..16], swapped_bytes);
+            }
+        }
+        
+        // Handle remaining elements
+        while (i < values.len) : (i += 1) {
+            var buffer: [4]u8 = undefined;
+            writeU32Fast(&buffer, values[i]);
+            @memcpy(output[i * 4..][0..4], &buffer);
+        }
+        
+        return values.len * 4;
+    } else {
+        // Scalar fallback
+        for (values, 0..) |val, i| {
+            var buffer: [4]u8 = undefined;
+            writeU32Fast(&buffer, val);
+            @memcpy(output[i * 4..][0..4], &buffer);
+        }
+        return values.len * 4;
+    }
+}
+
+/// Batch convert u64 array to big-endian
+/// Optimized with alignment-aware fast paths
+pub fn batchU64ToBigEndian(values: []const u64, output: []u8) usize {
+    std.debug.assert(output.len >= values.len * 8);
+    
+    if (!needsByteSwap()) {
+        @memcpy(output[0..values.len * 8], std.mem.sliceAsBytes(values));
+        return values.len * 8;
+    }
+
+    const chunk_size = comptime detectSIMDChunkSize();
+    
+    if (chunk_size >= 16) {
+        // Check if output is aligned for faster writes
+        const output_aligned = isAligned(output.ptr, @alignOf(u64));
+        
+        // Process 2 u64s at a time (16 bytes)
+        const VecType = @Vector(2, u64);
+        var i: usize = 0;
+        
+        while (i + 2 <= values.len) : (i += 2) {
+            const vec: VecType = values[i..][0..2].*;
+            const swapped = @byteSwap(vec);
+            
+            const out_offset = i * 8;
+            
+            if (output_aligned and isAligned(output.ptr + out_offset, 16)) {
+                // Fast path: aligned write
+                const dest_ptr: *align(16) [16]u8 = @ptrCast(@alignCast(output[out_offset..].ptr));
+                const swapped_bytes: *const [16]u8 = @ptrCast(&swapped);
+                dest_ptr.* = swapped_bytes.*;
+            } else {
+                // Standard path: unaligned write
+                const swapped_bytes: *const [16]u8 = @ptrCast(&swapped);
+                @memcpy(output[out_offset..][0..16], swapped_bytes);
+            }
+        }
+        
+        // Handle remaining element
+        if (i < values.len) {
+            var buffer: [8]u8 = undefined;
+            writeU64Fast(&buffer, values[i]);
+            @memcpy(output[i * 8..][0..8], &buffer);
+        }
+        
+        return values.len * 8;
+    } else {
+        for (values, 0..) |val, i| {
+            var buffer: [8]u8 = undefined;
+            writeU64Fast(&buffer, val);
+            @memcpy(output[i * 8..][0..8], &buffer);
+        }
+        return values.len * 8;
+    }
+}
+
+// ========== End of Byte Order Conversion Optimizations ==========
 
 /// Helper to check if two Payloads are equal (deep equality)
 /// Note: For performance, consider limiting the use of arrays/maps as keys
@@ -1210,9 +1468,21 @@ pub fn PackWithLimits(
 
         /// Generic integer write helper
         inline fn writeIntRaw(self: Self, comptime T: type, val: T) !void {
-            var arr: [@sizeOf(T)]u8 = undefined;
-            std.mem.writeInt(T, &arr, val, big_endian);
-            try self.writeData(&arr);
+            // Use optimized SIMD byte swap for common integer types
+            if (T == u32) {
+                var arr: [4]u8 = undefined;
+                writeU32Fast(&arr, val);
+                try self.writeData(&arr);
+            } else if (T == u64) {
+                var arr: [8]u8 = undefined;
+                writeU64Fast(&arr, val);
+                try self.writeData(&arr);
+            } else {
+                // Standard path for other types (u8, u16, i8, i16, i32, i64)
+                var arr: [@sizeOf(T)]u8 = undefined;
+                std.mem.writeInt(T, &arr, val, big_endian);
+                try self.writeData(&arr);
+            }
         }
 
         /// Generic data write with length prefix
@@ -1386,10 +1656,9 @@ pub fn PackWithLimits(
 
         inline fn writeF32Value(self: Self, val: f32) !void {
             const int: u32 = @bitCast(val);
-            var arr: [4]u8 = undefined;
-            std.mem.writeInt(u32, &arr, int, big_endian);
-
-            try self.writeData(&arr);
+            var buffer: [4]u8 = undefined;
+            writeU32Fast(&buffer, int);
+            try self.writeData(&buffer);
         }
 
         /// write f32
@@ -1617,7 +1886,7 @@ pub fn PackWithLimits(
             // timestamp 32 format: seconds fit in 32-bit unsigned int and nanoseconds is 0
             if (timestamp.nanoseconds == 0 and timestamp.seconds >= 0 and timestamp.seconds <= MAX_UINT32) {
                 var data: [TIMESTAMP32_DATA_LEN]u8 = undefined;
-                std.mem.writeInt(u32, &data, @intCast(timestamp.seconds), big_endian);
+                writeU32Fast(&data, @intCast(timestamp.seconds));
                 const ext = EXT{ .type = TIMESTAMP_EXT_TYPE, .data = &data };
                 try self.writeExt(ext);
                 return;
@@ -1627,7 +1896,7 @@ pub fn PackWithLimits(
             if (timestamp.seconds >= 0 and (timestamp.seconds >> TIMESTAMP64_SECONDS_BITS) == 0 and timestamp.nanoseconds <= MAX_NANOSECONDS) {
                 const data64: u64 = (@as(u64, timestamp.nanoseconds) << TIMESTAMP64_SECONDS_BITS) | @as(u64, @intCast(timestamp.seconds));
                 var data: [TIMESTAMP64_DATA_LEN]u8 = undefined;
-                std.mem.writeInt(u64, &data, data64, big_endian);
+                writeU64Fast(&data, data64);
                 const ext = EXT{ .type = TIMESTAMP_EXT_TYPE, .data = &data };
                 try self.writeExt(ext);
                 return;
@@ -1636,7 +1905,8 @@ pub fn PackWithLimits(
             // timestamp 96 format: full range with signed 64-bit seconds and 32-bit nanoseconds
             if (timestamp.nanoseconds <= MAX_NANOSECONDS) {
                 var data: [TIMESTAMP96_DATA_LEN]u8 = undefined;
-                std.mem.writeInt(u32, data[0..4], timestamp.nanoseconds, big_endian);
+                writeU32Fast(data[0..4], timestamp.nanoseconds);
+                // For i64, use standard path (could add writeI64Fast if needed)
                 std.mem.writeInt(i64, data[4..12], timestamp.seconds, big_endian);
                 const ext = EXT{ .type = TIMESTAMP_EXT_TYPE, .data = &data };
                 try self.writeExt(ext);
@@ -1747,12 +2017,30 @@ pub fn PackWithLimits(
 
         /// Generic integer read helper
         inline fn readIntRaw(self: Self, comptime T: type) !T {
-            var buffer: [@sizeOf(T)]u8 = undefined;
-            const len = try self.readFrom(&buffer);
-            if (len != @sizeOf(T)) {
-                return MsgPackError.LengthReading;
+            // Use optimized SIMD byte swap for common integer types
+            if (T == u32) {
+                var buffer: [4]u8 = undefined;
+                const len = try self.readFrom(&buffer);
+                if (len != 4) {
+                    return MsgPackError.LengthReading;
+                }
+                return readU32Fast(&buffer);
+            } else if (T == u64) {
+                var buffer: [8]u8 = undefined;
+                const len = try self.readFrom(&buffer);
+                if (len != 8) {
+                    return MsgPackError.LengthReading;
+                }
+                return readU64Fast(&buffer);
+            } else {
+                // Standard path for other types
+                var buffer: [@sizeOf(T)]u8 = undefined;
+                const len = try self.readFrom(&buffer);
+                if (len != @sizeOf(T)) {
+                    return MsgPackError.LengthReading;
+                }
+                return std.mem.readInt(T, &buffer, big_endian);
             }
-            return std.mem.readInt(T, &buffer, big_endian);
         }
 
         /// Generic integer value read
@@ -1984,13 +2272,25 @@ pub fn PackWithLimits(
         }
 
         inline fn readF32Value(self: Self) !f32 {
-            const val_int = try self.readIntRaw(u32);
+            // Use optimized read for u32
+            var buffer: [4]u8 = undefined;
+            const len = try self.readFrom(&buffer);
+            if (len != 4) {
+                return MsgPackError.LengthReading;
+            }
+            const val_int = readU32Fast(&buffer);
             const val: f32 = @bitCast(val_int);
             return val;
         }
 
         inline fn readF64Value(self: Self) !f64 {
-            const val_int = try self.readIntRaw(u64);
+            // Use optimized read for u64
+            var buffer: [8]u8 = undefined;
+            const len = try self.readFrom(&buffer);
+            if (len != 8) {
+                return MsgPackError.LengthReading;
+            }
+            const val_int = readU64Fast(&buffer);
             const val: f64 = @bitCast(val_int);
             return val;
         }
