@@ -3017,7 +3017,7 @@ pub fn PackWithLimits(
                     // Fill parent and check if complete
                     while (true) {
                         const parent = &parse_stack.items[parse_stack.items.len - 1];
-                        const finished = try fillParentContainer(parent, current_payload, allocator, &parse_stack);
+                        const finished = try fillParentContainer(parent, current_payload);
 
                         if (!finished) {
                             // Parent needs more elements
@@ -3051,8 +3051,6 @@ pub fn PackWithLimits(
         inline fn fillParentContainer(
             parent: *ParseState,
             child: Payload,
-            _: Allocator,
-            _: *std.ArrayList(ParseState),
         ) !bool {
             switch (parent.container_type) {
                 .array => {
