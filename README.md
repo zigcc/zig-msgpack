@@ -1,6 +1,6 @@
 # zig-msgpack
 
-[![CI](https://github.com/zigcc/zig-msgpack/actions/workflows/test.yml/badge.svg)](https://github.com/zigcc/zig-msgpack/actions/workflows/test.yml)
+[![CI](https://github.com/zigcc/zig-msgpack/actions/workflows/ci.yml/badge.svg)](https://github.com/zigcc/zig-msgpack/actions/workflows/ci.yml)
 
 A MessagePack implementation for the Zig programming language. This library provides a simple and efficient way to serialize and deserialize data using the MessagePack format.
 
@@ -16,6 +16,26 @@ An article introducing it: [Zig Msgpack](https://blog.nvimer.org/2025/09/20/zig-
 - **Type-Safe:** Leverages Zig's type system to ensure safety during serialization and deserialization.
 - **Simple API:** Offers a straightforward and easy-to-use API for encoding and decoding.
 - **Performance Optimized:** Advanced optimizations including CPU cache prefetching, branch prediction hints, and SIMD operations for maximum throughput.
+
+## Platform Support
+
+This library is tested and optimized for all major platforms and architectures:
+
+| Platform | Architecture | CI Status | SIMD Optimizations |
+|----------|--------------|-----------|-------------------|
+| **Windows** | x86_64 | ✅ Tested | SSE2/AVX2 prefetch |
+| **macOS** | x86_64 (Intel) | ✅ Tested | SSE2/AVX2 prefetch |
+| **macOS** | ARM64 (Apple Silicon) | ✅ Tested | ARM NEON + PRFM |
+| **Linux** | x86_64 | ✅ Tested | SSE2/AVX2 prefetch |
+| **Linux** | ARM64/aarch64 | ✅ Tested | ARM NEON + PRFM |
+| **Other** | RISC-V, MIPS, etc. | ✅ Tested | Graceful fallback |
+
+### Architecture-Specific Optimizations
+
+- **x86/x64**: Utilizes SSE/AVX prefetch instructions (`PREFETCHT0/1/2`, `PREFETCHNTA`) for cache-aware memory access
+- **ARM64**: Uses ARM PRFM (Prefetch Memory) instructions for optimal performance on Apple Silicon and ARM servers
+- **Cross-platform**: Automatically detects CPU features at compile-time with zero runtime overhead
+- **Safe fallback**: Gracefully degrades to standard operations on unsupported architectures
 
 ## Installation
 

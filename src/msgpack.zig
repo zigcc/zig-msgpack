@@ -19,42 +19,69 @@ const CACHE_LINE_SIZE: usize = 64;
 /// Uses compiler intrinsics to hint CPU to prefetch data
 /// This is a performance hint and may be a no-op on some architectures
 inline fn prefetchRead(ptr: [*]const u8, comptime locality: u2) void {
-    _ = locality; // locality: 0=no temporal locality, 3=high temporal locality
-    // Check if we're on x86/x64 with SSE support for prefetch instructions
-    const has_prefetch = comptime blk: {
-        const arch = builtin.cpu.arch;
-        break :blk arch.isX86() and std.Target.x86.featureSetHas(builtin.cpu.features, .sse);
-    };
+    // locality: 0=no temporal locality (NTA), 1=low (T2), 2=medium (T1), 3=high (T0)
+    const arch = comptime builtin.cpu.arch;
     
-    if (has_prefetch) {
-        // Use inline assembly for prefetch on x86/x64
-        // PREFETCHT0 - prefetch to all cache levels
-        if (comptime builtin.cpu.arch.isX86()) {
-            asm volatile ("prefetcht0 %[ptr]"
-                :
-                : [ptr] "m" (@as(*const u8, ptr)),
-            );
+    // x86/x64: Check for SSE support (required for PREFETCH instructions)
+    if (comptime arch.isX86()) {
+        const has_sse = comptime std.Target.x86.featureSetHas(builtin.cpu.features, .sse);
+        if (has_sse) {
+            // Use different prefetch instructions based on locality
+            switch (locality) {
+                3 => asm volatile ("prefetcht0 %[ptr]" : : [ptr] "m" (@as(*const u8, ptr))), // High locality -> L1+L2+L3
+                2 => asm volatile ("prefetcht1 %[ptr]" : : [ptr] "m" (@as(*const u8, ptr))), // Medium -> L2+L3
+                1 => asm volatile ("prefetcht2 %[ptr]" : : [ptr] "m" (@as(*const u8, ptr))), // Low -> L3 only
+                0 => asm volatile ("prefetchnta %[ptr]" : : [ptr] "m" (@as(*const u8, ptr))), // Non-temporal
+            }
         }
     }
-    // On other architectures or without SSE, this is a no-op (compiler may optimize)
+    // ARM64 (Apple Silicon, Linux ARM): Use PRFM instruction
+    else if (comptime arch.isAARCH64()) {
+        // ARM PRFM (Prefetch Memory) instruction
+        // Syntax: prfm <prfop>, [<Xn|SP>{, #<pimm>}]
+        // prfop encoding: PLD (prefetch for load) + locality hint
+        switch (locality) {
+            3 => asm volatile ("prfm pldl1keep, [%[ptr]]" : : [ptr] "r" (ptr)), // Keep in L1
+            2 => asm volatile ("prfm pldl2keep, [%[ptr]]" : : [ptr] "r" (ptr)), // Keep in L2
+            1 => asm volatile ("prfm pldl3keep, [%[ptr]]" : : [ptr] "r" (ptr)), // Keep in L3
+            0 => asm volatile ("prfm pldl1strm, [%[ptr]]" : : [ptr] "r" (ptr)), // Streaming (non-temporal)
+        }
+    }
+    // Other architectures: no-op (compiler optimizes away)
+    // RISC-V, MIPS, etc. may have their own prefetch extensions but not standard
 }
 
 /// Prefetch data for write operations
 inline fn prefetchWrite(ptr: [*]u8, comptime locality: u2) void {
-    _ = locality;
-    const has_prefetch = comptime blk: {
-        const arch = builtin.cpu.arch;
-        break :blk arch.isX86() and std.Target.x86.featureSetHas(builtin.cpu.features, .sse);
-    };
+    const arch = comptime builtin.cpu.arch;
     
-    if (has_prefetch) {
-        if (comptime builtin.cpu.arch.isX86()) {
-            // PREFETCHW - prefetch for write
-            // Note: Requires 3DNow! or later x86 extensions
-            asm volatile ("prefetcht0 %[ptr]"
-                :
-                : [ptr] "m" (@as(*u8, ptr)),
-            );
+    // x86/x64: Use PREFETCHW if available (3DNow!/SSE), fallback to read prefetch
+    if (comptime arch.isX86()) {
+        // PREFETCHW is part of 3DNow! (AMD) or PRFCHW feature (Intel Broadwell+)
+        const has_prefetchw = comptime std.Target.x86.featureSetHas(builtin.cpu.features, .prfchw) or
+                                      std.Target.x86.featureSetHas(builtin.cpu.features, .@"3dnow");
+        const has_sse = comptime std.Target.x86.featureSetHas(builtin.cpu.features, .sse);
+        
+        if (has_prefetchw) {
+            // Use write-specific prefetch (ignores locality for simplicity)
+            asm volatile ("prefetchw %[ptr]" : : [ptr] "m" (@as(*u8, ptr)));
+        } else if (has_sse) {
+            // Fallback to read prefetch with specified locality
+            switch (locality) {
+                3 => asm volatile ("prefetcht0 %[ptr]" : : [ptr] "m" (@as(*u8, ptr))),
+                2 => asm volatile ("prefetcht1 %[ptr]" : : [ptr] "m" (@as(*u8, ptr))),
+                1 => asm volatile ("prefetcht2 %[ptr]" : : [ptr] "m" (@as(*u8, ptr))),
+                0 => asm volatile ("prefetchnta %[ptr]" : : [ptr] "m" (@as(*u8, ptr))),
+            }
+        }
+    }
+    // ARM64: Use PST (prefetch for store)
+    else if (comptime arch.isAARCH64()) {
+        switch (locality) {
+            3 => asm volatile ("prfm pstl1keep, [%[ptr]]" : : [ptr] "r" (ptr)),
+            2 => asm volatile ("prfm pstl2keep, [%[ptr]]" : : [ptr] "r" (ptr)),
+            1 => asm volatile ("prfm pstl3keep, [%[ptr]]" : : [ptr] "r" (ptr)),
+            0 => asm volatile ("prfm pstl1strm, [%[ptr]]" : : [ptr] "r" (ptr)),
         }
     }
 }
