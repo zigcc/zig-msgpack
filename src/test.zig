@@ -10,6 +10,517 @@ fn u8eql(a: []const u8, b: []const u8) bool {
     return std.mem.eql(u8, a, b);
 }
 
+// ============================================================================
+// PackerIO: Error Handling Tests
+// ============================================================================
+
+test "PackerIO: truncated data error" {
+    if (!has_new_io) return error.SkipZigVersionCheck;
+
+    // Test reading truncated integer data (simpler case without allocations)
+    var full_buffer: [100]u8 = undefined;
+    var write_writer = std.Io.Writer.fixed(&full_buffer);
+    var write_reader = std.Io.Reader.fixed(&full_buffer);
+
+    var write_packer = msgpack.PackerIO.init(&write_reader, &write_writer);
+
+    // Write a uint32 that needs 5 bytes (marker + 4 bytes value)
+    const payload = msgpack.Payload.uintToPayload(0xFFFFFFFF);
+    try write_packer.write(payload);
+
+    // Now try to read with truncated buffer (only first 3 bytes, not enough for uint32)
+    var truncated_buffer = full_buffer[0..3].*;
+    var read_reader = std.Io.Reader.fixed(&truncated_buffer);
+    var read_writer = std.Io.Writer.fixed(&truncated_buffer);
+    var read_packer = msgpack.PackerIO.init(&read_reader, &read_writer);
+
+    // Should return error when trying to read incomplete data
+    const result = read_packer.read(allocator);
+    if (result) |decoded| {
+        decoded.free(allocator);
+        try expect(false); // Should not succeed with truncated data
+    } else |err| {
+        // Expected error - truncated data cannot be fully read
+        // std.Io.Reader returns EndOfStream, which gets wrapped as LengthReading or DataReading
+        try expect(err == msgpack.MsgPackError.LengthReading or
+            err == msgpack.MsgPackError.TypeMarkerReading or
+            err == msgpack.MsgPackError.DataReading or
+            err == error.EndOfStream);
+    }
+}
+
+test "PackerIO: invalid msgpack marker" {
+    if (!has_new_io) return error.SkipZigVersionCheck;
+
+    // 0xc1 is a reserved/invalid marker byte in MessagePack
+    var buffer: [10]u8 = [_]u8{ 0xc1, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+    var writer = std.Io.Writer.fixed(&buffer);
+    var reader = std.Io.Reader.fixed(&buffer);
+
+    var packer = msgpack.PackerIO.init(&reader, &writer);
+
+    // Should handle invalid marker gracefully (no crash)
+    const result = packer.read(allocator);
+    if (result) |payload| {
+        payload.free(allocator);
+        // If it succeeds, that's fine (marker might be treated as NIL or other)
+    } else |_| {
+        // Expected - invalid marker should cause error
+    }
+}
+
+test "PackerIO: corrupted length field" {
+    if (!has_new_io) return error.SkipZigVersionCheck;
+
+    var buffer: [100]u8 = undefined;
+    var input = if (builtin.zig_version.minor == 14)
+        std.ArrayList(u8).init(allocator)
+    else
+        std.ArrayList(u8){};
+    defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
+
+    // str32 claiming 1MB but only providing a few bytes
+    if (builtin.zig_version.minor == 14) {
+        try input.append(0xdb); // str32
+        try input.append(0x00); // 1MB = 0x00100000
+        try input.append(0x10);
+        try input.append(0x00);
+        try input.append(0x00);
+        // Only provide 5 bytes of actual data
+        try input.append('a');
+        try input.append('b');
+        try input.append('c');
+        try input.append('d');
+        try input.append('e');
+    } else {
+        try input.append(allocator, 0xdb);
+        try input.append(allocator, 0x00);
+        try input.append(allocator, 0x10);
+        try input.append(allocator, 0x00);
+        try input.append(allocator, 0x00);
+        try input.append(allocator, 'a');
+        try input.append(allocator, 'b');
+        try input.append(allocator, 'c');
+        try input.append(allocator, 'd');
+        try input.append(allocator, 'e');
+    }
+
+    @memcpy(buffer[0..input.items.len], input.items);
+
+    var writer = std.Io.Writer.fixed(&buffer);
+    var reader = std.Io.Reader.fixed(buffer[0..input.items.len]);
+
+    var packer = msgpack.PackerIO.init(&reader, &writer);
+
+    // Should fail due to length mismatch
+    const result = packer.read(allocator);
+    if (result) |payload| {
+        payload.free(allocator);
+        try expect(false); // Should not succeed
+    } else |err| {
+        // Expected error
+        try expect(err == msgpack.MsgPackError.LengthReading or
+            err == msgpack.MsgPackError.DataReading or
+            err == error.EndOfStream);
+    }
+}
+
+test "PackerIO: multiple payloads with error recovery" {
+    if (!has_new_io) return error.SkipZigVersionCheck;
+
+    var buffer: [4096]u8 = std.mem.zeroes([4096]u8);
+    var writer = std.Io.Writer.fixed(&buffer);
+    var reader = std.Io.Reader.fixed(&buffer);
+
+    var packer = msgpack.PackerIO.init(&reader, &writer);
+
+    // Write valid data
+    try packer.write(msgpack.Payload.uintToPayload(1));
+    try packer.write(msgpack.Payload.uintToPayload(2));
+    try packer.write(msgpack.Payload.uintToPayload(3));
+
+    reader.seek = 0;
+
+    // Read first two successfully
+    const result1 = try packer.read(allocator);
+    defer result1.free(allocator);
+    try expect(result1.uint == 1);
+
+    const result2 = try packer.read(allocator);
+    defer result2.free(allocator);
+    try expect(result2.uint == 2);
+
+    // Third should also succeed
+    const result3 = try packer.read(allocator);
+    defer result3.free(allocator);
+    try expect(result3.uint == 3);
+
+    // Fourth read should fail (no more data) or return garbage
+    // After writing 3 payloads, there's no valid 4th payload
+    // The reader should hit end of valid data
+    const result4 = packer.read(allocator);
+    if (result4) |payload| {
+        payload.free(allocator);
+    } else |_| {
+        // Expected - should fail when no more valid data
+    }
+}
+
+// ============================================================================
+// PackerIO: Different Reader/Writer Implementations
+// ============================================================================
+
+test "PackerIO: sequential writes and reads with fixed buffer" {
+    if (!has_new_io) return error.SkipZigVersionCheck;
+
+    var buffer: [4096]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buffer);
+    var reader = std.Io.Reader.fixed(&buffer);
+
+    var packer = msgpack.PackerIO.init(&reader, &writer);
+
+    // Write multiple different types
+    try packer.write(msgpack.Payload.nilToPayload());
+    try packer.write(msgpack.Payload.boolToPayload(true));
+    try packer.write(msgpack.Payload.intToPayload(-42));
+    const str_payload = try msgpack.Payload.strToPayload("test", allocator);
+    defer str_payload.free(allocator);
+    try packer.write(str_payload);
+
+    reader.seek = 0;
+
+    // Read them back in order
+    const r1 = try packer.read(allocator);
+    defer r1.free(allocator);
+    try expect(r1 == .nil);
+
+    const r2 = try packer.read(allocator);
+    defer r2.free(allocator);
+    try expect(r2.bool == true);
+
+    const r3 = try packer.read(allocator);
+    defer r3.free(allocator);
+    try expect(r3.int == -42);
+
+    const r4 = try packer.read(allocator);
+    defer r4.free(allocator);
+    try expect(u8eql(r4.str.value(), "test"));
+}
+
+// ============================================================================
+// PackerIO: Large Data and Limits
+// ============================================================================
+
+test "PackerIO: large string near limit" {
+    if (!has_new_io) return error.SkipZigVersionCheck;
+
+    const allocator_heap = std.heap.page_allocator;
+
+    // Create 1MB string (well within 100MB limit)
+    const large_size = 1_000_000;
+    const large_str = try allocator_heap.alloc(u8, large_size);
+    defer allocator_heap.free(large_str);
+    @memset(large_str, 'X');
+
+    const buffer = try allocator_heap.alloc(u8, large_size + 10000);
+    defer allocator_heap.free(buffer);
+
+    var writer = std.Io.Writer.fixed(buffer);
+    var reader = std.Io.Reader.fixed(buffer);
+    var packer = msgpack.PackerIO.init(&reader, &writer);
+
+    const payload = try msgpack.Payload.strToPayload(large_str, allocator_heap);
+    defer payload.free(allocator_heap);
+
+    try packer.write(payload);
+
+    reader.seek = 0;
+    reader.end = writer.end;
+
+    const result = try packer.read(allocator_heap);
+    defer result.free(allocator_heap);
+
+    try expect(result == .str);
+    try expect(result.str.value().len == large_size);
+
+    // Verify a sample of data
+    try expect(result.str.value()[0] == 'X');
+    try expect(result.str.value()[large_size - 1] == 'X');
+}
+
+test "PackerIO: large binary data" {
+    if (!has_new_io) return error.SkipZigVersionCheck;
+
+    const allocator_heap = std.heap.page_allocator;
+
+    // Create 512KB binary data
+    const large_size = 512 * 1024;
+    const large_bin = try allocator_heap.alloc(u8, large_size);
+    defer allocator_heap.free(large_bin);
+
+    // Fill with pattern
+    for (large_bin, 0..) |*byte, i| {
+        byte.* = @intCast(i % 256);
+    }
+
+    const buffer = try allocator_heap.alloc(u8, large_size + 10000);
+    defer allocator_heap.free(buffer);
+
+    var writer = std.Io.Writer.fixed(buffer);
+    var reader = std.Io.Reader.fixed(buffer);
+    var packer = msgpack.PackerIO.init(&reader, &writer);
+
+    const payload = try msgpack.Payload.binToPayload(large_bin, allocator_heap);
+    defer payload.free(allocator_heap);
+
+    try packer.write(payload);
+
+    reader.seek = 0;
+    reader.end = writer.end;
+
+    const result = try packer.read(allocator_heap);
+    defer result.free(allocator_heap);
+
+    try expect(result == .bin);
+    try expect(result.bin.value().len == large_size);
+
+    // Verify pattern integrity
+    for (result.bin.value(), 0..) |byte, i| {
+        try expect(byte == @as(u8, @intCast(i % 256)));
+    }
+}
+
+test "PackerIO: large array (1000 elements)" {
+    if (!has_new_io) return error.SkipZigVersionCheck;
+
+    const allocator_heap = std.heap.page_allocator;
+
+    const buffer = try allocator_heap.alloc(u8, 100_000);
+    defer allocator_heap.free(buffer);
+
+    var writer = std.Io.Writer.fixed(buffer);
+    var reader = std.Io.Reader.fixed(buffer);
+    var packer = msgpack.PackerIO.init(&reader, &writer);
+
+    const count = 1000;
+    var payload = try msgpack.Payload.arrPayload(count, allocator_heap);
+    defer payload.free(allocator_heap);
+
+    for (0..count) |i| {
+        try payload.setArrElement(i, msgpack.Payload.uintToPayload(@as(u64, i)));
+    }
+
+    try packer.write(payload);
+
+    reader.seek = 0;
+    reader.end = writer.end;
+
+    const result = try packer.read(allocator_heap);
+    defer result.free(allocator_heap);
+
+    try expect(try result.getArrLen() == count);
+
+    // Spot check some elements
+    try expect((try result.getArrElement(0)).uint == 0);
+    try expect((try result.getArrElement(500)).uint == 500);
+    try expect((try result.getArrElement(999)).uint == 999);
+}
+
+test "PackerIO: large map (500 entries)" {
+    if (!has_new_io) return error.SkipZigVersionCheck;
+
+    const allocator_heap = std.heap.page_allocator;
+
+    const buffer = try allocator_heap.alloc(u8, 200_000);
+    defer allocator_heap.free(buffer);
+
+    var writer = std.Io.Writer.fixed(buffer);
+    var reader = std.Io.Reader.fixed(buffer);
+    var packer = msgpack.PackerIO.init(&reader, &writer);
+
+    var payload = msgpack.Payload.mapPayload(allocator_heap);
+    defer payload.free(allocator_heap);
+
+    const count = 500;
+    for (0..count) |i| {
+        const key = try std.fmt.allocPrint(allocator_heap, "key_{d:0>6}", .{i});
+        defer allocator_heap.free(key);
+        try payload.mapPut(key, msgpack.Payload.uintToPayload(@as(u64, i)));
+    }
+
+    try packer.write(payload);
+
+    reader.seek = 0;
+    reader.end = writer.end;
+
+    const result = try packer.read(allocator_heap);
+    defer result.free(allocator_heap);
+
+    try expect(result.map.count() == count);
+
+    // Verify some entries
+    const key0 = try std.fmt.allocPrint(allocator_heap, "key_{d:0>6}", .{0});
+    defer allocator_heap.free(key0);
+    const val0 = try result.mapGet(key0);
+    try expect(val0 != null);
+    try expect(val0.?.uint == 0);
+
+    const key499 = try std.fmt.allocPrint(allocator_heap, "key_{d:0>6}", .{499});
+    defer allocator_heap.free(key499);
+    const val499 = try result.mapGet(key499);
+    try expect(val499 != null);
+    try expect(val499.?.uint == 499);
+}
+
+// ============================================================================
+// PackerIO: Boundary Cases
+// ============================================================================
+
+test "PackerIO: empty buffer write error" {
+    if (!has_new_io) return error.SkipZigVersionCheck;
+
+    var buffer: [0]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buffer);
+    var reader = std.Io.Reader.fixed(&buffer);
+
+    var packer = msgpack.PackerIO.init(&reader, &writer);
+
+    // Writing to empty buffer should fail
+    const result = packer.write(msgpack.Payload.nilToPayload());
+    // Zig 0.15+ std.Io.Writer.fixed returns error.WriteFailed
+    if (result) |_| {
+        try expect(false); // Should have failed
+    } else |err| {
+        // Either NoSpaceLeft or WriteFailed is acceptable
+        try expect(err == error.NoSpaceLeft or err == error.WriteFailed);
+    }
+}
+
+test "PackerIO: minimal buffer size" {
+    if (!has_new_io) return error.SkipZigVersionCheck;
+
+    // Test with exactly 1 byte buffer (enough for nil marker)
+    var buffer: [1]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buffer);
+    var reader = std.Io.Reader.fixed(&buffer);
+
+    var packer = msgpack.PackerIO.init(&reader, &writer);
+
+    // Nil marker is 1 byte, should succeed
+    try packer.write(msgpack.Payload.nilToPayload());
+
+    reader.seek = 0;
+    const result = try packer.read(allocator);
+    defer result.free(allocator);
+
+    try expect(result == .nil);
+}
+
+test "PackerIO: exact buffer size for small payload" {
+    if (!has_new_io) return error.SkipZigVersionCheck;
+
+    // positive fixint uses exactly 1 byte
+    var buffer: [1]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buffer);
+    var reader = std.Io.Reader.fixed(&buffer);
+
+    var packer = msgpack.PackerIO.init(&reader, &writer);
+
+    try packer.write(msgpack.Payload.uintToPayload(42)); // 42 is fixint
+
+    reader.seek = 0;
+    const result = try packer.read(allocator);
+    defer result.free(allocator);
+
+    try expect(result.uint == 42);
+}
+
+test "PackerIO: off-by-one buffer size" {
+    if (!has_new_io) return error.SkipZigVersionCheck;
+
+    // uint8 needs 2 bytes (marker + value), provide only 1
+    var buffer: [1]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buffer);
+    var reader = std.Io.Reader.fixed(&buffer);
+
+    var packer = msgpack.PackerIO.init(&reader, &writer);
+
+    // 128 requires uint8 format (2 bytes), buffer is too small
+    const result = packer.write(msgpack.Payload.uintToPayload(128));
+    // Zig 0.15+ std.Io.Writer.fixed returns error.WriteFailed
+    if (result) |_| {
+        try expect(false); // Should have failed
+    } else |err| {
+        // Either NoSpaceLeft or WriteFailed is acceptable
+        try expect(err == error.NoSpaceLeft or err == error.WriteFailed);
+    }
+}
+
+test "PackerIO: empty string edge case" {
+    if (!has_new_io) return error.SkipZigVersionCheck;
+
+    var buffer: [10]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buffer);
+    var reader = std.Io.Reader.fixed(&buffer);
+
+    var packer = msgpack.PackerIO.init(&reader, &writer);
+
+    const payload = try msgpack.Payload.strToPayload("", allocator);
+    defer payload.free(allocator);
+
+    try packer.write(payload);
+
+    reader.seek = 0;
+    const result = try packer.read(allocator);
+    defer result.free(allocator);
+
+    try expect(result == .str);
+    try expect(result.str.value().len == 0);
+}
+
+test "PackerIO: empty array edge case" {
+    if (!has_new_io) return error.SkipZigVersionCheck;
+
+    var buffer: [10]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buffer);
+    var reader = std.Io.Reader.fixed(&buffer);
+
+    var packer = msgpack.PackerIO.init(&reader, &writer);
+
+    const payload = try msgpack.Payload.arrPayload(0, allocator);
+    defer payload.free(allocator);
+
+    try packer.write(payload);
+
+    reader.seek = 0;
+    const result = try packer.read(allocator);
+    defer result.free(allocator);
+
+    try expect(result == .arr);
+    try expect(try result.getArrLen() == 0);
+}
+
+test "PackerIO: empty map edge case" {
+    if (!has_new_io) return error.SkipZigVersionCheck;
+
+    var buffer: [10]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buffer);
+    var reader = std.Io.Reader.fixed(&buffer);
+
+    var packer = msgpack.PackerIO.init(&reader, &writer);
+
+    const payload = msgpack.Payload.mapPayload(allocator);
+    defer payload.free(allocator);
+
+    try packer.write(payload);
+
+    reader.seek = 0;
+    const result = try packer.read(allocator);
+    defer result.free(allocator);
+
+    try expect(result == .map);
+    try expect(result.map.count() == 0);
+}
 const bufferType = compat.BufferStream;
 const fixedBufferStream = compat.fixedBufferStream;
 
@@ -4357,4 +4868,520 @@ test "memory alignment: large integer array serialization" {
         const elem = try result.getArrElement(i);
         try expect(elem.uint == i);
     }
+}
+
+// ============================================================================
+// std.io.Reader and std.io.Writer Tests (Zig 0.15+)
+// ============================================================================
+
+const has_new_io = builtin.zig_version.minor >= 15;
+
+test "PackerIO: basic write and read with fixed Reader/Writer" {
+    if (!has_new_io) return error.SkipZigVersionCheck;
+
+    var buffer: [1024]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buffer);
+    var reader = std.Io.Reader.fixed(&buffer);
+
+    var packer = msgpack.PackerIO.init(&reader, &writer);
+
+    // Write a simple payload
+    const payload = msgpack.Payload.uintToPayload(42);
+    try packer.write(payload);
+
+    // Reset reader position
+    reader.seek = 0;
+
+    // Read it back
+    const result = try packer.read(allocator);
+    defer result.free(allocator);
+
+    try expect(result == .uint);
+    try expect(result.uint == 42);
+}
+
+test "PackerIO: nil type" {
+    if (!has_new_io) return error.SkipZigVersionCheck;
+
+    var buffer: [1024]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buffer);
+    var reader = std.Io.Reader.fixed(&buffer);
+
+    var packer = msgpack.PackerIO.init(&reader, &writer);
+
+    const payload = msgpack.Payload.nilToPayload();
+    try packer.write(payload);
+
+    reader.seek = 0;
+    const result = try packer.read(allocator);
+    defer result.free(allocator);
+
+    try expect(result == .nil);
+}
+
+test "PackerIO: bool type" {
+    if (!has_new_io) return error.SkipZigVersionCheck;
+
+    var buffer: [1024]u8 = undefined;
+
+    // Test true
+    {
+        var writer = std.Io.Writer.fixed(&buffer);
+        var reader = std.Io.Reader.fixed(&buffer);
+        var packer = msgpack.PackerIO.init(&reader, &writer);
+
+        const payload = msgpack.Payload.boolToPayload(true);
+        try packer.write(payload);
+
+        reader.seek = 0;
+        const result = try packer.read(allocator);
+        defer result.free(allocator);
+
+        try expect(result == .bool);
+        try expect(result.bool == true);
+    }
+
+    // Test false
+    {
+        var writer = std.Io.Writer.fixed(&buffer);
+        var reader = std.Io.Reader.fixed(&buffer);
+        var packer = msgpack.PackerIO.init(&reader, &writer);
+
+        const payload = msgpack.Payload.boolToPayload(false);
+        try packer.write(payload);
+
+        reader.seek = 0;
+        const result = try packer.read(allocator);
+        defer result.free(allocator);
+
+        try expect(result == .bool);
+        try expect(result.bool == false);
+    }
+}
+
+test "PackerIO: signed integers" {
+    if (!has_new_io) return error.SkipZigVersionCheck;
+
+    var buffer: [1024]u8 = undefined;
+
+    const test_cases = [_]i64{ -1, -32, -33, -128, -32768, -2147483648 };
+
+    for (test_cases) |val| {
+        var writer = std.Io.Writer.fixed(&buffer);
+        var reader = std.Io.Reader.fixed(&buffer);
+        var packer = msgpack.PackerIO.init(&reader, &writer);
+
+        const payload = msgpack.Payload.intToPayload(val);
+        try packer.write(payload);
+
+        reader.seek = 0;
+        const result = try packer.read(allocator);
+        defer result.free(allocator);
+
+        // Verify the result is an integer type
+        if (result != .int) {
+            std.debug.print("Expected .int but got {s} for value {d}\n", .{ @tagName(result), val });
+        }
+        try expect(result == .int);
+        try expect(result.int == val);
+    }
+}
+
+test "PackerIO: unsigned integers" {
+    if (!has_new_io) return error.SkipZigVersionCheck;
+
+    var buffer: [1024]u8 = undefined;
+
+    const test_cases = [_]u64{ 0, 1, 127, 128, 255, 256, 65535, 65536, 4294967295, 4294967296 };
+
+    for (test_cases) |val| {
+        var writer = std.Io.Writer.fixed(&buffer);
+        var reader = std.Io.Reader.fixed(&buffer);
+        var packer = msgpack.PackerIO.init(&reader, &writer);
+
+        const payload = msgpack.Payload.uintToPayload(val);
+        try packer.write(payload);
+
+        reader.seek = 0;
+        const result = try packer.read(allocator);
+        defer result.free(allocator);
+
+        try expect(result == .uint);
+        try expect(result.uint == val);
+    }
+}
+
+test "PackerIO: float type" {
+    if (!has_new_io) return error.SkipZigVersionCheck;
+
+    var buffer: [1024]u8 = undefined;
+
+    // Use non-integer values to ensure they stay as floats
+    const test_cases = [_]f64{ 3.14159, -3.14159, 1.23e10, -1.23e-10, 2.71828, -999.999 };
+
+    for (test_cases) |val| {
+        var writer = std.Io.Writer.fixed(&buffer);
+        var reader = std.Io.Reader.fixed(&buffer);
+        var packer = msgpack.PackerIO.init(&reader, &writer);
+
+        const payload = msgpack.Payload.floatToPayload(val);
+        try packer.write(payload);
+
+        reader.seek = 0;
+        const result = try packer.read(allocator);
+        defer result.free(allocator);
+
+        if (result != .float) {
+            std.debug.print("Expected .float but got {s} for value {d}\n", .{ @tagName(result), val });
+            std.debug.print("Buffer contents: ", .{});
+            for (buffer[0..writer.end]) |b| {
+                std.debug.print("{x:0>2} ", .{b});
+            }
+            std.debug.print("\n", .{});
+        }
+        try expect(result == .float);
+        // Use approxEqRel for float comparison to handle precision loss in MessagePack encoding
+        // MessagePack may use float32 for some values, which has less precision than float64
+        const epsilon = 0.00001; // Relaxed epsilon for float32 precision
+        if (!std.math.approxEqRel(f64, result.float, val, epsilon)) {
+            std.debug.print("Float mismatch: expected {d}, got {d}, diff: {d}\n", .{ val, result.float, @abs(result.float - val) });
+        }
+        try expect(std.math.approxEqRel(f64, result.float, val, epsilon));
+    }
+}
+
+test "PackerIO: string type" {
+    if (!has_new_io) return error.SkipZigVersionCheck;
+
+    var buffer: [1024]u8 = undefined;
+
+    const test_strings = [_][]const u8{
+        "",
+        "a",
+        "hello",
+        "Hello, World!",
+        "这是一个测试", // UTF-8 test
+        "a" ** 100, // Long string
+    };
+
+    for (test_strings) |str| {
+        var writer = std.Io.Writer.fixed(&buffer);
+        var reader = std.Io.Reader.fixed(&buffer);
+        var packer = msgpack.PackerIO.init(&reader, &writer);
+
+        const payload = try msgpack.Payload.strToPayload(str, allocator);
+        defer payload.free(allocator);
+        try packer.write(payload);
+
+        reader.seek = 0;
+        const result = try packer.read(allocator);
+        defer result.free(allocator);
+
+        try expect(result == .str);
+        try expect(u8eql(result.str.value(), str));
+    }
+}
+
+test "PackerIO: binary type" {
+    if (!has_new_io) return error.SkipZigVersionCheck;
+
+    var buffer: [1024]u8 = undefined;
+
+    const test_data = [_]u8{ 0x00, 0x01, 0x02, 0xFF, 0xAB, 0xCD };
+
+    var writer = std.Io.Writer.fixed(&buffer);
+    var reader = std.Io.Reader.fixed(&buffer);
+    var packer = msgpack.PackerIO.init(&reader, &writer);
+
+    const payload = try msgpack.Payload.binToPayload(&test_data, allocator);
+    defer payload.free(allocator);
+    try packer.write(payload);
+
+    reader.seek = 0;
+    const result = try packer.read(allocator);
+    defer result.free(allocator);
+
+    try expect(result == .bin);
+    try expect(u8eql(result.bin.value(), &test_data));
+}
+
+test "PackerIO: array type" {
+    if (!has_new_io) return error.SkipZigVersionCheck;
+
+    var buffer: [1024]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buffer);
+    var reader = std.Io.Reader.fixed(&buffer);
+    var packer = msgpack.PackerIO.init(&reader, &writer);
+
+    // Create an array with different types
+    var payload = try msgpack.Payload.arrPayload(4, allocator);
+    defer payload.free(allocator);
+    try payload.setArrElement(0, msgpack.Payload.intToPayload(42));
+    try payload.setArrElement(1, try msgpack.Payload.strToPayload("test", allocator));
+    try payload.setArrElement(2, msgpack.Payload.boolToPayload(true));
+    try payload.setArrElement(3, msgpack.Payload.nilToPayload());
+
+    try packer.write(payload);
+
+    reader.seek = 0;
+    const result = try packer.read(allocator);
+    defer result.free(allocator);
+
+    try expect(result == .arr);
+    try expect(try result.getArrLen() == 4);
+
+    const elem0 = try result.getArrElement(0);
+    // 42 may be encoded as uint since it's positive
+    if (elem0 == .uint) {
+        try expect(elem0.uint == 42);
+    } else if (elem0 == .int) {
+        try expect(elem0.int == 42);
+    } else {
+        std.debug.print("Unexpected type {s} for element 0\n", .{@tagName(elem0)});
+        return error.TestUnexpectedResult;
+    }
+
+    const elem1 = try result.getArrElement(1);
+    try expect(u8eql(elem1.str.value(), "test"));
+
+    const elem2 = try result.getArrElement(2);
+    try expect(elem2.bool == true);
+
+    const elem3 = try result.getArrElement(3);
+    try expect(elem3 == .nil);
+}
+
+test "PackerIO: map type" {
+    if (!has_new_io) return error.SkipZigVersionCheck;
+
+    var buffer: [2048]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buffer);
+    var reader = std.Io.Reader.fixed(&buffer);
+    var packer = msgpack.PackerIO.init(&reader, &writer);
+
+    // Create a map
+    var payload = msgpack.Payload.mapPayload(allocator);
+    defer payload.free(allocator);
+    try payload.mapPut("name", try msgpack.Payload.strToPayload("Alice", allocator));
+    try payload.mapPut("age", msgpack.Payload.uintToPayload(30));
+    try payload.mapPut("active", msgpack.Payload.boolToPayload(true));
+
+    try packer.write(payload);
+
+    reader.seek = 0;
+    const result = try packer.read(allocator);
+    defer result.free(allocator);
+
+    try expect(result == .map);
+
+    const name = (try result.mapGet("name")).?;
+    try expect(u8eql(name.str.value(), "Alice"));
+
+    const age = (try result.mapGet("age")).?;
+    try expect(age.uint == 30);
+
+    const active = (try result.mapGet("active")).?;
+    try expect(active.bool == true);
+}
+
+test "PackerIO: nested structures" {
+    if (!has_new_io) return error.SkipZigVersionCheck;
+
+    var buffer: [4096]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buffer);
+    var reader = std.Io.Reader.fixed(&buffer);
+    var packer = msgpack.PackerIO.init(&reader, &writer);
+
+    // Create nested structure: map with array values
+    var payload = msgpack.Payload.mapPayload(allocator);
+    defer payload.free(allocator);
+
+    var arr = try msgpack.Payload.arrPayload(3, allocator);
+    try arr.setArrElement(0, msgpack.Payload.uintToPayload(1));
+    try arr.setArrElement(1, msgpack.Payload.uintToPayload(2));
+    try arr.setArrElement(2, msgpack.Payload.uintToPayload(3));
+
+    try payload.mapPut("numbers", arr);
+    try payload.mapPut("name", try msgpack.Payload.strToPayload("test", allocator));
+
+    try packer.write(payload);
+
+    reader.seek = 0;
+    const result = try packer.read(allocator);
+    defer result.free(allocator);
+
+    try expect(result == .map);
+
+    const numbers = (try result.mapGet("numbers")).?;
+    try expect(numbers == .arr);
+    try expect(try numbers.getArrLen() == 3);
+
+    const elem0 = try numbers.getArrElement(0);
+    try expect(elem0.uint == 1);
+}
+
+test "PackerIO: timestamp extension type" {
+    if (!has_new_io) return error.SkipZigVersionCheck;
+
+    var buffer: [1024]u8 = undefined;
+
+    const test_cases = [_]struct { seconds: i64, nanoseconds: u32 }{
+        .{ .seconds = 0, .nanoseconds = 0 },
+        .{ .seconds = 1234567890, .nanoseconds = 0 },
+        .{ .seconds = 1234567890, .nanoseconds = 123456789 },
+        .{ .seconds = -1, .nanoseconds = 999999999 },
+    };
+
+    for (test_cases) |tc| {
+        var writer = std.Io.Writer.fixed(&buffer);
+        var reader = std.Io.Reader.fixed(&buffer);
+        var packer = msgpack.PackerIO.init(&reader, &writer);
+
+        const payload = msgpack.Payload.timestampToPayload(tc.seconds, tc.nanoseconds);
+        try packer.write(payload);
+
+        reader.seek = 0;
+        const result = try packer.read(allocator);
+        defer result.free(allocator);
+
+        try expect(result == .timestamp);
+        try expect(result.timestamp.seconds == tc.seconds);
+        try expect(result.timestamp.nanoseconds == tc.nanoseconds);
+    }
+}
+
+test "PackerIO: extension type" {
+    if (!has_new_io) return error.SkipZigVersionCheck;
+
+    var buffer: [1024]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buffer);
+    var reader = std.Io.Reader.fixed(&buffer);
+    var packer = msgpack.PackerIO.init(&reader, &writer);
+
+    const ext_data = [_]u8{ 0xAA, 0xBB, 0xCC };
+    const ext_type: i8 = 42;
+
+    const payload = try msgpack.Payload.extToPayload(ext_type, &ext_data, allocator);
+    defer payload.free(allocator);
+    try packer.write(payload);
+
+    reader.seek = 0;
+    const result = try packer.read(allocator);
+    defer result.free(allocator);
+
+    try expect(result == .ext);
+    try expect(result.ext.type == ext_type);
+    try expect(u8eql(result.ext.data, &ext_data));
+}
+
+test "PackerIO: deeply nested structures" {
+    if (!has_new_io) return error.SkipZigVersionCheck;
+
+    var buffer: [4096]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buffer);
+    var reader = std.Io.Reader.fixed(&buffer);
+    var packer = msgpack.PackerIO.init(&reader, &writer);
+
+    // Create a deeply nested structure
+    var payload = msgpack.Payload.mapPayload(allocator);
+    defer payload.free(allocator);
+
+    var inner_arr = try msgpack.Payload.arrPayload(2, allocator);
+    try inner_arr.setArrElement(0, msgpack.Payload.uintToPayload(1));
+    try inner_arr.setArrElement(1, msgpack.Payload.uintToPayload(2));
+
+    var outer_arr = try msgpack.Payload.arrPayload(1, allocator);
+    try outer_arr.setArrElement(0, inner_arr);
+
+    try payload.mapPut("nested", outer_arr);
+
+    try packer.write(payload);
+
+    reader.seek = 0;
+    // The read method uses an iterative parser by default
+    const result = try packer.read(allocator);
+    defer result.free(allocator);
+
+    try expect(result == .map);
+    const nested = (try result.mapGet("nested")).?;
+    try expect(nested == .arr);
+}
+
+test "PackerIO: multiple writes and reads" {
+    if (!has_new_io) return error.SkipZigVersionCheck;
+
+    var buffer: [4096]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buffer);
+    var reader = std.Io.Reader.fixed(&buffer);
+    var packer = msgpack.PackerIO.init(&reader, &writer);
+
+    // Write multiple payloads
+    try packer.write(msgpack.Payload.uintToPayload(1));
+    try packer.write(msgpack.Payload.uintToPayload(2));
+    try packer.write(msgpack.Payload.uintToPayload(3));
+
+    reader.seek = 0;
+
+    // Read them back
+    const result1 = try packer.read(allocator);
+    defer result1.free(allocator);
+    try expect(result1.uint == 1);
+
+    const result2 = try packer.read(allocator);
+    defer result2.free(allocator);
+    try expect(result2.uint == 2);
+
+    const result3 = try packer.read(allocator);
+    defer result3.free(allocator);
+    try expect(result3.uint == 3);
+}
+
+test "PackerIO: large array" {
+    if (!has_new_io) return error.SkipZigVersionCheck;
+
+    var buffer: [16384]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buffer);
+    var reader = std.Io.Reader.fixed(&buffer);
+    var packer = msgpack.PackerIO.init(&reader, &writer);
+
+    const count = 100;
+    var payload = try msgpack.Payload.arrPayload(count, allocator);
+    defer payload.free(allocator);
+
+    for (0..count) |i| {
+        try payload.setArrElement(i, msgpack.Payload.uintToPayload(@as(u64, i)));
+    }
+
+    try packer.write(payload);
+
+    reader.seek = 0;
+    const result = try packer.read(allocator);
+    defer result.free(allocator);
+
+    try expect(try result.getArrLen() == count);
+
+    for (0..count) |i| {
+        const elem = try result.getArrElement(i);
+        try expect(elem.uint == i);
+    }
+}
+
+test "PackerIO: packIO convenience function" {
+    if (!has_new_io) return error.SkipZigVersionCheck;
+
+    var buffer: [1024]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buffer);
+    var reader = std.Io.Reader.fixed(&buffer);
+
+    // Use convenience function
+    var packer = msgpack.packIO(&reader, &writer);
+
+    const payload = msgpack.Payload.uintToPayload(12345);
+    try packer.write(payload);
+
+    reader.seek = 0;
+    const result = try packer.read(allocator);
+    defer result.free(allocator);
+
+    try expect(result.uint == 12345);
 }

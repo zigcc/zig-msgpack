@@ -3116,5 +3116,151 @@ pub fn Pack(
     );
 }
 
+// ============================================================================
+// std.io.Reader and std.io.Writer Support (Zig 0.15+)
+// ============================================================================
+
+/// Check if we're using Zig 0.15 or later with the new I/O system
+const has_new_io = current_zig.minor >= 15;
+
+/// Wrapper context for std.io.Writer (Zig 0.15+)
+const IoWriterContext = struct {
+    writer: if (has_new_io) *std.Io.Writer else void,
+
+    fn write(self: IoWriterContext, bytes: []const u8) !usize {
+        if (!has_new_io) @compileError("std.Io.Writer requires Zig 0.15 or later");
+        try self.writer.writeAll(bytes);
+        return bytes.len;
+    }
+};
+
+/// Wrapper context for std.io.Reader (Zig 0.15+)
+const IoReaderContext = struct {
+    reader: if (has_new_io) *std.Io.Reader else void,
+
+    fn read(self: IoReaderContext, buf: []u8) !usize {
+        if (!has_new_io) @compileError("std.Io.Reader requires Zig 0.15 or later");
+        try self.reader.readSliceAll(buf);
+        return buf.len;
+    }
+};
+
+/// Type alias for the Pack type used with std.io.Reader/Writer
+const IoPackType = if (has_new_io) Pack(
+    IoWriterContext,
+    IoReaderContext,
+    std.Io.Writer.Error,
+    std.Io.Reader.Error,
+    IoWriterContext.write,
+    IoReaderContext.read,
+) else void;
+
+/// Packer that works with std.io.Reader and std.io.Writer interfaces (Zig 0.15+)
+///
+/// This provides a convenient wrapper around the generic Pack type for working
+/// with Zig's standard I/O interfaces.
+///
+/// Example:
+/// ```zig
+/// const std = @import("std");
+/// const msgpack = @import("msgpack");
+///
+/// pub fn main() !void {
+///     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+///     defer _ = gpa.deinit();
+///     const allocator = gpa.allocator();
+///
+///     // Create file for I/O
+///     var file = try std.fs.cwd().createFile("data.msgpack", .{ .read = true });
+///     defer file.close();
+///
+///     // Create reader and writer with buffers
+///     var reader_buf: [4096]u8 = undefined;
+///     var reader = file.reader(&reader_buf);
+///     var writer_buf: [4096]u8 = undefined;
+///     var writer = file.writer(&writer_buf);
+///
+///     // Create packer
+///     var packer = try msgpack.PackerIO.init(&reader, &writer);
+///
+///     // Serialize
+///     var payload = msgpack.Payload.mapPayload(allocator);
+///     defer payload.free(allocator);
+///     try payload.mapPut("name", try msgpack.Payload.strToPayload("Alice", allocator));
+///     try packer.write(payload);
+///
+///     // Flush and reset for reading
+///     try writer.flush();
+///     try file.seekTo(0);
+///     reader.seek = 0;
+///     reader.end = 0;
+///
+///     // Deserialize
+///     const decoded = try packer.read(allocator);
+///     defer decoded.free(allocator);
+/// }
+/// ```
+pub const PackerIO = if (has_new_io) struct {
+    packer: IoPackType,
+    write_ctx: IoWriterContext,
+    read_ctx: IoReaderContext,
+
+    /// Initialize a PackerIO with std.io.Reader and std.io.Writer
+    ///
+    /// The Reader and Writer must remain valid for the lifetime of this PackerIO.
+    pub fn init(
+        reader: *std.Io.Reader,
+        writer: *std.Io.Writer,
+    ) PackerIO {
+        const write_ctx = IoWriterContext{ .writer = writer };
+        const read_ctx = IoReaderContext{ .reader = reader };
+
+        return .{
+            .packer = IoPackType.init(write_ctx, read_ctx),
+            .write_ctx = write_ctx,
+            .read_ctx = read_ctx,
+        };
+    }
+
+    /// Write a Payload to the writer
+    ///
+    /// The payload must be freed by the caller after writing.
+    pub fn write(self: *PackerIO, payload: Payload) !void {
+        return self.packer.write(payload);
+    }
+
+    /// Read a Payload from the reader
+    ///
+    /// The returned payload must be freed by the caller using `payload.free(allocator)`.
+    /// Note: The read method uses an iterative parser that is safe for deeply nested data.
+    pub fn read(self: *PackerIO, allocator: Allocator) !Payload {
+        return self.packer.read(allocator);
+    }
+} else struct {
+    pub fn init(_: anytype, _: anytype) @This() {
+        @compileError("PackerIO requires Zig 0.15 or later");
+    }
+};
+
+/// Convenience function to create a PackerIO from std.io.Reader and std.io.Writer
+///
+/// This is a shorthand for `PackerIO.init(reader, writer)`.
+///
+/// Example:
+/// ```zig
+/// var reader_buf: [4096]u8 = undefined;
+/// var reader = file.reader(&reader_buf);
+/// var writer_buf: [4096]u8 = undefined;
+/// var writer = file.writer(&writer_buf);
+/// var packer = msgpack.packIO(&reader, &writer);
+/// ```
+pub fn packIO(
+    reader: if (has_new_io) *std.Io.Reader else void,
+    writer: if (has_new_io) *std.Io.Writer else void,
+) if (has_new_io) PackerIO else void {
+    if (!has_new_io) @compileError("packIO requires Zig 0.15 or later");
+    return PackerIO.init(reader, writer);
+}
+
 // Export compatibility layer for cross-version support
 pub const compat = @import("compat.zig");
