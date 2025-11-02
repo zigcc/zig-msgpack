@@ -15,7 +15,7 @@ fn u8eql(a: []const u8, b: []const u8) bool {
 // ============================================================================
 
 test "PackerIO: truncated data error" {
-    if (!has_new_io) return error.SkipZigVersionCheck;
+    if (!has_new_io) return error.SkipZigTest;
 
     // Test reading truncated integer data (simpler case without allocations)
     var full_buffer: [100]u8 = undefined;
@@ -50,7 +50,7 @@ test "PackerIO: truncated data error" {
 }
 
 test "PackerIO: invalid msgpack marker" {
-    if (!has_new_io) return error.SkipZigVersionCheck;
+    if (!has_new_io) return error.SkipZigTest;
 
     // 0xc1 is a reserved/invalid marker byte in MessagePack
     var buffer: [10]u8 = [_]u8{ 0xc1, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
@@ -70,7 +70,7 @@ test "PackerIO: invalid msgpack marker" {
 }
 
 test "PackerIO: corrupted length field" {
-    if (!has_new_io) return error.SkipZigVersionCheck;
+    if (!has_new_io) return error.SkipZigTest;
 
     var buffer: [100]u8 = undefined;
     var input = if (builtin.zig_version.minor == 14)
@@ -126,7 +126,7 @@ test "PackerIO: corrupted length field" {
 }
 
 test "PackerIO: multiple payloads with error recovery" {
-    if (!has_new_io) return error.SkipZigVersionCheck;
+    if (!has_new_io) return error.SkipZigTest;
 
     var buffer: [4096]u8 = std.mem.zeroes([4096]u8);
     var writer = std.Io.Writer.fixed(&buffer);
@@ -171,7 +171,7 @@ test "PackerIO: multiple payloads with error recovery" {
 // ============================================================================
 
 test "PackerIO: sequential writes and reads with fixed buffer" {
-    if (!has_new_io) return error.SkipZigVersionCheck;
+    if (!has_new_io) return error.SkipZigTest;
 
     var buffer: [4096]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
@@ -212,7 +212,7 @@ test "PackerIO: sequential writes and reads with fixed buffer" {
 // ============================================================================
 
 test "PackerIO: large string near limit" {
-    if (!has_new_io) return error.SkipZigVersionCheck;
+    if (!has_new_io) return error.SkipZigTest;
 
     const allocator_heap = std.heap.page_allocator;
 
@@ -249,7 +249,7 @@ test "PackerIO: large string near limit" {
 }
 
 test "PackerIO: large binary data" {
-    if (!has_new_io) return error.SkipZigVersionCheck;
+    if (!has_new_io) return error.SkipZigTest;
 
     const allocator_heap = std.heap.page_allocator;
 
@@ -291,7 +291,7 @@ test "PackerIO: large binary data" {
 }
 
 test "PackerIO: large array (1000 elements)" {
-    if (!has_new_io) return error.SkipZigVersionCheck;
+    if (!has_new_io) return error.SkipZigTest;
 
     const allocator_heap = std.heap.page_allocator;
 
@@ -327,7 +327,7 @@ test "PackerIO: large array (1000 elements)" {
 }
 
 test "PackerIO: large map (500 entries)" {
-    if (!has_new_io) return error.SkipZigVersionCheck;
+    if (!has_new_io) return error.SkipZigTest;
 
     const allocator_heap = std.heap.page_allocator;
 
@@ -377,7 +377,7 @@ test "PackerIO: large map (500 entries)" {
 // ============================================================================
 
 test "PackerIO: empty buffer write error" {
-    if (!has_new_io) return error.SkipZigVersionCheck;
+    if (!has_new_io) return error.SkipZigTest;
 
     var buffer: [0]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
@@ -397,7 +397,7 @@ test "PackerIO: empty buffer write error" {
 }
 
 test "PackerIO: minimal buffer size" {
-    if (!has_new_io) return error.SkipZigVersionCheck;
+    if (!has_new_io) return error.SkipZigTest;
 
     // Test with exactly 1 byte buffer (enough for nil marker)
     var buffer: [1]u8 = undefined;
@@ -417,7 +417,7 @@ test "PackerIO: minimal buffer size" {
 }
 
 test "PackerIO: exact buffer size for small payload" {
-    if (!has_new_io) return error.SkipZigVersionCheck;
+    if (!has_new_io) return error.SkipZigTest;
 
     // positive fixint uses exactly 1 byte
     var buffer: [1]u8 = undefined;
@@ -436,7 +436,7 @@ test "PackerIO: exact buffer size for small payload" {
 }
 
 test "PackerIO: off-by-one buffer size" {
-    if (!has_new_io) return error.SkipZigVersionCheck;
+    if (!has_new_io) return error.SkipZigTest;
 
     // uint8 needs 2 bytes (marker + value), provide only 1
     var buffer: [1]u8 = undefined;
@@ -457,7 +457,7 @@ test "PackerIO: off-by-one buffer size" {
 }
 
 test "PackerIO: empty string edge case" {
-    if (!has_new_io) return error.SkipZigVersionCheck;
+    if (!has_new_io) return error.SkipZigTest;
 
     var buffer: [10]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
@@ -479,7 +479,7 @@ test "PackerIO: empty string edge case" {
 }
 
 test "PackerIO: empty array edge case" {
-    if (!has_new_io) return error.SkipZigVersionCheck;
+    if (!has_new_io) return error.SkipZigTest;
 
     var buffer: [10]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
@@ -501,7 +501,7 @@ test "PackerIO: empty array edge case" {
 }
 
 test "PackerIO: empty map edge case" {
-    if (!has_new_io) return error.SkipZigVersionCheck;
+    if (!has_new_io) return error.SkipZigTest;
 
     var buffer: [10]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
@@ -4877,7 +4877,7 @@ test "memory alignment: large integer array serialization" {
 const has_new_io = builtin.zig_version.minor >= 15;
 
 test "PackerIO: basic write and read with fixed Reader/Writer" {
-    if (!has_new_io) return error.SkipZigVersionCheck;
+    if (!has_new_io) return error.SkipZigTest;
 
     var buffer: [1024]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
@@ -4901,7 +4901,7 @@ test "PackerIO: basic write and read with fixed Reader/Writer" {
 }
 
 test "PackerIO: nil type" {
-    if (!has_new_io) return error.SkipZigVersionCheck;
+    if (!has_new_io) return error.SkipZigTest;
 
     var buffer: [1024]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
@@ -4920,7 +4920,7 @@ test "PackerIO: nil type" {
 }
 
 test "PackerIO: bool type" {
-    if (!has_new_io) return error.SkipZigVersionCheck;
+    if (!has_new_io) return error.SkipZigTest;
 
     var buffer: [1024]u8 = undefined;
 
@@ -4960,7 +4960,7 @@ test "PackerIO: bool type" {
 }
 
 test "PackerIO: signed integers" {
-    if (!has_new_io) return error.SkipZigVersionCheck;
+    if (!has_new_io) return error.SkipZigTest;
 
     var buffer: [1024]u8 = undefined;
 
@@ -4988,7 +4988,7 @@ test "PackerIO: signed integers" {
 }
 
 test "PackerIO: unsigned integers" {
-    if (!has_new_io) return error.SkipZigVersionCheck;
+    if (!has_new_io) return error.SkipZigTest;
 
     var buffer: [1024]u8 = undefined;
 
@@ -5012,7 +5012,7 @@ test "PackerIO: unsigned integers" {
 }
 
 test "PackerIO: float type" {
-    if (!has_new_io) return error.SkipZigVersionCheck;
+    if (!has_new_io) return error.SkipZigTest;
 
     var buffer: [1024]u8 = undefined;
 
@@ -5051,7 +5051,7 @@ test "PackerIO: float type" {
 }
 
 test "PackerIO: string type" {
-    if (!has_new_io) return error.SkipZigVersionCheck;
+    if (!has_new_io) return error.SkipZigTest;
 
     var buffer: [1024]u8 = undefined;
 
@@ -5083,7 +5083,7 @@ test "PackerIO: string type" {
 }
 
 test "PackerIO: binary type" {
-    if (!has_new_io) return error.SkipZigVersionCheck;
+    if (!has_new_io) return error.SkipZigTest;
 
     var buffer: [1024]u8 = undefined;
 
@@ -5106,7 +5106,7 @@ test "PackerIO: binary type" {
 }
 
 test "PackerIO: array type" {
-    if (!has_new_io) return error.SkipZigVersionCheck;
+    if (!has_new_io) return error.SkipZigTest;
 
     var buffer: [1024]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
@@ -5152,7 +5152,7 @@ test "PackerIO: array type" {
 }
 
 test "PackerIO: map type" {
-    if (!has_new_io) return error.SkipZigVersionCheck;
+    if (!has_new_io) return error.SkipZigTest;
 
     var buffer: [2048]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
@@ -5185,7 +5185,7 @@ test "PackerIO: map type" {
 }
 
 test "PackerIO: nested structures" {
-    if (!has_new_io) return error.SkipZigVersionCheck;
+    if (!has_new_io) return error.SkipZigTest;
 
     var buffer: [4096]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
@@ -5221,7 +5221,7 @@ test "PackerIO: nested structures" {
 }
 
 test "PackerIO: timestamp extension type" {
-    if (!has_new_io) return error.SkipZigVersionCheck;
+    if (!has_new_io) return error.SkipZigTest;
 
     var buffer: [1024]u8 = undefined;
 
@@ -5251,7 +5251,7 @@ test "PackerIO: timestamp extension type" {
 }
 
 test "PackerIO: extension type" {
-    if (!has_new_io) return error.SkipZigVersionCheck;
+    if (!has_new_io) return error.SkipZigTest;
 
     var buffer: [1024]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
@@ -5275,7 +5275,7 @@ test "PackerIO: extension type" {
 }
 
 test "PackerIO: deeply nested structures" {
-    if (!has_new_io) return error.SkipZigVersionCheck;
+    if (!has_new_io) return error.SkipZigTest;
 
     var buffer: [4096]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
@@ -5308,7 +5308,7 @@ test "PackerIO: deeply nested structures" {
 }
 
 test "PackerIO: multiple writes and reads" {
-    if (!has_new_io) return error.SkipZigVersionCheck;
+    if (!has_new_io) return error.SkipZigTest;
 
     var buffer: [4096]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
@@ -5337,7 +5337,7 @@ test "PackerIO: multiple writes and reads" {
 }
 
 test "PackerIO: large array" {
-    if (!has_new_io) return error.SkipZigVersionCheck;
+    if (!has_new_io) return error.SkipZigTest;
 
     var buffer: [16384]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
@@ -5367,7 +5367,7 @@ test "PackerIO: large array" {
 }
 
 test "PackerIO: packIO convenience function" {
-    if (!has_new_io) return error.SkipZigVersionCheck;
+    if (!has_new_io) return error.SkipZigTest;
 
     var buffer: [1024]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
