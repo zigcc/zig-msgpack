@@ -26,7 +26,6 @@ This library is tested and optimized for all major platforms and architectures:
 | Platform | Architecture | CI Status | SIMD Optimizations |
 |----------|--------------|-----------|-------------------|
 | **Windows** | x86_64 | ✅ Tested | SSE2/AVX2 prefetch |
-| **macOS** | x86_64 (Intel) | ✅ Tested | SSE2/AVX2 prefetch |
 | **macOS** | ARM64 (Apple Silicon) | ✅ Tested | ARM NEON + PRFM |
 | **Linux** | x86_64 | ✅ Tested | SSE2/AVX2 prefetch |
 | **Linux** | ARM64/aarch64 | ✅ Tested | ARM NEON + PRFM |

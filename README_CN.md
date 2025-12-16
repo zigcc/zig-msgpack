@@ -26,7 +26,6 @@ Zig 编程语言的 MessagePack 实现。此库提供了一种简单高效的方
 | 平台 | 架构 | CI 状态 | SIMD 优化 |
 |----------|--------------|-----------|-------------------|
 | **Windows** | x86_64 | ✅ 已测试 | SSE2/AVX2 预取 |
-| **macOS** | x86_64 (Intel) | ✅ 已测试 | SSE2/AVX2 预取 |
 | **macOS** | ARM64 (Apple Silicon) | ✅ 已测试 | ARM NEON + PRFM |
 | **Linux** | x86_64 | ✅ 已测试 | SSE2/AVX2 预取 |
 | **Linux** | ARM64/aarch64 | ✅ 已测试 | ARM NEON + PRFM |
