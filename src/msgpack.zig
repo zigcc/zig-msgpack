@@ -2847,6 +2847,7 @@ pub fn PackWithLimits(
             else
                 std.ArrayList(ParseState){};
             defer if (current_zig.minor == 14) parse_stack.deinit() else parse_stack.deinit(allocator);
+            errdefer cleanupParseStack(&parse_stack, allocator);
 
             // Root payload to return
             var root: ?Payload = null;
