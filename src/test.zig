@@ -125,6 +125,50 @@ test "PackerIO: corrupted length field" {
     }
 }
 
+test "PackerIO: truncated array cleanup" {
+    if (!has_new_io) return error.SkipZigTest;
+
+    // Test that truncated array data is properly cleaned up on error
+    // This demonstrates the benefit of errdefer cleanupParseStack
+    var buffer: [50]u8 = undefined;
+    var input = if (builtin.zig_version.minor == 14)
+        std.ArrayList(u8).init(allocator)
+    else
+        std.ArrayList(u8){};
+    defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
+
+    // Create array header for 3 elements (0x93)
+    if (builtin.zig_version.minor == 14) {
+        try input.append(0x93); // fixarray with 3 elements
+        try input.append(0x01); // first element: uint 1
+        try input.append(0x02); // second element: uint 2
+        // Missing third element - truncated!
+    } else {
+        try input.append(allocator, 0x93);
+        try input.append(allocator, 0x01);
+        try input.append(allocator, 0x02);
+    }
+
+    @memcpy(buffer[0..input.items.len], input.items);
+
+    var writer = std.Io.Writer.fixed(&buffer);
+    var reader = std.Io.Reader.fixed(buffer[0..input.items.len]);
+
+    var packer = msgpack.PackerIO.init(&reader, &writer);
+
+    // Should fail due to truncated data (missing third element)
+    const result = packer.read(allocator);
+    if (result) |payload| {
+        payload.free(allocator);
+        try expect(false); // Should not succeed with truncated array
+    } else |err| {
+        // Expected error - truncated array cannot be fully read
+        try expect(err == msgpack.MsgPackError.TypeMarkerReading or
+            err == msgpack.MsgPackError.DataReading or
+            err == error.EndOfStream);
+    }
+}
+
 test "PackerIO: multiple payloads with error recovery" {
     if (!has_new_io) return error.SkipZigTest;
 
