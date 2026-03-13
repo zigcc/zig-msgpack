@@ -2862,7 +2862,6 @@ pub fn PackWithLimits(
             while (true) {
                 // Check depth limit
                 if (parse_stack.items.len >= parse_limits.max_depth) {
-                    cleanupParseStack(&parse_stack, allocator);
                     return MsgPackError.MaxDepthExceeded;
                 }
 
@@ -2904,7 +2903,6 @@ pub fn PackWithLimits(
                         // Validate string length
                         if (val.len > parse_limits.max_string_length) {
                             allocator.free(val);
-                            cleanupParseStack(&parse_stack, allocator);
                             return MsgPackError.StringTooLong;
                         }
 
@@ -2916,7 +2914,6 @@ pub fn PackWithLimits(
                         // Validate binary length
                         if (val.len > parse_limits.max_bin_length) {
                             allocator.free(val);
-                            cleanupParseStack(&parse_stack, allocator);
                             return MsgPackError.BinDataLengthTooLong;
                         }
 
@@ -2929,7 +2926,6 @@ pub fn PackWithLimits(
 
                         // Validate array length
                         if (len > parse_limits.max_array_length) {
-                            cleanupParseStack(&parse_stack, allocator);
                             return MsgPackError.ArrayTooLarge;
                         }
 
@@ -2962,7 +2958,6 @@ pub fn PackWithLimits(
 
                         // Validate map size
                         if (len > parse_limits.max_map_size) {
-                            cleanupParseStack(&parse_stack, allocator);
                             return MsgPackError.MapTooLarge;
                         }
 
@@ -2976,7 +2971,6 @@ pub fn PackWithLimits(
                             errdefer if (!map_owned) map.deinit();
 
                             const capacity = std.math.cast(u32, len) orelse {
-                                cleanupParseStack(&parse_stack, allocator);
                                 return MsgPackError.MapTooLarge;
                             };
                             try map.ensureTotalCapacity(capacity);
