@@ -1143,6 +1143,11 @@ pub const Payload = union(enum) {
         try self.map.put(key, val);
     }
 
+    /// deep clone a Payload, allocating owned copies for dynamic data
+    pub fn deepClone(self: Payload, allocator: Allocator) !Payload {
+        return clonePayload(self, allocator);
+    }
+
     /// get a NIL payload
     pub inline fn nilToPayload() Payload {
         return Payload{

@@ -1184,6 +1184,11 @@ test "payload utility methods" {
     try expect(ext_payload.ext.type == 1);
     try expect(u8eql("extdata", ext_payload.ext.data));
 
+    const cloned_str_payload = try str_payload.deepClone(allocator);
+    defer cloned_str_payload.free(allocator);
+    try expect(u8eql("test", cloned_str_payload.str.value()));
+    try expect(@ptrToInt(str_payload.str.value().ptr) != @ptrToInt(cloned_str_payload.str.value().ptr));
+
     const arr_payload = try Payload.arrPayload(3, allocator);
     defer arr_payload.free(allocator);
     try expect((try arr_payload.getArrLen()) == 3);
