@@ -1140,21 +1140,21 @@ test "large integer float precision (issue fix)" {
     // Test large integer that cannot fit in f32 mantissa (24 bits)
     // 1774904202196 requires 41 bits, so it will lose precision if encoded as f32
     const large_int: f64 = 1774904202196.0;
-    
+
     try p.write(.{ .float = large_int });
-    
+
     // Verify it was encoded as f64 (marker 0xcb) not f32 (marker 0xca)
     try expect(arr[0] == 0xcb); // Should use f64 format
-    
+
     // Read back and verify exact match (no truncation)
     read_buffer = fixedBufferStream(&arr);
     p = pack.init(&write_buffer, &read_buffer);
     const val = try p.read(allocator);
     defer val.free(allocator);
-    
+
     // Should preserve the exact value with f64 encoding
     try expect(val.float == large_int);
-    
+
     // Additional test: verify f32 would lose precision
     const large_f32: f32 = @floatCast(large_int);
     const large_back_to_f64: f64 = @as(f64, large_f32);
