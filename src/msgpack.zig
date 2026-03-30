@@ -1819,7 +1819,7 @@ pub fn PackWithLimits(
 
         /// write float
         fn writeFloat(self: Self, val: f64) !void {
-            // A value should only be encoded as f32 if it can be 
+            // A value should only be encoded as f32 if it can be
             // represented exactly without loss of precision.
             const val_f32: f32 = @floatCast(val);
             if (val == @as(f64, val_f32)) {
