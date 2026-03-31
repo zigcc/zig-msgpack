@@ -869,7 +869,9 @@ fn clonePayload(payload: Payload, allocator: Allocator) !Payload {
             var success = false;
             defer if (!success) {
                 // cleanup partial clones on error
-                for (0..cloned_count) |j| {
+                var j: usize = cloned_count;
+                while (j > 0) {
+                    j -= 1;
                     new_arr[j].free(allocator);
                 }
                 allocator.free(new_arr);
@@ -889,13 +891,7 @@ fn clonePayload(payload: Payload, allocator: Allocator) !Payload {
             var new_map = Map.init(allocator);
             var success = false;
             defer if (!success) {
-                // Free any partially-inserted keys/values on error before deinit
-                var it2 = new_map.map.iterator();
-                while (it2.next()) |entry| {
-                    entry.key_ptr.*.free(allocator);
-                    entry.value_ptr.*.free(allocator);
-                }
-                new_map.deinit();
+                (Payload{ .map = new_map }).free(allocator);
             };
 
             // Clone all entries
