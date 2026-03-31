@@ -1143,6 +1143,11 @@ pub const Payload = union(enum) {
         try self.map.put(key, val);
     }
 
+    /// deep clone a Payload, allocating owned copies for dynamic data
+    pub fn deepClone(self: Payload, allocator: Allocator) !Payload {
+        return clonePayload(self, allocator);
+    }
+
     /// get a NIL payload
     pub inline fn nilToPayload() Payload {
         return Payload{
@@ -1819,12 +1824,11 @@ pub fn PackWithLimits(
 
         /// write float
         fn writeFloat(self: Self, val: f64) !void {
-            const tmp_val = if (val < 0) 0 - val else val;
-            const min_f32 = std.math.floatMin(f32);
-            const max_f32 = std.math.floatMax(f32);
-
-            if (tmp_val >= min_f32 and tmp_val <= max_f32) {
-                try self.writeF32(@floatCast(val));
+            // A value should only be encoded as f32 if it can be
+            // represented exactly without loss of precision.
+            const val_f32: f32 = @floatCast(val);
+            if (val == @as(f64, val_f32)) {
+                try self.writeF32(val_f32);
             } else {
                 try self.writeF64(val);
             }

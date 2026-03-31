@@ -1129,6 +1129,39 @@ test "float precision" {
     }
 }
 
+// Test large integer stored as float without precision loss
+// Demonstrates the fix: large numbers like 1774904202196 should be encoded as f64, not f32
+test "large integer float precision (issue fix)" {
+    var arr: [0xffff_f]u8 = std.mem.zeroes([0xffff_f]u8);
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+    var p = pack.init(&write_buffer, &read_buffer);
+
+    // Test large integer that cannot fit in f32 mantissa (24 bits)
+    // 1774904202196 requires 41 bits, so it will lose precision if encoded as f32
+    const large_int: f64 = 1774904202196.0;
+
+    try p.write(.{ .float = large_int });
+
+    // Verify it was encoded as f64 (marker 0xcb) not f32 (marker 0xca)
+    try expect(arr[0] == 0xcb); // Should use f64 format
+
+    // Read back and verify exact match (no truncation)
+    read_buffer = fixedBufferStream(&arr);
+    p = pack.init(&write_buffer, &read_buffer);
+    const val = try p.read(allocator);
+    defer val.free(allocator);
+
+    // Should preserve the exact value with f64 encoding
+    try expect(val.float == large_int);
+
+    // Additional test: verify f32 would lose precision
+    const large_f32: f32 = @floatCast(large_int);
+    const large_back_to_f64: f64 = @as(f64, large_f32);
+    // This demonstrates why we don't use f32: precision is lost
+    try expect(large_int != large_back_to_f64);
+}
+
 // Test payload utility methods
 test "payload utility methods" {
     // Test all ToPayload methods
@@ -1150,6 +1183,11 @@ test "payload utility methods" {
     defer ext_payload.free(allocator);
     try expect(ext_payload.ext.type == 1);
     try expect(u8eql("extdata", ext_payload.ext.data));
+
+    const cloned_str_payload = try str_payload.deepClone(allocator);
+    defer cloned_str_payload.free(allocator);
+    try expect(u8eql("test", cloned_str_payload.str.value()));
+    try expect(@ptrToInt(str_payload.str.value().ptr) != @ptrToInt(cloned_str_payload.str.value().ptr));
 
     const arr_payload = try Payload.arrPayload(3, allocator);
     defer arr_payload.free(allocator);
