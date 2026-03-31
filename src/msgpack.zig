@@ -865,16 +865,38 @@ fn clonePayload(payload: Payload, allocator: Allocator) !Payload {
 
         .arr => |arr| {
             const new_arr = try allocator.alloc(Payload, arr.len);
-            errdefer allocator.free(new_arr);
+            var cloned_count: usize = 0;
+            var success = false;
+            defer if (!success) {
+                // cleanup partial clones on error
+                for (0..cloned_count) |j| {
+                    new_arr[j].free(allocator);
+                }
+                allocator.free(new_arr);
+            };
+
             for (arr, 0..) |item, i| {
-                new_arr[i] = try clonePayload(item, allocator);
+                const cloned_item = try clonePayload(item, allocator);
+                new_arr[i] = cloned_item;
+                cloned_count += 1;
             }
+
+            success = true;
             return Payload{ .arr = new_arr };
         },
 
         .map => |m| {
             var new_map = Map.init(allocator);
-            errdefer new_map.deinit();
+            var success = false;
+            defer if (!success) {
+                // Free any partially-inserted keys/values on error before deinit
+                var it2 = new_map.map.iterator();
+                while (it2.next()) |entry| {
+                    entry.key_ptr.*.free(allocator);
+                    entry.value_ptr.*.free(allocator);
+                }
+                new_map.deinit();
+            };
 
             // Clone all entries
             var it = m.map.iterator();
@@ -887,6 +909,8 @@ fn clonePayload(payload: Payload, allocator: Allocator) !Payload {
                 // Use putInternal to insert without additional cloning
                 try new_map.putInternal(cloned_key, cloned_value);
             }
+
+            success = true;
             return Payload{ .map = new_map };
         },
     };

@@ -1187,7 +1187,7 @@ test "payload utility methods" {
     const cloned_str_payload = try str_payload.deepClone(allocator);
     defer cloned_str_payload.free(allocator);
     try expect(u8eql("test", cloned_str_payload.str.value()));
-    try expect(@ptrToInt(str_payload.str.value().ptr) != @ptrToInt(cloned_str_payload.str.value().ptr));
+    try expect(@intFromPtr(str_payload.str.value().ptr) != @intFromPtr(cloned_str_payload.str.value().ptr));
 
     const arr_payload = try Payload.arrPayload(3, allocator);
     defer arr_payload.free(allocator);
@@ -3611,6 +3611,52 @@ test "iterative parser: deep nested maps" {
 
     // Verify it's a map
     try expect(decoded == .map);
+}
+
+test "clonePayload arr partial fail path frees partially cloned elements" {
+    var src = try Payload.arrPayload(2, std.heap.page_allocator);
+    defer src.free(std.heap.page_allocator);
+
+    try src.setArrElement(0, try Payload.strToPayload("a", std.heap.page_allocator));
+    try src.setArrElement(1, try Payload.strToPayload("this-is-a-large-string-that-will-always-fail", std.heap.page_allocator));
+
+    var buffer: [@sizeOf(Payload) * 2 + 8]u8 = undefined;
+    var pool = std.heap.FixedBufferAllocator.init(&buffer);
+    const clone_alloc = pool.allocator();
+
+    const result = src.deepClone(clone_alloc);
+    if (result) |cloned| {
+        cloned.free(clone_alloc);
+        try std.testing.expect(false);
+    } else |err| {
+        try std.testing.expect(err == error.OutOfMemory);
+    }
+
+    const next_alloc = try clone_alloc.alloc(u8, 16);
+    clone_alloc.free(next_alloc);
+}
+
+test "clonePayload map partial fail path frees partially cloned entries" {
+    var src = Payload.mapPayload(std.heap.page_allocator);
+    defer src.free(std.heap.page_allocator);
+
+    try src.mapPut("k1", try Payload.strToPayload("v1", std.heap.page_allocator));
+    try src.mapPut("k2", try Payload.strToPayload("very-long-string-to-force-out-of-memory-on-clone", std.heap.page_allocator));
+
+    var buffer: [@sizeOf(Payload) * 2 + 16]u8 = undefined;
+    var pool = std.heap.FixedBufferAllocator.init(&buffer);
+    const clone_alloc = pool.allocator();
+
+    const result = src.deepClone(clone_alloc);
+    if (result) |cloned| {
+        cloned.free(clone_alloc);
+        try std.testing.expect(false);
+    } else |err| {
+        try std.testing.expect(err == error.OutOfMemory);
+    }
+
+    const next_alloc = try clone_alloc.alloc(u8, 16);
+    clone_alloc.free(next_alloc);
 }
 
 test "iterative free: deeply nested payload" {
