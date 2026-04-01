@@ -875,13 +875,10 @@ fn clonePayload(payload: Payload, allocator: Allocator) !Payload {
                 }
                 allocator.free(new_arr);
             }
-
             for (arr, 0..) |item, i| {
-                const cloned_item = try clonePayload(item, allocator);
-                new_arr[i] = cloned_item;
+                new_arr[i] = try clonePayload(item, allocator);
                 cloned_count += 1;
             }
-
             return Payload{ .arr = new_arr };
         },
 
@@ -900,7 +897,6 @@ fn clonePayload(payload: Payload, allocator: Allocator) !Payload {
                 // Use putInternal to insert without additional cloning
                 try new_map.putInternal(cloned_key, cloned_value);
             }
-
             return Payload{ .map = new_map };
         },
     };
