@@ -3632,6 +3632,7 @@ test "clonePayload arr partial fail path frees partially cloned elements" {
         try std.testing.expect(err == error.OutOfMemory);
     }
 
+    // Verify post-failure allocator state is valid: next alloc must succeed.
     const next_alloc = try clone_alloc.alloc(u8, 16);
     clone_alloc.free(next_alloc);
 }
@@ -3655,6 +3656,7 @@ test "clonePayload map partial fail path frees partially cloned entries" {
         try std.testing.expect(err == error.OutOfMemory);
     }
 
+    // Verify post-failure allocator state is valid: next alloc must succeed.
     const next_alloc = try clone_alloc.alloc(u8, 16);
     clone_alloc.free(next_alloc);
 }
