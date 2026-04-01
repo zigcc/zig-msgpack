@@ -3618,7 +3618,7 @@ test "clonePayload arr partial fail path frees partially cloned elements" {
     defer src.free(std.heap.page_allocator);
 
     try src.setArrElement(0, try Payload.strToPayload("a", std.heap.page_allocator));
-    try src.setArrElement(1, try Payload.strToPayload("this-is-a-large-string-that-will-always-fail", std.heap.page_allocator));
+    try src.setArrElement(1, try Payload.strToPayload("this-is-a-very-large-string-that-will-always-fail-because-it-is-much-longer-than-the-fixed-buffer-can-handle-and-should-cause-out-of-memory-error-during-cloning-process", std.heap.page_allocator));
 
     var buffer: [@sizeOf(Payload) * 2 + 8]u8 = undefined;
     var pool = std.heap.FixedBufferAllocator.init(&buffer);
@@ -3641,7 +3641,7 @@ test "clonePayload map partial fail path frees partially cloned entries" {
     defer src.free(std.heap.page_allocator);
 
     try src.mapPut("k1", try Payload.strToPayload("v1", std.heap.page_allocator));
-    try src.mapPut("k2", try Payload.strToPayload("very-long-string-to-force-out-of-memory-on-clone", std.heap.page_allocator));
+    try src.mapPut("k2", try Payload.strToPayload("very-long-string-to-force-out-of-memory-on-clone-because-the-fixed-buffer-is-too-small-to-allocate-this-large-string-during-the-cloning-operation", std.heap.page_allocator));
 
     var buffer: [@sizeOf(Payload) * 2 + 16]u8 = undefined;
     var pool = std.heap.FixedBufferAllocator.init(&buffer);
