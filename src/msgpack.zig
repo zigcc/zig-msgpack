@@ -866,8 +866,7 @@ fn clonePayload(payload: Payload, allocator: Allocator) !Payload {
         .arr => |arr| {
             const new_arr = try allocator.alloc(Payload, arr.len);
             var cloned_count: usize = 0;
-            var success = false;
-            defer if (!success) {
+            errdefer {
                 // cleanup partial clones on error
                 var j: usize = cloned_count;
                 while (j > 0) {
@@ -875,7 +874,7 @@ fn clonePayload(payload: Payload, allocator: Allocator) !Payload {
                     new_arr[j].free(allocator);
                 }
                 allocator.free(new_arr);
-            };
+            }
 
             for (arr, 0..) |item, i| {
                 const cloned_item = try clonePayload(item, allocator);
@@ -883,16 +882,12 @@ fn clonePayload(payload: Payload, allocator: Allocator) !Payload {
                 cloned_count += 1;
             }
 
-            success = true;
             return Payload{ .arr = new_arr };
         },
 
         .map => |m| {
             var new_map = Map.init(allocator);
-            var success = false;
-            defer if (!success) {
-                (Payload{ .map = new_map }).free(allocator);
-            };
+            errdefer new_map.deinit();
 
             // Clone all entries
             var it = m.map.iterator();
@@ -906,7 +901,6 @@ fn clonePayload(payload: Payload, allocator: Allocator) !Payload {
                 try new_map.putInternal(cloned_key, cloned_value);
             }
 
-            success = true;
             return Payload{ .map = new_map };
         },
     };
