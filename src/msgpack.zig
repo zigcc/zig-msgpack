@@ -882,23 +882,18 @@ fn clonePayload(payload: Payload, allocator: Allocator) !Payload {
 
         .map => |m| {
             var new_map = Map.init(allocator);
-            errdefer new_map.deinit();
+            errdefer (Payload{ .map = new_map }).free(allocator);
 
             // Clone all entries
             var it = m.map.iterator();
             while (it.next()) |entry| {
-                var cloned_key: ?Payload = null;
-                var cloned_value: ?Payload = null;
-                errdefer {
-                    if (cloned_value) |v| v.free(allocator);
-                    if (cloned_key) |k| k.free(allocator);
-                }
-
-                cloned_key = try clonePayload(entry.key_ptr.*, allocator);
-                cloned_value = try clonePayload(entry.value_ptr.*, allocator);
+                const cloned_key = try clonePayload(entry.key_ptr.*, allocator);
+                errdefer cloned_key.free(allocator);
+                const cloned_value = try clonePayload(entry.value_ptr.*, allocator);
+                errdefer cloned_value.free(allocator);
 
                 // Use putInternal to insert without additional cloning
-                try new_map.putInternal(cloned_key.?, cloned_value.?);
+                try new_map.putInternal(cloned_key, cloned_value);
             }
             return Payload{ .map = new_map };
         },
