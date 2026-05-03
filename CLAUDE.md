@@ -21,13 +21,16 @@ zig build docs
 ```
 
 ### Zig Version Compatibility
-- **Currently supports**: Zig 0.14.0 and 0.15.x
-- **Partial support**: Zig 0.16 (nightly) - may have compatibility issues
+- **Currently supports**: Zig 0.14.0, 0.15.x, and 0.16.0
 - **Legacy support**: Zig 0.11-0.13 (use library version 0.0.6 for Zig 0.13 and older)
 - Code uses version detection (`builtin.zig_version.minor`) to handle API differences:
   - Endianness enum changes (`.Big`/`.Little` vs `.big`/`.little`)
   - ArrayList API changes in Zig 0.15+ (allocator parameter required for methods)
+  - ArrayList initialization changes in Zig 0.16 (`std.ArrayList(T){}` removed, use `initCapacity`)
   - Build system API differences between versions
+  - `std.time.Timer` removed in 0.16 (replaced with platform-specific timing in benchmarks)
+  - `std.heap.GeneralPurposeAllocator` removed in 0.16 (replaced with `page_allocator`)
+  - `std.io.fixedBufferStream` removed in 0.16 (compat layer provides `BufferStream`)
 
 ## Architecture
 

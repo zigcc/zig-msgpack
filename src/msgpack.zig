@@ -1316,7 +1316,7 @@ pub const Payload = union(enum) {
                     var new_heap = if (current_zig.minor == 14)
                         std.ArrayList(Payload).init(alloc)
                     else
-                        std.ArrayList(Payload){};
+                        std.ArrayList(Payload).initCapacity(alloc, 0) catch unreachable;
 
                     // Copy existing items from stack buffer to heap
                     for (buffer[0..len.*]) |item| {
@@ -2857,7 +2857,7 @@ pub fn PackWithLimits(
             var parse_stack = if (current_zig.minor == 14)
                 std.ArrayList(ParseState).init(allocator)
             else
-                std.ArrayList(ParseState){};
+                try std.ArrayList(ParseState).initCapacity(allocator, 0);
             defer if (current_zig.minor == 14) parse_stack.deinit() else parse_stack.deinit(allocator);
             errdefer cleanupParseStack(&parse_stack, allocator);
 

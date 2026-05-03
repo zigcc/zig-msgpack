@@ -16,6 +16,27 @@ const pack = msgpack.Pack(
     bufferType.read,
 );
 
+const is_zig_16 = builtin.zig_version.minor >= 16;
+
+/// Get monotonic time in nanoseconds (cross-platform)
+fn getTimeNs() u64 {
+    if (builtin.os.tag == .windows) {
+        const w = std.os.windows;
+        var counter: w.LARGE_INTEGER = undefined;
+        _ = w.ntdll.RtlQueryPerformanceCounter(&counter);
+        var freq: w.LARGE_INTEGER = undefined;
+        _ = w.ntdll.RtlQueryPerformanceFrequency(&freq);
+        const ns = std.time.ns_per_s;
+        const c: u64 = @bitCast(counter);
+        const f: u64 = @bitCast(freq);
+        return @intCast(@divTrunc(@as(u128, c) * ns, @as(u128, f)));
+    } else if (builtin.os.tag != .windows) {
+        var ts: std.c.timespec = undefined;
+        _ = std.c.clock_gettime(std.c.CLOCK.MONOTONIC, &ts);
+        return @as(u64, @intCast(ts.tv_sec)) * std.time.ns_per_s + @as(u64, @intCast(ts.tv_nsec));
+    } else @compileError("unsupported OS for benchmark");
+}
+
 /// Benchmark timer helper
 /// Run a benchmark and print results
 fn benchmark(
@@ -23,9 +44,7 @@ fn benchmark(
     comptime iterations: usize,
     comptime func: fn (allocator: std.mem.Allocator) anyerror!void,
 ) !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+    const allocator = std.heap.page_allocator;
 
     // Warmup
     for (0..10) |_| {
@@ -33,11 +52,15 @@ fn benchmark(
     }
 
     // Actual benchmark
-    var timer = try std.time.Timer.start();
+    var legacy_timer: if (is_zig_16) void else std.time.Timer = if (is_zig_16) {} else undefined;
+    if (!is_zig_16) legacy_timer = try std.time.Timer.start();
+    const start_ns = if (is_zig_16) getTimeNs() else 0;
+
     for (0..iterations) |_| {
         try func(allocator);
     }
-    const elapsed_ns = timer.read();
+
+    const elapsed_ns = if (is_zig_16) getTimeNs() - start_ns else legacy_timer.read();
 
     const avg_ns = elapsed_ns / iterations;
     const ops_per_sec = if (avg_ns > 0) (1_000_000_000 / avg_ns) else 0;
@@ -850,7 +873,7 @@ fn benchMixedTypesRead(allocator: std.mem.Allocator) !void {
 // Main Benchmark Runner
 // ============================================================================
 
-pub fn main() !void {
+fn runBenchmarks() !void {
     std.debug.print("\n", .{});
     std.debug.print("=" ** 80 ++ "\n", .{});
     std.debug.print("MessagePack Benchmark Suite\n", .{});
@@ -936,3 +959,16 @@ pub fn main() !void {
     std.debug.print("Benchmark Complete\n", .{});
     std.debug.print("=" ** 80 ++ "\n", .{});
 }
+
+const BenchEntry = if (is_zig_16) struct {
+    pub fn main(init: std.process.Init) !void {
+        _ = &init;
+        try runBenchmarks();
+    }
+} else struct {
+    pub fn main() !void {
+        try runBenchmarks();
+    }
+};
+
+pub const main = BenchEntry.main;
