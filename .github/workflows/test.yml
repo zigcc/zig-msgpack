@@ -25,7 +25,7 @@ jobs:
                 # 架构配置标识符
                 arch_config: [linux-x86_64, linux-aarch64, macos-arm64, windows-x86_64]
                 # 定时任务只测试 master 版本，其他情况测试所有版本
-                version: ${{ github.event_name == 'schedule' && fromJSON('["master"]') || fromJSON('["0.14.1", "0.15.1", "master"]') }}
+                version: ${{ github.event_name == 'schedule' && fromJSON('["master"]') || fromJSON('["0.14.1", "0.15.1", "0.16.0", "master"]') }}
                 include:
                     # Linux x86_64
                     - arch_config: linux-x86_64
