@@ -45,7 +45,7 @@ jobs:
               uses: actions/checkout@v3
               with:
                   fetch-depth: 0 # Not needed if lastUpdated is not enabled
-            - uses: goto-bus-stop/setup-zig@v2
+            - uses: mlugg/setup-zig@v2
               with:
                   cache: false
             - name: Generate Docs
