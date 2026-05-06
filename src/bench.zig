@@ -17,24 +17,18 @@ const pack = msgpack.Pack(
 );
 
 const is_zig_16 = builtin.zig_version.minor >= 16;
+const BenchRuntime = if (is_zig_16) struct {
+    var io: ?std.Io = null;
+} else struct {};
 
-/// Get monotonic time in nanoseconds (cross-platform)
+/// Get monotonic time in nanoseconds on Zig 0.16+.
 fn getTimeNs() u64 {
-    if (builtin.os.tag == .windows) {
-        const w = std.os.windows;
-        var counter: w.LARGE_INTEGER = undefined;
-        _ = w.ntdll.RtlQueryPerformanceCounter(&counter);
-        var freq: w.LARGE_INTEGER = undefined;
-        _ = w.ntdll.RtlQueryPerformanceFrequency(&freq);
-        const ns = std.time.ns_per_s;
-        const c: u64 = @bitCast(counter);
-        const f: u64 = @bitCast(freq);
-        return @intCast(@divTrunc(@as(u128, c) * ns, @as(u128, f)));
-    } else if (builtin.os.tag != .windows) {
-        var ts: std.c.timespec = undefined;
-        _ = std.c.clock_gettime(std.c.CLOCK.MONOTONIC, &ts);
-        return @as(u64, @intCast(ts.tv_sec)) * std.time.ns_per_s + @as(u64, @intCast(ts.tv_nsec));
-    } else @compileError("unsupported OS for benchmark");
+    if (is_zig_16) {
+        const io = BenchRuntime.io orelse @panic("benchmark runtime io is not initialized");
+        return @intCast(std.Io.Clock.awake.now(io).nanoseconds);
+    }
+
+    unreachable;
 }
 
 /// Benchmark timer helper
@@ -962,7 +956,7 @@ fn runBenchmarks() !void {
 
 const BenchEntry = if (is_zig_16) struct {
     pub fn main(init: std.process.Init) !void {
-        _ = &init;
+        BenchRuntime.io = init.io;
         try runBenchmarks();
     }
 } else struct {
