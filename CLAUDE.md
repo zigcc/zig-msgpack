@@ -28,7 +28,7 @@ zig build docs
   - ArrayList API changes in Zig 0.15+ (allocator parameter required for methods)
   - ArrayList initialization changes in Zig 0.16 (`std.ArrayList(T){}` removed, use `initCapacity`)
   - Build system API differences between versions
-  - `std.time.Timer` removed in 0.16 (replaced with platform-specific timing in benchmarks)
+  - `std.time.Timer` removed in 0.16 (benchmarks use `std.Io.Clock.awake` instead)
   - `std.heap.GeneralPurposeAllocator` removed in 0.16 (replaced with `page_allocator`)
   - `std.io.fixedBufferStream` removed in 0.16 (compat layer provides `BufferStream`)
 
@@ -82,4 +82,4 @@ Tests use Zig's built-in testing framework. The test suite in `src/test.zig` cov
 
 ## CI/CD
 
-GitHub Actions workflow tests against multiple Zig versions (0.14.0, 0.15.1, nightly) to ensure compatibility.
+GitHub Actions workflow tests against multiple Zig versions (0.14.1, 0.15.1, 0.16.0, and master) to ensure compatibility.
