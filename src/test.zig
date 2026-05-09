@@ -5515,3 +5515,164 @@ test "PackerIO: packIO convenience function" {
 
     try expect(result.uint == 12345);
 }
+
+// ============================================================================
+// ParseLimits: error path coverage for limits not exercised elsewhere
+// ============================================================================
+
+test "iterative parser: string too long" {
+    const custom_pack = msgpack.PackWithLimits(
+        *bufferType,
+        *bufferType,
+        bufferType.WriteError,
+        bufferType.ReadError,
+        bufferType.write,
+        bufferType.read,
+        .{ .max_string_length = 10 },
+    );
+
+    // str8 marker (0xd9) + length=20 + 20 bytes of zeros
+    var arr: [256]u8 = std.mem.zeroes([256]u8);
+    arr[0] = 0xd9;
+    arr[1] = 20;
+
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+    var p = custom_pack.init(&write_buffer, &read_buffer);
+
+    const result = p.read(allocator);
+    try std.testing.expectError(msgpack.MsgPackError.StringTooLong, result);
+}
+
+test "iterative parser: bin too long" {
+    const custom_pack = msgpack.PackWithLimits(
+        *bufferType,
+        *bufferType,
+        bufferType.WriteError,
+        bufferType.ReadError,
+        bufferType.write,
+        bufferType.read,
+        .{ .max_bin_length = 10 },
+    );
+
+    // bin8 marker (0xc4) + length=20 + 20 bytes of zeros
+    var arr: [256]u8 = std.mem.zeroes([256]u8);
+    arr[0] = 0xc4;
+    arr[1] = 20;
+
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+    var p = custom_pack.init(&write_buffer, &read_buffer);
+
+    const result = p.read(allocator);
+    try std.testing.expectError(msgpack.MsgPackError.BinDataLengthTooLong, result);
+}
+
+test "iterative parser: ext too long" {
+    const custom_pack = msgpack.PackWithLimits(
+        *bufferType,
+        *bufferType,
+        bufferType.WriteError,
+        bufferType.ReadError,
+        bufferType.write,
+        bufferType.read,
+        .{ .max_ext_length = 10 },
+    );
+
+    // ext8 marker (0xc7) + length=20 + type byte (0x01) + 20 bytes of zeros
+    var arr: [256]u8 = std.mem.zeroes([256]u8);
+    arr[0] = 0xc7;
+    arr[1] = 20;
+    arr[2] = 0x01;
+
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+    var p = custom_pack.init(&write_buffer, &read_buffer);
+
+    const result = p.read(allocator);
+    try std.testing.expectError(msgpack.MsgPackError.ExtDataTooLarge, result);
+}
+
+test "iterative parser: map too large" {
+    const custom_pack = msgpack.PackWithLimits(
+        *bufferType,
+        *bufferType,
+        bufferType.WriteError,
+        bufferType.ReadError,
+        bufferType.write,
+        bufferType.read,
+        .{ .max_map_size = 10 },
+    );
+
+    // map16 marker (0xde) + length=1000 (0x03 0xE8 big-endian)
+    var arr: [16]u8 = std.mem.zeroes([16]u8);
+    arr[0] = 0xde;
+    arr[1] = 0x03;
+    arr[2] = 0xE8;
+
+    var write_buffer = fixedBufferStream(&arr);
+    var read_buffer = fixedBufferStream(&arr);
+    var p = custom_pack.init(&write_buffer, &read_buffer);
+
+    const result = p.read(allocator);
+    try std.testing.expectError(msgpack.MsgPackError.MapTooLarge, result);
+}
+
+// ============================================================================
+// Write error path: short writes from writeFn must surface as LengthWriting
+// ============================================================================
+
+const ZeroWriter = struct {
+    pub const WriteError = error{};
+    pub fn write(_: *@This(), _: []const u8) WriteError!usize {
+        return 0;
+    }
+};
+
+const ShortByOneWriter = struct {
+    pub const WriteError = error{};
+    pub fn write(_: *@This(), bytes: []const u8) WriteError!usize {
+        if (bytes.len <= 1) return bytes.len;
+        return bytes.len - 1;
+    }
+};
+
+test "write: zero-byte writeFn return triggers LengthWriting (writeByte path)" {
+    const test_pack = msgpack.Pack(
+        *ZeroWriter,
+        *bufferType,
+        ZeroWriter.WriteError,
+        bufferType.ReadError,
+        ZeroWriter.write,
+        bufferType.read,
+    );
+
+    var writer = ZeroWriter{};
+    var dummy: [1]u8 = undefined;
+    var reader = fixedBufferStream(&dummy);
+    var p = test_pack.init(&writer, &reader);
+
+    const result = p.write(msgpack.Payload.boolToPayload(true));
+    try std.testing.expectError(msgpack.MsgPackError.LengthWriting, result);
+}
+
+test "write: short multi-byte writeFn return triggers LengthWriting (writeData path)" {
+    const test_pack = msgpack.Pack(
+        *ShortByOneWriter,
+        *bufferType,
+        ShortByOneWriter.WriteError,
+        bufferType.ReadError,
+        ShortByOneWriter.write,
+        bufferType.read,
+    );
+
+    var writer = ShortByOneWriter{};
+    var dummy: [1]u8 = undefined;
+    var reader = fixedBufferStream(&dummy);
+    var p = test_pack.init(&writer, &reader);
+
+    // uint32: 1-byte marker (single-byte write succeeds) + 4-byte big-endian value
+    // (multi-byte writeData returns N-1 -> LengthWriting).
+    const result = p.write(msgpack.Payload.uintToPayload(0x12345678));
+    try std.testing.expectError(msgpack.MsgPackError.LengthWriting, result);
+}
