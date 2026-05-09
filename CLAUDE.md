@@ -26,10 +26,10 @@ zig build docs
 - Code uses version detection (`builtin.zig_version.minor`) to handle API differences:
   - Endianness enum changes (`.Big`/`.Little` vs `.big`/`.little`)
   - ArrayList API changes in Zig 0.15+ (allocator parameter required for methods)
-  - ArrayList initialization changes in Zig 0.16 (`std.ArrayList(T){}` removed, use `initCapacity`)
+  - ArrayList initialization changes in Zig 0.16 (`std.ArrayList(T){}` removed, use the `.empty` const literal)
   - Build system API differences between versions
   - `std.time.Timer` removed in 0.16 (benchmarks use `std.Io.Clock.awake` instead)
-  - `std.heap.GeneralPurposeAllocator` removed in 0.16 (replaced with `page_allocator`)
+  - `std.heap.GeneralPurposeAllocator` removed in 0.16 (renamed to `std.heap.DebugAllocator`; benchmarks use `std.heap.smp_allocator`)
   - `std.io.fixedBufferStream` removed in 0.16 (compat layer provides `BufferStream`)
 
 ## Architecture

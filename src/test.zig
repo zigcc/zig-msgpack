@@ -78,7 +78,7 @@ test "PackerIO: corrupted length field" {
     var input = if (builtin.zig_version.minor == 14)
         std.ArrayList(u8).init(allocator)
     else
-        std.ArrayList(u8).initCapacity(allocator, 0) catch unreachable;
+        std.ArrayList(u8).empty;
     defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
 
     // str32 claiming 1MB but only providing a few bytes
@@ -136,7 +136,7 @@ test "PackerIO: truncated array cleanup" {
     var input = if (builtin.zig_version.minor == 14)
         std.ArrayList(u8).init(allocator)
     else
-        std.ArrayList(u8).initCapacity(allocator, 0) catch unreachable;
+        std.ArrayList(u8).empty;
     defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
 
     // Create array header for 3 elements (0x93)
@@ -1426,7 +1426,7 @@ test "large maps" {
     var keys = if (builtin.zig_version.minor == 14)
         std.ArrayList([]u8).init(allocator)
     else
-        std.ArrayList([]u8).initCapacity(allocator, 0) catch unreachable;
+        std.ArrayList([]u8).empty;
     defer {
         for (keys.items) |key| {
             allocator.free(key);
@@ -1854,7 +1854,7 @@ test "actual map32 format" {
     var keys = if (builtin.zig_version.minor == 14)
         std.ArrayList([]u8).init(allocator)
     else
-        std.ArrayList([]u8).initCapacity(allocator, 0) catch unreachable;
+        std.ArrayList([]u8).empty;
     defer {
         for (keys.items) |key| {
             allocator.free(key);
@@ -2060,7 +2060,7 @@ test "format markers verification" {
     var test_keys = if (builtin.zig_version.minor == 14)
         std.ArrayList([]u8).init(allocator)
     else
-        std.ArrayList([]u8).initCapacity(allocator, 0) catch unreachable;
+        std.ArrayList([]u8).empty;
     defer {
         for (test_keys.items) |key| {
             allocator.free(key);
@@ -3415,7 +3415,7 @@ test "fuzz: mixed payload sequence" {
     var payloads = if (builtin.zig_version.minor == 14)
         std.ArrayList(Payload).init(allocator)
     else
-        std.ArrayList(Payload).initCapacity(allocator, 0) catch unreachable;
+        std.ArrayList(Payload).empty;
     defer {
         for (payloads.items) |payload| {
             payload.free(allocator);
@@ -3455,7 +3455,7 @@ test "iterative parser: normal nested depth (100 layers)" {
     var input = if (builtin.zig_version.minor == 14)
         std.ArrayList(u8).init(allocator)
     else
-        std.ArrayList(u8).initCapacity(allocator, 0) catch unreachable;
+        std.ArrayList(u8).empty;
     defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
 
     const depth = 100;
@@ -3504,7 +3504,7 @@ test "iterative parser: max depth exceeded" {
     var input = if (builtin.zig_version.minor == 14)
         std.ArrayList(u8).init(allocator)
     else
-        std.ArrayList(u8).initCapacity(allocator, 0) catch unreachable;
+        std.ArrayList(u8).empty;
     defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
 
     const depth = 100;
@@ -3550,7 +3550,7 @@ test "iterative parser: array too large" {
     var input = if (builtin.zig_version.minor == 14)
         std.ArrayList(u8).init(allocator)
     else
-        std.ArrayList(u8).initCapacity(allocator, 0) catch unreachable;
+        std.ArrayList(u8).empty;
     defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
 
     // array16 marker + length
@@ -3582,7 +3582,7 @@ test "iterative parser: deep nested maps" {
     var input = if (builtin.zig_version.minor == 14)
         std.ArrayList(u8).init(allocator)
     else
-        std.ArrayList(u8).initCapacity(allocator, 0) catch unreachable;
+        std.ArrayList(u8).empty;
     defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
 
     const depth = 50;
@@ -3777,7 +3777,7 @@ test "fuzz: deep mixed nesting" {
         var input = if (builtin.zig_version.minor == 14)
             std.ArrayList(u8).init(allocator)
         else
-            std.ArrayList(u8).initCapacity(allocator, 0) catch unreachable;
+            std.ArrayList(u8).empty;
         defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
 
         for (0..depth) |_| {
@@ -3825,7 +3825,7 @@ test "malicious: array32 claims 4 billion elements" {
     var input = if (builtin.zig_version.minor == 14)
         std.ArrayList(u8).init(allocator)
     else
-        std.ArrayList(u8).initCapacity(allocator, 0) catch unreachable;
+        std.ArrayList(u8).empty;
     defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
 
     // array32 claiming 0xFFFFFFFF (4 billion) elements
@@ -3860,7 +3860,7 @@ test "malicious: map32 claims 4 billion pairs" {
     var input = if (builtin.zig_version.minor == 14)
         std.ArrayList(u8).init(allocator)
     else
-        std.ArrayList(u8).initCapacity(allocator, 0) catch unreachable;
+        std.ArrayList(u8).empty;
     defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
 
     // map32 claiming 0xFFFFFFFF pairs
@@ -3905,7 +3905,7 @@ test "malicious: extremely deep nesting (2000 layers)" {
     var input = if (builtin.zig_version.minor == 14)
         std.ArrayList(u8).init(allocator)
     else
-        std.ArrayList(u8).initCapacity(allocator, 0) catch unreachable;
+        std.ArrayList(u8).empty;
     defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
 
     // 2000 layers of nesting (far exceeds limit of 100)
@@ -3941,7 +3941,7 @@ test "corrupted: truncated array data" {
     var input = if (builtin.zig_version.minor == 14)
         std.ArrayList(u8).init(allocator)
     else
-        std.ArrayList(u8).initCapacity(allocator, 0) catch unreachable;
+        std.ArrayList(u8).empty;
     defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
 
     // array claiming 10 elements but data is incomplete
@@ -3973,7 +3973,7 @@ test "map with non-string key (integer key)" {
     var input = if (builtin.zig_version.minor == 14)
         std.ArrayList(u8).init(allocator)
     else
-        std.ArrayList(u8).initCapacity(allocator, 0) catch unreachable;
+        std.ArrayList(u8).empty;
     defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
 
     // map with integer key (now valid - keys can be any Payload type)
@@ -4025,7 +4025,7 @@ test "malicious: mixed depth and breadth attack" {
     var input = if (builtin.zig_version.minor == 14)
         std.ArrayList(u8).init(allocator)
     else
-        std.ArrayList(u8).initCapacity(allocator, 0) catch unreachable;
+        std.ArrayList(u8).empty;
     defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
 
     // Build: [ [100 items], [100 items], ... ] nested 60 levels deep
@@ -4061,7 +4061,7 @@ test "edge case: empty containers at various depths" {
     var input = if (builtin.zig_version.minor == 14)
         std.ArrayList(u8).init(allocator)
     else
-        std.ArrayList(u8).initCapacity(allocator, 0) catch unreachable;
+        std.ArrayList(u8).empty;
     defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
 
     const depths = [_]usize{ 0, 1, 5, 10, 20 };
@@ -4135,7 +4135,7 @@ test "corrupted: nested arrays with mismatched counts" {
     var input = if (builtin.zig_version.minor == 14)
         std.ArrayList(u8).init(allocator)
     else
-        std.ArrayList(u8).initCapacity(allocator, 0) catch unreachable;
+        std.ArrayList(u8).empty;
     defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
 
     // Outer array claims 3 elements, but we provide different structure
