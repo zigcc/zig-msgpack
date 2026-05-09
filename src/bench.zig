@@ -38,7 +38,7 @@ fn benchmark(
     comptime iterations: usize,
     comptime func: fn (allocator: std.mem.Allocator) anyerror!void,
 ) !void {
-    const allocator = std.heap.page_allocator;
+    const allocator = std.heap.smp_allocator;
 
     // Warmup
     for (0..10) |_| {
