@@ -82,4 +82,4 @@ Tests use Zig's built-in testing framework. The test suite in `src/test.zig` cov
 
 ## CI/CD
 
-GitHub Actions workflow tests against multiple Zig versions (0.14.1, 0.15.1, 0.16.0, and master) to ensure compatibility.
+GitHub Actions workflow tests against multiple Zig versions (0.14.1, 0.15.1, 0.16.0) to ensure compatibility.
