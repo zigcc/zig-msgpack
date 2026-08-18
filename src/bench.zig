@@ -83,7 +83,7 @@ fn benchNilRead(allocator: std.mem.Allocator) !void {
     const BufferLen = 100;
     const State = struct {
         var initialized = false;
-        var buffer: [BufferLen]u8 = [_]u8{0} ** BufferLen;
+        var buffer: [BufferLen]u8 = @splat(0);
     };
 
     if (!State.initialized) {
@@ -115,7 +115,7 @@ fn benchBoolRead(allocator: std.mem.Allocator) !void {
     const BufferLen = 100;
     const State = struct {
         var initialized = false;
-        var buffer: [BufferLen]u8 = [_]u8{0} ** BufferLen;
+        var buffer: [BufferLen]u8 = @splat(0);
     };
 
     if (!State.initialized) {
@@ -147,7 +147,7 @@ fn benchSmallIntRead(allocator: std.mem.Allocator) !void {
     const BufferLen = 100;
     const State = struct {
         var initialized = false;
-        var buffer: [BufferLen]u8 = [_]u8{0} ** BufferLen;
+        var buffer: [BufferLen]u8 = @splat(0);
     };
 
     if (!State.initialized) {
@@ -179,7 +179,7 @@ fn benchLargeIntRead(allocator: std.mem.Allocator) !void {
     const BufferLen = 100;
     const State = struct {
         var initialized = false;
-        var buffer: [BufferLen]u8 = [_]u8{0} ** BufferLen;
+        var buffer: [BufferLen]u8 = @splat(0);
     };
 
     if (!State.initialized) {
@@ -211,7 +211,7 @@ fn benchFloatRead(allocator: std.mem.Allocator) !void {
     const BufferLen = 100;
     const State = struct {
         var initialized = false;
-        var buffer: [BufferLen]u8 = [_]u8{0} ** BufferLen;
+        var buffer: [BufferLen]u8 = @splat(0);
     };
 
     if (!State.initialized) {
@@ -248,7 +248,7 @@ fn benchShortStrRead(allocator: std.mem.Allocator) !void {
     const BufferLen = 1000;
     const State = struct {
         var initialized = false;
-        var buffer: [BufferLen]u8 = [_]u8{0} ** BufferLen;
+        var buffer: [BufferLen]u8 = @splat(0);
     };
 
     if (!State.initialized) {
@@ -276,9 +276,14 @@ fn benchMediumStrWrite(allocator: std.mem.Allocator) !void {
     var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
-    const test_str = "This is a medium length string for benchmarking MessagePack performance. " ** 4;
+    const base =
+        "This is a medium length string for benchmarking MessagePack performance. ";
+
+    const test_str = base ++ base ++ base ++ base;
+
     const str = try Payload.strToPayload(test_str, allocator);
     defer str.free(allocator);
+
     try p.write(str);
 }
 
@@ -286,7 +291,7 @@ fn benchMediumStrRead(allocator: std.mem.Allocator) !void {
     const BufferLen = 2000;
     const State = struct {
         var initialized = false;
-        var buffer: [BufferLen]u8 = [_]u8{0} ** BufferLen;
+        var buffer: [BufferLen]u8 = @splat(0);
     };
 
     if (!State.initialized) {
@@ -294,9 +299,14 @@ fn benchMediumStrRead(allocator: std.mem.Allocator) !void {
         var read_buffer = fixedBufferStream(State.buffer[0..]);
         var p = pack.init(&write_buffer, &read_buffer);
 
-        const test_str = "This is a medium length string for benchmarking MessagePack performance. " ** 4;
+        const base =
+            "This is a medium length string for benchmarking MessagePack performance. ";
+
+        const test_str = base ++ base ++ base ++ base;
+
         const str = try Payload.strToPayload(test_str, allocator);
         defer str.free(allocator);
+
         try p.write(str);
 
         State.initialized = true;
@@ -319,7 +329,7 @@ fn benchSmallBinWrite(allocator: std.mem.Allocator) !void {
     var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
-    var data = [_]u8{1} ** 32;
+    var data: [32]u8 = @splat(1);
     const bin = try Payload.binToPayload(&data, allocator);
     defer bin.free(allocator);
     try p.write(bin);
@@ -329,7 +339,7 @@ fn benchSmallBinRead(allocator: std.mem.Allocator) !void {
     const BufferLen = 1000;
     const State = struct {
         var initialized = false;
-        var buffer: [BufferLen]u8 = [_]u8{0} ** BufferLen;
+        var buffer: [BufferLen]u8 = @splat(0);
     };
 
     if (!State.initialized) {
@@ -337,7 +347,7 @@ fn benchSmallBinRead(allocator: std.mem.Allocator) !void {
         var read_buffer = fixedBufferStream(State.buffer[0..]);
         var p = pack.init(&write_buffer, &read_buffer);
 
-        var data = [_]u8{1} ** 32;
+        var data: [32]u8 = @splat(1);
         const bin = try Payload.binToPayload(&data, allocator);
         defer bin.free(allocator);
         try p.write(bin);
@@ -371,7 +381,7 @@ fn benchLargeBinRead(allocator: std.mem.Allocator) !void {
     const BufferLen = 2000;
     const State = struct {
         var initialized = false;
-        var buffer: [BufferLen]u8 = [_]u8{0} ** BufferLen;
+        var buffer: [BufferLen]u8 = @splat(0);
     };
 
     if (!State.initialized) {
@@ -419,7 +429,7 @@ fn benchSmallArrayRead(allocator: std.mem.Allocator) !void {
     const BufferLen = 1000;
     const State = struct {
         var initialized = false;
-        var buffer: [BufferLen]u8 = [_]u8{0} ** BufferLen;
+        var buffer: [BufferLen]u8 = @splat(0);
     };
 
     if (!State.initialized) {
@@ -462,7 +472,7 @@ fn benchMediumArrayRead(allocator: std.mem.Allocator) !void {
     const BufferLen = 5000;
     const State = struct {
         var initialized = false;
-        var buffer: [BufferLen]u8 = [_]u8{0} ** BufferLen;
+        var buffer: [BufferLen]u8 = @splat(0);
     };
 
     if (!State.initialized) {
@@ -513,7 +523,7 @@ fn benchSmallMapRead(allocator: std.mem.Allocator) !void {
     const BufferLen = 2000;
     const State = struct {
         var initialized = false;
-        var buffer: [BufferLen]u8 = [_]u8{0} ** BufferLen;
+        var buffer: [BufferLen]u8 = @splat(0);
     };
 
     if (!State.initialized) {
@@ -564,7 +574,7 @@ fn benchMediumMapRead(allocator: std.mem.Allocator) !void {
     const BufferLen = 10000;
     const State = struct {
         var initialized = false;
-        var buffer: [BufferLen]u8 = [_]u8{0} ** BufferLen;
+        var buffer: [BufferLen]u8 = @splat(0);
     };
 
     if (!State.initialized) {
@@ -603,7 +613,7 @@ fn benchExtWrite(allocator: std.mem.Allocator) !void {
     var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
-    var data = [_]u8{1} ** 16;
+    var data: [16]u8 = @splat(1);
     const ext = try Payload.extToPayload(42, &data, allocator);
     defer ext.free(allocator);
     try p.write(ext);
@@ -613,7 +623,7 @@ fn benchExtRead(allocator: std.mem.Allocator) !void {
     const BufferLen = 1000;
     const State = struct {
         var initialized = false;
-        var buffer: [BufferLen]u8 = [_]u8{0} ** BufferLen;
+        var buffer: [BufferLen]u8 = @splat(0);
     };
 
     if (!State.initialized) {
@@ -621,7 +631,7 @@ fn benchExtRead(allocator: std.mem.Allocator) !void {
         var read_buffer = fixedBufferStream(State.buffer[0..]);
         var p = pack.init(&write_buffer, &read_buffer);
 
-        var data = [_]u8{1} ** 16;
+        var data: [16]u8 = @splat(1);
         const ext = try Payload.extToPayload(42, &data, allocator);
         defer ext.free(allocator);
         try p.write(ext);
@@ -655,7 +665,7 @@ fn benchTimestamp32Read(allocator: std.mem.Allocator) !void {
     const BufferLen = 1000;
     const State = struct {
         var initialized = false;
-        var buffer: [BufferLen]u8 = [_]u8{0} ** BufferLen;
+        var buffer: [BufferLen]u8 = @splat(0);
     };
 
     if (!State.initialized) {
@@ -691,7 +701,7 @@ fn benchTimestamp64Read(allocator: std.mem.Allocator) !void {
     const BufferLen = 1000;
     const State = struct {
         var initialized = false;
-        var buffer: [BufferLen]u8 = [_]u8{0} ** BufferLen;
+        var buffer: [BufferLen]u8 = @splat(0);
     };
 
     if (!State.initialized) {
@@ -746,7 +756,7 @@ fn benchNestedStructureRead(allocator: std.mem.Allocator) !void {
     const BufferLen = 10000;
     const State = struct {
         var initialized = false;
-        var buffer: [BufferLen]u8 = [_]u8{0} ** BufferLen;
+        var buffer: [BufferLen]u8 = @splat(0);
     };
 
     if (!State.initialized) {
@@ -798,7 +808,7 @@ fn benchMixedTypesWrite(allocator: std.mem.Allocator) !void {
     try mixed.setArrElement(4, Payload.floatToPayload(3.14));
     try mixed.setArrElement(5, try Payload.strToPayload("hello", allocator));
 
-    var bin_data = [_]u8{1} ** 8;
+    var bin_data: [8]u8 = @splat(1);
     try mixed.setArrElement(6, try Payload.binToPayload(&bin_data, allocator));
 
     var inner_arr = try Payload.arrPayload(2, allocator);
@@ -819,7 +829,7 @@ fn benchMixedTypesRead(allocator: std.mem.Allocator) !void {
     const BufferLen = 5000;
     const State = struct {
         var initialized = false;
-        var buffer: [BufferLen]u8 = [_]u8{0} ** BufferLen;
+        var buffer: [BufferLen]u8 = @splat(0);
     };
 
     if (!State.initialized) {
@@ -837,7 +847,7 @@ fn benchMixedTypesRead(allocator: std.mem.Allocator) !void {
         try mixed.setArrElement(4, Payload.floatToPayload(3.14));
         try mixed.setArrElement(5, try Payload.strToPayload("hello", allocator));
 
-        var bin_data = [_]u8{1} ** 8;
+        var bin_data: [8]u8 = @splat(1);
         try mixed.setArrElement(6, try Payload.binToPayload(&bin_data, allocator));
 
         var inner_arr = try Payload.arrPayload(2, allocator);
@@ -868,14 +878,16 @@ fn benchMixedTypesRead(allocator: std.mem.Allocator) !void {
 // ============================================================================
 
 fn runBenchmarks() !void {
+    const equal_str: [80]u8 = @splat('=');
+    const minus_str: [80]u8 = @splat('-');
     std.debug.print("\n", .{});
-    std.debug.print("=" ** 80 ++ "\n", .{});
+    std.debug.print(equal_str ++ "\n", .{});
     std.debug.print("MessagePack Benchmark Suite\n", .{});
-    std.debug.print("=" ** 80 ++ "\n\n", .{});
+    std.debug.print(equal_str ++ "\n\n", .{});
 
     // Basic Types
     std.debug.print("Basic Types:\n", .{});
-    std.debug.print("-" ** 80 ++ "\n", .{});
+    std.debug.print(minus_str ++ "\n", .{});
     try benchmark("Nil Write", 1000000, benchNilWrite);
     try benchmark("Nil Read", 1000000, benchNilRead);
     try benchmark("Bool Write", 1000000, benchBoolWrite);
@@ -890,7 +902,7 @@ fn runBenchmarks() !void {
 
     // Strings
     std.debug.print("Strings:\n", .{});
-    std.debug.print("-" ** 80 ++ "\n", .{});
+    std.debug.print(minus_str ++ "\n", .{});
     try benchmark("Short String Write (5 bytes)", 500000, benchShortStrWrite);
     try benchmark("Short String Read (5 bytes)", 500000, benchShortStrRead);
     try benchmark("Medium String Write (~300 bytes)", 100000, benchMediumStrWrite);
@@ -899,7 +911,7 @@ fn runBenchmarks() !void {
 
     // Binary Data
     std.debug.print("Binary Data:\n", .{});
-    std.debug.print("-" ** 80 ++ "\n", .{});
+    std.debug.print(minus_str ++ "\n", .{});
     try benchmark("Small Binary Write (32 bytes)", 500000, benchSmallBinWrite);
     try benchmark("Small Binary Read (32 bytes)", 500000, benchSmallBinRead);
     try benchmark("Large Binary Write (1KB)", 100000, benchLargeBinWrite);
@@ -908,7 +920,7 @@ fn runBenchmarks() !void {
 
     // Arrays
     std.debug.print("Arrays:\n", .{});
-    std.debug.print("-" ** 80 ++ "\n", .{});
+    std.debug.print(minus_str ++ "\n", .{});
     try benchmark("Small Array Write (10 elements)", 100000, benchSmallArrayWrite);
     try benchmark("Small Array Read (10 elements)", 100000, benchSmallArrayRead);
     try benchmark("Medium Array Write (100 elements)", 50000, benchMediumArrayWrite);
@@ -917,7 +929,7 @@ fn runBenchmarks() !void {
 
     // Maps
     std.debug.print("Maps:\n", .{});
-    std.debug.print("-" ** 80 ++ "\n", .{});
+    std.debug.print(minus_str ++ "\n", .{});
     try benchmark("Small Map Write (10 entries)", 100000, benchSmallMapWrite);
     try benchmark("Small Map Read (10 entries)", 100000, benchSmallMapRead);
     try benchmark("Medium Map Write (50 entries)", 50000, benchMediumMapWrite);
@@ -926,14 +938,14 @@ fn runBenchmarks() !void {
 
     // Extension Types
     std.debug.print("Extension Types:\n", .{});
-    std.debug.print("-" ** 80 ++ "\n", .{});
+    std.debug.print(minus_str ++ "\n", .{});
     try benchmark("EXT Write (16 bytes)", 500000, benchExtWrite);
     try benchmark("EXT Read (16 bytes)", 500000, benchExtRead);
     std.debug.print("\n", .{});
 
     // Timestamps
     std.debug.print("Timestamps:\n", .{});
-    std.debug.print("-" ** 80 ++ "\n", .{});
+    std.debug.print(minus_str ++ "\n", .{});
     try benchmark("Timestamp32 Write", 1000000, benchTimestamp32Write);
     try benchmark("Timestamp32 Read", 1000000, benchTimestamp32Read);
     try benchmark("Timestamp64 Write", 1000000, benchTimestamp64Write);
@@ -942,16 +954,16 @@ fn runBenchmarks() !void {
 
     // Complex Structures
     std.debug.print("Complex Structures:\n", .{});
-    std.debug.print("-" ** 80 ++ "\n", .{});
+    std.debug.print(minus_str ++ "\n", .{});
     try benchmark("Nested Structure Write", 50000, benchNestedStructureWrite);
     try benchmark("Nested Structure Read", 50000, benchNestedStructureRead);
     try benchmark("Mixed Types Write", 50000, benchMixedTypesWrite);
     try benchmark("Mixed Types Read", 50000, benchMixedTypesRead);
     std.debug.print("\n", .{});
 
-    std.debug.print("=" ** 80 ++ "\n", .{});
+    std.debug.print(equal_str ++ "\n", .{});
     std.debug.print("Benchmark Complete\n", .{});
-    std.debug.print("=" ** 80 ++ "\n", .{});
+    std.debug.print(equal_str ++ "\n", .{});
 }
 
 const BenchEntry = if (is_zig_16) struct {
