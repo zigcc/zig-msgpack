@@ -1047,7 +1047,7 @@ pub const Map = struct {
             @memcpy(new_key, key);
 
             gop.key_ptr.* = Payload{ .str = Str.init(new_key) };
-            gop.value_ptr.* = Payload{ .nil = void{} };
+            gop.value_ptr.* = Payload{ .nil = {} };
 
             const key_str_ptr: *[]const u8 = @constCast(&gop.key_ptr.str.str);
             return .{
