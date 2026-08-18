@@ -1159,7 +1159,7 @@ pub const Payload = union(enum) {
     /// get a NIL payload
     pub inline fn nilToPayload() Payload {
         return Payload{
-            .nil = void{},
+            .nil = {},
         };
     }
 
@@ -2807,7 +2807,7 @@ pub fn PackWithLimits(
         /// Fast path for simple types that don't require heap allocation or complex state management
         inline fn readSimpleTypeFast(self: Self, marker: Markers, marker_u8: u8) !?Payload {
             return switch (marker) {
-                .NIL => Payload{ .nil = void{} },
+                .NIL => Payload{ .nil = {} },
                 .TRUE => Payload{ .bool = true },
                 .FALSE => Payload{ .bool = false },
 
@@ -2891,7 +2891,7 @@ pub fn PackWithLimits(
                 switch (marker) {
                     // Simple types: construct directly
                     .NIL => {
-                        current_payload = Payload{ .nil = void{} };
+                        current_payload = Payload{ .nil = {} };
                     },
                     .TRUE, .FALSE => {
                         const val = try self.readBoolValue(marker);
