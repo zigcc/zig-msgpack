@@ -588,7 +588,7 @@ test "nil write and read" {
         &read_buffer,
     );
 
-    try p.write(Payload{ .nil = void{} });
+    try p.write(Payload{ .nil = {} });
     const val = try p.read(allocator);
     defer val.free(allocator);
 }
@@ -938,14 +938,14 @@ test "string size boundaries" {
     var p = pack.init(&write_buffer, &read_buffer);
 
     // Test fixstr (31 bytes)
-    const fixstr_31_data = "a" ** 31;
-    const fixstr_31_payload = try Payload.strToPayload(fixstr_31_data, allocator);
+    const fixstr_31_data: [31]u8 = @splat('a');
+    const fixstr_31_payload = try Payload.strToPayload(&fixstr_31_data, allocator);
     defer fixstr_31_payload.free(allocator);
     try p.write(fixstr_31_payload);
     {
         const val = try p.read(allocator);
         defer val.free(allocator);
-        try expect(u8eql(fixstr_31_data, val.str.value()));
+        try expect(u8eql(&fixstr_31_data, val.str.value()));
     }
 
     // Reset buffers
@@ -955,14 +955,14 @@ test "string size boundaries" {
     p = pack.init(&write_buffer, &read_buffer);
 
     // Test str8 (255 bytes)
-    const str8_255_data = "b" ** 255;
-    const str8_255_payload = try Payload.strToPayload(str8_255_data, allocator);
+    const str8_255_data: [255]u8 = @splat('b');
+    const str8_255_payload = try Payload.strToPayload(&str8_255_data, allocator);
     defer str8_255_payload.free(allocator);
     try p.write(str8_255_payload);
     {
         const val = try p.read(allocator);
         defer val.free(allocator);
-        try expect(u8eql(str8_255_data, val.str.value()));
+        try expect(u8eql(&str8_255_data, val.str.value()));
     }
 }
 
@@ -1539,15 +1539,15 @@ test "str16 and str32 write and read" {
     var p = pack.init(&write_buffer, &read_buffer);
 
     // Test str16 (256 characters)
-    const str16_data = "x" ** 256;
-    const str16_payload = try Payload.strToPayload(str16_data, allocator);
+    const str16_data: [256]u8 = @splat('x');
+    const str16_payload = try Payload.strToPayload(&str16_data, allocator);
     defer str16_payload.free(allocator);
     try p.write(str16_payload);
     {
         const val = try p.read(allocator);
         defer val.free(allocator);
         try expect(val.str.value().len == 256);
-        try expect(u8eql(str16_data, val.str.value()));
+        try expect(u8eql(&str16_data, val.str.value()));
     }
 
     // Reset buffers for str32 test
@@ -2028,8 +2028,8 @@ test "format markers verification" {
     p = pack.init(&write_buffer, &read_buffer);
 
     // Test str8 marker (32+ bytes string uses str8)
-    const test_str32 = "a" ** 32;
-    const str_payload = try Payload.strToPayload(test_str32, allocator);
+    const test_str32: [32]u8 = @splat('a');
+    const str_payload = try Payload.strToPayload(&test_str32, allocator);
     defer str_payload.free(allocator);
     try p.write(str_payload);
     try expect(arr[0] == 0xd9); // STR8 marker
@@ -2109,13 +2109,16 @@ test "fixstr boundary" {
     var read_buffer = fixedBufferStream(&arr);
     var p = pack.init(&write_buffer, &read_buffer);
 
+    const a_str: [31]u8 = @splat('a');
+    const b_str: [32]u8 = @splat('b');
+
     // Test different fixstr lengths
     const test_strings = [_][]const u8{
         "", // 0 bytes
         "a", // 1 byte
         "hello", // 5 bytes
-        "a" ** 31, // 31 bytes (max fixstr)
-        "b" ** 32, // 32 bytes (should use str8)
+        &a_str, // 31 bytes (max fixstr)
+        &b_str, // 32 bytes (should use str8)
     };
 
     for (test_strings) |test_str| {
@@ -5185,13 +5188,15 @@ test "PackerIO: string type" {
 
     var buffer: [1024]u8 = undefined;
 
+    const a_str: [100]u8 = @splat('a');
+
     const test_strings = [_][]const u8{
         "",
         "a",
         "hello",
         "Hello, World!",
         "这是一个测试", // UTF-8 test
-        "a" ** 100, // Long string
+        &a_str, // Long string
     };
 
     for (test_strings) |str| {
