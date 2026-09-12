@@ -45,14 +45,15 @@ Zig 编程语言的 MessagePack 实现。此库提供了一种简单高效的方
 | Zig 版本             | 库版本   | 状态              |
 | -------------------- | -------- | ----------------- |
 | 0.13 及更早版本      | 0.0.6    | 旧版支持          |
-| 0.14.0               | 当前版本 | ✅ 完全支持       |
-| 0.15.x               | 当前版本 | ✅ 完全支持       |
-| 0.16.0               | 当前版本 | ✅ 通过兼容层支持 |
+| 0.14.x / 0.15.x       | 历史版本 | 当前版本不再支持 |
+| 0.16.0               | 当前版本 | 通过兼容层支持 |
+| 0.17.0-dev           | 当前版本 | 初步支持；CI 跟踪 `master` |
 
 > **注意**: 对于 Zig 0.13 及更早版本，请使用本库的 `0.0.6` 版本。
+> **注意**: 当前库要求 Zig `0.16.0` 或更高版本。Zig `0.17.0-dev` 尚未发布，兼容性可能随开发进展而变化。
 > **注意**: Zig 0.16+ 移除了 `std.io.FixedBufferStream`，但本库提供了兼容层以在所有支持的版本中维持相同的 API。
 
-对于 Zig `0.14.0`、`0.15.x` 和 `0.16.0` 版本，请按以下步骤操作：
+对于 Zig `0.16.0` 和 `0.17.0-dev` 版本，请按以下步骤操作：
 
 1. **添加为依赖项**:
    将库添加到您的 `build.zig.zon` 文件中。您可以获取特定的提交或分支。
@@ -64,9 +65,9 @@ Zig 编程语言的 MessagePack 实现。此库提供了一种简单高效的方
 2. **配置您的 `build.zig`**:
    将 `zig-msgpack` 模块添加到您的可执行文件中。
 
-### 使用 std.io.Reader 和 std.io.Writer（Zig 0.15+）
+### 使用 std.Io.Reader 和 std.Io.Writer
 
-对于 Zig 0.15 及更高版本，您可以使用便捷的 `PackerIO` API 配合标准 I/O 接口：
+在受支持的 Zig 版本上，您可以使用便捷的 `PackerIO` API 配合标准 I/O 接口：
 
 ```zig
 const std = @import("std");
@@ -387,8 +388,8 @@ msgpack.MsgPackError.ExtDataTooLarge     // 扩展类型数据过大
 - **`msgpack.Pack`**: 用于打包和解包 MessagePack 数据的主要结构体，带默认安全限制。
 - **`msgpack.PackWithLimits`**: 创建带自定义安全限制的 packer，满足特定安全需求。
 - **`msgpack.Payload`**: 表示任何 MessagePack 类型的联合体。提供创建和与不同数据类型交互的方法（例如 `mapPayload`、`strToPayload`、`mapGet`）。
-- **`msgpack.PackerIO`**:（Zig 0.15+）用于处理 `std.io.Reader` 和 `std.io.Writer` 的便捷包装器。
-- **`msgpack.packIO`**:（Zig 0.15+）创建 `PackerIO` 实例的便捷函数。
+- **`msgpack.PackerIO`**: 用于处理 `std.Io.Reader` 和 `std.Io.Writer` 的便捷包装器。
+- **`msgpack.packIO`**: 创建 `PackerIO` 实例的便捷函数。
 - **`msgpack.ParseLimits`**: 解析器安全限制的配置结构体。
 - **常量结构体**: `FixLimits`、`IntBounds`、`FixExtLen`、`TimestampExt`、`MarkerBase` - 组织化的常量，提高代码清晰度。
 
@@ -438,15 +439,15 @@ msgpack.MsgPackError.ExtDataTooLarge     // 扩展类型数据过大
 - 零内存泄漏（测试中由 GPA 验证）
 - 可安全解析来自网络、文件或用户输入的不可信数据
 
-### Zig 0.16 兼容性
+### Zig 0.16 和 0.17 开发版兼容性
 
 从 Zig 0.16 开始，标准库的 I/O 子系统经历了重大变更。作为更广泛重新设计的一部分，`std.io.FixedBufferStream` 被移除。本库包含一个兼容层（`src/compat.zig`），它：
 
 - 为 Zig 0.16+ 提供了一个 `BufferStream` 实现，模拟旧版 `FixedBufferStream` 的行为
-- 使用条件编译来保持与 Zig 0.14 和 0.15 的向后兼容性
-- 确保所有现有功能在不同 Zig 版本间无缝工作
+- 在 Zig 0.16 和 0.17 开发版上保持相同的缓冲流 API
+- 通过 CI 在 Zig `0.16.0` 和最新的 `master` 开发版上进行验证
 
-这意味着无论您使用哪个 Zig 版本，都可以使用相同的 API，库会在内部处理差异。
+当前最低支持 Zig `0.16.0`；源码中保留的旧版兼容分支不代表仍支持旧编译器。代码格式检查固定使用 Zig `0.16.0`，因为开发版编译器的格式工具可能引入语法迁移。
 
 ## 测试
 
