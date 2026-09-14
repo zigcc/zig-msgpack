@@ -4171,29 +4171,15 @@ test "corrupted: nested arrays with mismatched counts" {
 }
 
 test "malicious: str32 with excessive length claim" {
-    var buffer: [1000]u8 = undefined;
-    var input_buf: [10]u8 = undefined;
-
-    // str32 claiming 100MB (will be rejected by limit)
-    input_buf[0] = 0xdb; // str32
-    input_buf[1] = 0x06; // 100MB = 0x06400000
-    input_buf[2] = 0x40;
-    input_buf[3] = 0x00;
-    input_buf[4] = 0x00;
-
-    var write_buffer = fixedBufferStream(&buffer);
-    var read_buffer = fixedBufferStream(&input_buf);
+    var input = [_]u8{ 0xdb, 0xff, 0xff, 0xff, 0xff };
+    var output: [0]u8 = .{};
+    var write_buffer = fixedBufferStream(&output);
+    var read_buffer = fixedBufferStream(&input);
     var p = pack.init(&write_buffer, &read_buffer);
+    var failing = std.testing.FailingAllocator.init(allocator, .{ .fail_index = 0 });
 
-    const result = p.read(allocator);
-    if (result) |payload| {
-        payload.free(allocator);
-        try expect(false); // Should not succeed
-    } else |err| {
-        // Should be LengthReading (can't read 100MB) or StringTooLong
-        try expect(err == msgpack.MsgPackError.LengthReading or
-            err == msgpack.MsgPackError.StringTooLong);
-    }
+    try std.testing.expectError(msgpack.MsgPackError.StringTooLong, p.read(failing.allocator()));
+    try expect(!failing.has_induced_failure);
 }
 
 // ========== Tests for Generic Map Keys (Non-String Keys) ==========
@@ -5525,7 +5511,7 @@ test "PackerIO: packIO convenience function" {
 // ParseLimits: error path coverage for limits not exercised elsewhere
 // ============================================================================
 
-test "iterative parser: string too long" {
+test "string limit: reject before allocation or body read" {
     const custom_pack = msgpack.PackWithLimits(
         *bufferType,
         *bufferType,
@@ -5536,17 +5522,27 @@ test "iterative parser: string too long" {
         .{ .max_string_length = 10 },
     );
 
-    // str8 marker (0xd9) + length=20 + 20 bytes of zeros
-    var arr: [256]u8 = std.mem.zeroes([256]u8);
-    arr[0] = 0xd9;
-    arr[1] = 20;
+    // Each string format has its own length-decoding path.
+    const headers = [_][]const u8{
+        &.{0xab},
+        &.{ 0xd9, 11 },
+        &.{ 0xda, 0, 11 },
+        &.{ 0xdb, 0, 0, 0, 11 },
+    };
+    for (headers) |header| {
+        var input: [16]u8 = undefined;
+        @memcpy(input[0..header.len], header);
+        @memset(input[header.len..], 'x');
+        var output: [0]u8 = .{};
+        var write_buffer = fixedBufferStream(&output);
+        var read_buffer = fixedBufferStream(&input);
+        var p = custom_pack.init(&write_buffer, &read_buffer);
+        var failing = std.testing.FailingAllocator.init(allocator, .{ .fail_index = 0 });
 
-    var write_buffer = fixedBufferStream(&arr);
-    var read_buffer = fixedBufferStream(&arr);
-    var p = custom_pack.init(&write_buffer, &read_buffer);
-
-    const result = p.read(allocator);
-    try std.testing.expectError(msgpack.MsgPackError.StringTooLong, result);
+        try std.testing.expectError(msgpack.MsgPackError.StringTooLong, p.read(failing.allocator()));
+        try expect(!failing.has_induced_failure);
+        try std.testing.expectEqual(header.len, read_buffer.pos);
+    }
 }
 
 test "iterative parser: bin too long" {
