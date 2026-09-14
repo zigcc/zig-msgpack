@@ -44,12 +44,11 @@ This library is tested and optimized for all major platforms and architectures:
 
 | Zig Version          | Library Version | Status                                |
 | -------------------- | --------------- | ------------------------------------- |
-| 0.13 and older       | 0.0.6           | Legacy support                        |
-| 0.14.x / 0.15.x       | Earlier releases | Not supported by the current version |
+| 0.15.x and older     | 0.0.17          | Legacy support                        |
 | 0.16.0               | Current         | Supported with compatibility layer    |
 | 0.17.0-dev           | Current         | Initial support; CI tracks `master`   |
 
-> **Note:** For Zig 0.13 and older versions, please use version `0.0.6` of this library.
+> **Note:** For Zig 0.15.x and older versions, please use version `0.0.17` of this library.
 > **Note:** The current library requires Zig `0.16.0` or later. Zig `0.17.0-dev` is unreleased; compatibility may change as development continues.
 > **Note:** Zig 0.16+ removes `std.io.FixedBufferStream`, but this library provides a compatibility layer to maintain the same API across all supported versions.
 
