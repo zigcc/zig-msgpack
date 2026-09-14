@@ -521,8 +521,8 @@ This library uses an **iterative parser** (not recursive) to provide strong secu
 
 **Safety Limits:**
 
-- All limits are enforced **before** memory allocation
-- Invalid input is rejected immediately without resource consumption
+- For fixstr, str8, str16, and str32, string lengths are checked **before** allocating or reading string contents.
+- Oversized strings return `StringTooLong` after consuming the marker and length prefix; string contents remain unread.
 - Configurable limits allow tuning for specific environments (embedded, server, etc.)
 
 **Memory Safety:**

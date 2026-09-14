@@ -2456,8 +2456,15 @@ pub fn PackWithLimits(
             }
         }
 
+        inline fn validateStrLength(len: usize) !void {
+            if (len > parse_limits.max_string_length) {
+                return MsgPackError.StringTooLong;
+            }
+        }
+
         fn readFixStrValue(self: Self, allocator: Allocator, marker_u8: u8) ![]const u8 {
             const len: u8 = marker_u8 - @intFromEnum(Markers.FIXSTR);
+            try validateStrLength(len);
             const str = try self.readData(allocator, len);
 
             return str;
@@ -2467,6 +2474,7 @@ pub fn PackWithLimits(
         /// Reduces code duplication for STR8/16/32
         inline fn readStrValueGeneric(self: Self, comptime LenType: type, allocator: Allocator) ![]const u8 {
             const len = try self.readTypedInt(LenType);
+            try validateStrLength(len);
             return try self.readData(allocator, len);
         }
 
@@ -2911,12 +2919,6 @@ pub fn PackWithLimits(
                     },
                     .FIXSTR, .STR8, .STR16, .STR32 => {
                         const val = try self.readStrValue(marker_u8, allocator);
-
-                        // Validate string length
-                        if (val.len > parse_limits.max_string_length) {
-                            allocator.free(val);
-                            return MsgPackError.StringTooLong;
-                        }
 
                         current_payload = Payload{ .str = Str.init(val) };
                     },
