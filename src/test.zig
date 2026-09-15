@@ -3667,21 +3667,99 @@ test "clonePayload map partial fail path frees partially cloned entries" {
 }
 
 test "iterative free: deeply nested payload" {
-    // Create a deeply nested structure in memory
-    var root = try Payload.arrPayload(1, allocator);
+    var failing = std.testing.FailingAllocator.init(allocator, .{});
+    const alloc = failing.allocator();
+    var root = Payload.nilToPayload();
+    errdefer root.free(alloc);
     var current: *Payload = &root;
 
-    // Build 200-layer deep structure
-    var i: usize = 0;
-    while (i < 200) : (i += 1) {
-        const nested = try Payload.arrPayload(1, allocator);
-        try current.setArrElement(0, nested);
-        current = &current.arr[0];
+    // Keep siblings alive at every level, alternating arrays and maps.
+    for (0..4096) |depth| {
+        if (depth % 2 == 0) {
+            current.* = try Payload.arrPayload(2, alloc);
+            current.arr[1] = try Payload.strToPayload("sibling", alloc);
+            current = &current.arr[0];
+        } else {
+            current.* = Payload.mapPayload(alloc);
+            try current.mapPut("sibling", Payload.nilToPayload());
+            current.map.getPtr(.{ .str = msgpack.Str.init("sibling") }).?.* =
+                try Payload.binToPayload("sibling", alloc);
+            try current.mapPut("child", Payload.nilToPayload());
+            current = current.map.getPtr(.{ .str = msgpack.Str.init("child") }).?;
+        }
     }
-    try current.setArrElement(0, Payload.intToPayload(42));
+    current.* = try Payload.extToPayload(1, "leaf", alloc);
 
-    // Free should not cause stack overflow
-    root.free(allocator);
+    failing.fail_index = failing.alloc_index;
+    root.free(alloc);
+    root = Payload.nilToPayload();
+    try std.testing.expectEqual(failing.allocated_bytes, failing.freed_bytes);
+}
+
+test "iterative free: wide array under OOM" {
+    var failing = std.testing.FailingAllocator.init(allocator, .{});
+    const alloc = failing.allocator();
+    var root = try Payload.arrPayload(257, alloc);
+    errdefer root.free(alloc);
+    for (root.arr, 0..) |*item, i| {
+        item.* = switch (i % 3) {
+            0 => try Payload.strToPayload("s", alloc),
+            1 => try Payload.binToPayload("b", alloc),
+            else => try Payload.extToPayload(1, "e", alloc),
+        };
+    }
+
+    failing.fail_index = failing.alloc_index;
+    root.free(alloc);
+    root = Payload.nilToPayload();
+    try std.testing.expectEqual(failing.allocated_bytes, failing.freed_bytes);
+}
+
+test "iterative free: wide map with container keys under OOM" {
+    var failing = std.testing.FailingAllocator.init(allocator, .{});
+    const alloc = failing.allocator();
+    var root = Payload.mapPayload(alloc);
+    errdefer root.free(alloc);
+    for (0..257) |i| {
+        var key_items = [_]Payload{
+            .{ .uint = i },
+            .{ .str = msgpack.Str.init("key") },
+        };
+        const key = Payload{ .arr = &key_items };
+        try root.mapPutGeneric(key, Payload.nilToPayload());
+        const value = root.map.getPtr(key).?;
+        value.* = try Payload.arrPayload(2, alloc);
+        value.arr[0] = try Payload.binToPayload("value", alloc);
+        value.arr[1] = try Payload.extToPayload(1, "extension", alloc);
+    }
+
+    failing.fail_index = failing.alloc_index;
+    root.free(alloc);
+    root = Payload.nilToPayload();
+    try std.testing.expectEqual(failing.allocated_bytes, failing.freed_bytes);
+}
+
+test "iterative free: parser OOM cleans completed wide child" {
+    // The last string can fail after the wide child has been fully decoded.
+    var input: [4 + 257 * 2 + 2]u8 = undefined;
+    @memcpy(input[0..4], &[_]u8{ 0x92, 0xdc, 0x01, 0x01 });
+    for (0..257) |i| {
+        input[4 + i * 2] = 0xa1;
+        input[5 + i * 2] = 'x';
+    }
+    @memcpy(input[input.len - 2 ..], &[_]u8{ 0xa1, 'y' });
+
+    const Scenario = struct {
+        fn run(alloc: std.mem.Allocator, bytes: []u8) !void {
+            var output: [0]u8 = .{};
+            var write_buffer = fixedBufferStream(&output);
+            var read_buffer = fixedBufferStream(bytes);
+            var p = pack.init(&write_buffer, &read_buffer);
+            const payload = try p.read(alloc);
+            defer payload.free(alloc);
+        }
+    };
+    try std.testing.checkAllAllocationFailures(allocator, Scenario.run, .{&input});
 }
 
 // ========== Large Data and Fuzz Tests ==========

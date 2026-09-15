@@ -434,6 +434,7 @@ msgpack.MsgPackError.ExtDataTooLarge     // 扩展类型数据过大
 
 **内存安全**：
 
+- `Payload.free(allocator)` 无需分配新内存或递归即可释放其拥有的数据，即使分配器已耗尽也能完成清理。
 - 所有错误路径包含完整清理（`errdefer` + `cleanupParseStack`）
 - 零内存泄漏（测试中由 GPA 验证）
 - 可安全解析来自网络、文件或用户输入的不可信数据

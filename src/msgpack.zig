@@ -1270,125 +1270,96 @@ pub const Payload = union(enum) {
         };
     }
 
-    /// free all memory for this payload and sub payloads
-    /// the allocator is payload's allocator
-    /// This is an iterative implementation that avoids stack overflow from deep nesting
-    /// Optimization: Uses stack-allocated buffer for shallow structures to avoid heap allocation during free
-    pub fn free(self: Payload, allocator: Allocator) void {
-        // Use stack-allocated buffer for shallow structures (up to 256 items)
-        // This avoids heap allocation during memory cleanup for most common cases
-        const STACK_BUFFER_SIZE = 256;
-        var stack_buffer: [STACK_BUFFER_SIZE]Payload = undefined;
-        var stack_len: usize = 0;
+    /// Intrusive worklist stored in an owned container's first Payload slot.
+    /// The displaced child is copied out before that slot is reused.
+    const FreeNode = struct {
+        next: ?*FreeNode,
+        container: union(enum) {
+            arr: []Payload,
+            map: PayloadHashMap,
+        },
 
-        // Fallback to heap if we exceed stack buffer
-        var heap_stack: ?std.ArrayList(Payload) = null;
-        defer if (heap_stack) |*hs| {
-            if (current_zig.minor == 14) {
-                hs.deinit();
-            } else {
-                hs.deinit(allocator);
-            }
-        };
-
-        // Helper to push to stack (tries stack first, falls back to heap)
-        const pushPayload = struct {
-            fn push(
-                buffer: []Payload,
-                len: *usize,
-                heap: *?std.ArrayList(Payload),
-                alloc: Allocator,
-                payload: Payload,
-            ) void {
-                if (heap.*) |*h| {
-                    // Already using heap
-                    if (current_zig.minor == 14) {
-                        h.append(payload) catch {};
-                    } else {
-                        h.append(alloc, payload) catch {};
-                    }
-                } else if (len.* < buffer.len) {
-                    // Stack buffer has space
-                    buffer[len.*] = payload;
-                    len.* += 1;
-                } else {
-                    // Stack buffer full, migrate to heap
-                    var new_heap = if (current_zig.minor == 14)
-                        std.ArrayList(Payload).init(alloc)
-                    else
-                        std.ArrayList(Payload).empty;
-
-                    // Copy existing items from stack buffer to heap
-                    for (buffer[0..len.*]) |item| {
-                        if (current_zig.minor == 14) {
-                            new_heap.append(item) catch return;
-                        } else {
-                            new_heap.append(alloc, item) catch return;
+        fn enqueue(payload: Payload, pending: *?*FreeNode, allocator: Allocator) void {
+            var current = payload;
+            while (true) {
+                switch (current) {
+                    .str => |s| {
+                        allocator.free(s.value());
+                        return;
+                    },
+                    .bin => |b| {
+                        allocator.free(b.value());
+                        return;
+                    },
+                    .ext => |e| {
+                        allocator.free(e.data);
+                        return;
+                    },
+                    .arr => |arr| {
+                        if (arr.len == 0) {
+                            allocator.free(arr);
+                            return;
                         }
-                    }
-                    // Add new item
-                    if (current_zig.minor == 14) {
-                        new_heap.append(payload) catch return;
-                    } else {
-                        new_heap.append(alloc, payload) catch return;
-                    }
-                    heap.* = new_heap;
-                    len.* = 0; // Clear stack buffer
+                        const child = arr[0];
+                        const node: *FreeNode = @ptrCast(&arr[0]);
+                        node.* = .{ .next = pending.*, .container = .{ .arr = arr } };
+                        pending.* = node;
+                        current = child;
+                    },
+                    .map => |map| {
+                        var table = map.map;
+                        var it = table.iterator();
+                        const first = it.next() orelse {
+                            table.deinit();
+                            return;
+                        };
+                        const child = first.key_ptr.*;
+                        const node: *FreeNode = @ptrCast(first.key_ptr);
+                        node.* = .{ .next = pending.*, .container = .{ .map = table } };
+                        pending.* = node;
+                        current = child;
+                    },
+                    else => return,
                 }
             }
-        }.push;
+        }
+    };
 
-        // Helper to pop from stack
-        const popPayload = struct {
-            fn pop(
-                buffer: []Payload,
-                len: *usize,
-                heap: *?std.ArrayList(Payload),
-            ) ?Payload {
-                if (heap.*) |*h| {
-                    if (h.items.len > 0) {
-                        return h.pop();
-                    }
-                }
-                if (len.* > 0) {
-                    len.* -= 1;
-                    return buffer[len.*];
-                }
-                return null;
-            }
-        }.pop;
+    /// Free all owned memory without allocating or recursing.
+    /// The allocator must be the one used for this payload and its children.
+    pub fn free(self: Payload, allocator: Allocator) void {
+        comptime {
+            std.debug.assert(@sizeOf(FreeNode) <= @sizeOf(Payload));
+            std.debug.assert(@alignOf(FreeNode) <= @alignOf(Payload));
+        }
 
-        // Start with self
-        pushPayload(&stack_buffer, &stack_len, &heap_stack, allocator, self);
-
-        while (popPayload(&stack_buffer, &stack_len, &heap_stack)) |payload_item| {
-            switch (payload_item) {
-                .str => |s| allocator.free(s.value()),
-                .bin => |b| allocator.free(b.value()),
-                .ext => |e| allocator.free(e.data),
-
+        var pending: ?*FreeNode = null;
+        FreeNode.enqueue(self, &pending, allocator);
+        while (pending) |node| {
+            // Copy the frame before freeing the container that stores it.
+            const frame = node.*;
+            pending = frame.next;
+            switch (frame.container) {
                 .arr => |arr| {
-                    defer allocator.free(arr);
-                    // Push children to stack in reverse order
-                    var i = arr.len;
-                    while (i > 0) {
-                        i -= 1;
-                        pushPayload(&stack_buffer, &stack_len, &heap_stack, allocator, arr[i]);
+                    // Element zero now holds the frame, not a Payload.
+                    for (arr[1..]) |item| {
+                        FreeNode.enqueue(item, &pending, allocator);
                     }
+                    allocator.free(arr);
                 },
-
                 .map => |map| {
-                    var map_copy = map;
-                    defer map_copy.deinit();
-                    // Push both keys and values to stack for recursive freeing
-                    var it = map_copy.map.iterator();
+                    var table = map;
+                    var it = table.iterator();
+                    // Only the first key was displaced. Its value still needs cleanup.
+                    // Iteration uses occupancy metadata, never hashes the overwritten key.
+                    const first = it.next().?;
+                    FreeNode.enqueue(first.value_ptr.*, &pending, allocator);
                     while (it.next()) |entry| {
-                        pushPayload(&stack_buffer, &stack_len, &heap_stack, allocator, entry.key_ptr.*);
-                        pushPayload(&stack_buffer, &stack_len, &heap_stack, allocator, entry.value_ptr.*);
+                        FreeNode.enqueue(entry.key_ptr.*, &pending, allocator);
+                        FreeNode.enqueue(entry.value_ptr.*, &pending, allocator);
                     }
+                    table.deinit();
                 },
-
-                else => {}, // nil, bool, int, uint, float, timestamp - no memory to free
             }
         }
     }
