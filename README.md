@@ -526,6 +526,7 @@ This library uses an **iterative parser** (not recursive) to provide strong secu
 
 **Memory Safety:**
 
+- `Payload.free(allocator)` releases owned data without allocating or recursing, even when the allocator is exhausted.
 - All error paths include complete cleanup (`errdefer` + `cleanupParseStack`)
 - Zero memory leaks verified by GPA (General Purpose Allocator) in tests
 - Safe to parse untrusted data from network, files, or user input
