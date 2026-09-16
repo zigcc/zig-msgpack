@@ -64,100 +64,6 @@ Zig 编程语言的 MessagePack 实现。此库提供了一种简单高效的方
 2. **配置您的 `build.zig`**:
    将 `zig-msgpack` 模块添加到您的可执行文件中。
 
-### 使用 std.Io.Reader 和 std.Io.Writer
-
-在受支持的 Zig 版本上，您可以使用便捷的 `PackerIO` API 配合标准 I/O 接口：
-
-```zig
-const std = @import("std");
-const msgpack = @import("msgpack");
-
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
-
-    var buffer: [1024]u8 = undefined;
-
-    // 创建 Reader 和 Writer
-    var writer = std.Io.Writer.fixed(&buffer);
-    var reader = std.Io.Reader.fixed(&buffer);
-
-    // 使用便捷的 PackerIO 创建 packer
-    var packer = msgpack.PackerIO.init(&reader, &writer);
-
-    // 创建和编码数据
-    var map = msgpack.Payload.mapPayload(allocator);
-    defer map.free(allocator);
-    try map.mapPut("姓名", try msgpack.Payload.strToPayload("小明", allocator));
-    try map.mapPut("年龄", msgpack.Payload.uintToPayload(25));
-    try packer.write(map);
-
-    // 解码
-    reader.seek = 0;
-    const decoded = try packer.read(allocator);
-    defer decoded.free(allocator);
-
-    const name = (try decoded.mapGet("姓名")).?.str.value();
-    const age = (try decoded.mapGet("年龄")).?.uint;
-    std.debug.print("姓名: {s}, 年龄: {d}\n", .{ name, age });
-}
-```
-
-您也可以使用便捷函数：
-
-```zig
-var packer = msgpack.packIO(&reader, &writer);
-```
-
-### 文件操作
-
-```zig
-const std = @import("std");
-const msgpack = @import("msgpack");
-
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
-
-    // 打开文件进行读写
-    var file = try std.fs.cwd().createFile("data.msgpack", .{ .read = true });
-    defer file.close();
-
-    // 创建带缓冲区的 reader 和 writer
-    var reader_buf: [4096]u8 = undefined;
-    var reader = file.reader(&reader_buf);
-    var writer_buf: [4096]u8 = undefined;
-    var writer = file.writer(&writer_buf);
-
-    var packer = msgpack.PackerIO.init(&reader, &writer);
-
-    // 序列化数据
-    var payload = msgpack.Payload.mapPayload(allocator);
-    defer payload.free(allocator);
-    try payload.mapPut("消息", try msgpack.Payload.strToPayload("你好，MessagePack！", allocator));
-    try packer.write(payload);
-
-    // 刷新并回到文件开始位置
-    try writer.flush();
-    try file.seekTo(0);
-    reader.seek = 0;
-    reader.end = 0;
-
-    // 反序列化
-    const decoded = try packer.read(allocator);
-    defer decoded.free(allocator);
-
-    const message = (try decoded.mapGet("消息")).?.str.value();
-    std.debug.print("消息: {s}\n", .{message});
-}
-```
-
-### 基础用法（Zig 0.16 和 0.17 开发版）
-
-需要自定义读写回调时，使用泛型 `Pack` API：
-
    ```zig
    const std = @import("std");
 
@@ -167,9 +73,11 @@ pub fn main() !void {
 
        const exe = b.addExecutable(.{
            .name = "my-app",
-           .root_source_file = .{ .path = "src/main.zig" },
-           .target = target,
-           .optimize = optimize,
+           .root_module = b.createModule(.{
+               .root_source_file = b.path("src/main.zig"),
+               .target = target,
+               .optimize = optimize,
+           }),
        });
 
        const msgpack_dep = b.dependency("zig_msgpack", .{
@@ -185,7 +93,121 @@ pub fn main() !void {
 
 ## 使用方法
 
-### 基础用法
+### 使用 std.Io.Reader 和 std.Io.Writer
+
+`PackerIO` 和 `packIO()` 保持原有签名和行为，继续受支持。
+`Encoder` / `Decoder` 是新增 API，现有调用不需要迁移。
+
+`Encoder` 和 `Decoder` 相互独立：编码器只需要 writer，解码器只需要 reader。
+它们借用接口指针，不拥有 I/O 对象或缓冲区，也不会自动刷新。使用期间，具体的
+I/O 对象及其缓冲区必须保持存活，且不能被移动。
+
+```zig
+const std = @import("std");
+const msgpack = @import("msgpack");
+
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
+    var buffer: [1024]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buffer);
+    const encoder: msgpack.Encoder = .{ .writer = &writer };
+
+    var map = msgpack.Payload.mapPayload(allocator);
+    defer map.free(allocator);
+    try map.mapPut("姓名", try msgpack.Payload.strToPayload("小明", allocator));
+    try map.mapPut("年龄", msgpack.Payload.uintToPayload(25));
+    try encoder.write(map); // 编码本身不需要分配器。
+
+    // 只读取已编码的字节，不暴露缓冲区中未初始化的容量。
+    var reader = std.Io.Reader.fixed(writer.buffered());
+    const decoder: msgpack.Decoder = .{ .reader = &reader };
+    const decoded = try decoder.read(allocator);
+    defer decoded.free(allocator);
+
+    const name = (try decoded.mapGet("姓名")).?.str.value();
+    const age = (try decoded.mapGet("年龄")).?.uint;
+    std.debug.print("姓名: {s}, 年龄: {d}\n", .{ name, age });
+}
+```
+
+每次 `Decoder.read(allocator)` 只读取一个 payload，返回的数据由调用方拥有，
+须通过 `Payload.free(allocator)` 释放。它不要求流结束，可以再次调用以读取后续
+payload。省略 `.limits` 时使用默认解析限制；也可以在运行时传入限制：
+
+```zig
+fn readLimited(
+    reader: *std.Io.Reader,
+    allocator: std.mem.Allocator,
+    limits: msgpack.ParseLimits,
+) !msgpack.Payload {
+    const decoder: msgpack.Decoder = .{ .reader = reader, .limits = limits };
+    return decoder.read(allocator);
+}
+```
+
+### 双向读写 API
+
+现有代码可以继续使用 `PackerIO.init(reader, writer)`，或等价的
+`packIO(reader, writer)`。两者使用默认解析限制，借用 I/O 对象，由调用方负责刷新。
+
+```zig
+var buffer: [128]u8 = undefined;
+var writer = std.Io.Writer.fixed(&buffer);
+var reader = std.Io.Reader.fixed(&.{});
+var packer = msgpack.PackerIO.init(&reader, &writer);
+// 也可以使用：var packer = msgpack.packIO(&reader, &writer);
+
+try packer.write(msgpack.Payload.uintToPayload(42));
+reader = std.Io.Reader.fixed(writer.buffered());
+const decoded = try packer.read(allocator);
+defer decoded.free(allocator);
+```
+
+### 文件操作
+
+```zig
+const std = @import("std");
+const msgpack = @import("msgpack");
+
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
+    const io = init.io;
+    const file = try std.Io.Dir.cwd().createFile(io, "data.msgpack", .{ .read = true });
+    defer file.close(io);
+
+    var reader_buf: [4096]u8 = undefined;
+    var reader = file.reader(io, &reader_buf);
+    var writer_buf: [4096]u8 = undefined;
+    var writer = file.writer(io, &writer_buf);
+    const encoder: msgpack.Encoder = .{ .writer = &writer.interface };
+    const decoder: msgpack.Decoder = .{ .reader = &reader.interface };
+
+    var payload = msgpack.Payload.mapPayload(allocator);
+    defer payload.free(allocator);
+    try payload.mapPut("消息", try msgpack.Payload.strToPayload("你好，MessagePack！", allocator));
+    try encoder.write(payload);
+
+    // 由应用程序显式刷新，再重置 reader 的逻辑位置。
+    try writer.interface.flush();
+    try reader.seekTo(0);
+    const decoded = try decoder.read(allocator);
+    defer decoded.free(allocator);
+    const message = (try decoded.mapGet("消息")).?.str.value();
+    std.debug.print("消息: {s}\n", .{message});
+}
+```
+
+`Encoder.write` 成功时，输出仍可能留在缓冲区内。应用程序负责最后的
+`writer.interface.flush()`，且刷新可能在编码成功之后独立失败。接口会传播
+`error.WriteFailed`、`error.ReadFailed` 和 `error.EndOfStream`。文件读写的详细
+错误保存在具体对象的 `reader.err` / `writer.err` 中；这些字段属于
+`std.Io.File.Reader` / `std.Io.File.Writer`，而不是它们的 `.interface`。
+
+### 自定义回调 I/O
+
+`Pack` 和 `PackWithLimits` 继续作为独立的泛型 API 支持自定义读写回调。
+`Pack` 使用默认解析限制，`PackWithLimits` 在编译期接收限制。每次回调必须完整
+处理所请求的字段，或返回错误；不足长度的传输不会自动重试。
 
 ```zig
 const std = @import("std");
@@ -198,7 +220,7 @@ pub fn main() !void {
     // 为基于回调的 Pack API 使用内存流适配器
     const compat = msgpack.compat;
     var write_buffer = compat.fixedBufferStream(&buffer);
-    var read_buffer = compat.fixedBufferStream(&buffer);
+    var read_buffer = compat.fixedBufferStream(buffer[0..0]);
 
     const BufferType = compat.BufferStream;
     var packer = msgpack.Pack(
@@ -215,7 +237,7 @@ pub fn main() !void {
     try packer.write(map);
 
     // 解码
-    read_buffer.pos = 0;
+    read_buffer = compat.fixedBufferStream(buffer[0..write_buffer.pos]);
     const decoded = try packer.read(allocator);
     defer decoded.free(allocator);
 
@@ -342,29 +364,29 @@ if (payload.isInteger()) {
 
 ```zig
 // 默认限制（推荐用于大多数场景）
-const Packer = msgpack.Pack(
-    *Writer, *Reader,
-    Writer.Error, Reader.Error,
-    Writer.write, Reader.read,
-);
+const decoder: msgpack.Decoder = .{ .reader = &reader };
 // 自动防护：
 // - 深度嵌套攻击（最大 1000 层）
 // - 大数组/Map 攻击（最大 100 万元素）
 // - 内存耗尽（最大 100MB 字符串）
 
-// 针对特定环境的自定义限制
-const StrictPacker = msgpack.PackWithLimits(
-    *Writer, *Reader,
-    Writer.Error, Reader.Error,
-    Writer.write, Reader.read,
-    .{
+// 可在运行时传入更严格的解码限制。
+const limits: msgpack.ParseLimits = .{
         .max_depth = 50,                      // 限制嵌套到 50 层
         .max_array_length = 10_000,           // 最大 1 万个数组元素
         .max_map_size = 10_000,               // 最大 1 万个 map 键值对
         .max_string_length = 1024 * 1024,     // 最大 1MB 字符串
         .max_bin_length = 1024 * 1024,        // 最大 1MB 二进制数据
         .max_ext_length = 512 * 1024,         // 最大 512KB 扩展类型数据
-    },
+};
+const strict_decoder: msgpack.Decoder = .{ .reader = &reader, .limits = limits };
+
+// 自定义回调 API 则在编译期接收限制。
+const StrictPacker = msgpack.PackWithLimits(
+    *Writer, *Reader,
+    Writer.Error, Reader.Error,
+    Writer.write, Reader.read,
+    limits,
 );
 ```
 
@@ -388,11 +410,13 @@ msgpack.MsgPackError.ExtDataTooLarge     // 扩展类型数据过大
 
 ## API 概览
 
-- **`msgpack.Pack`**: 用于打包和解包 MessagePack 数据的主要结构体，带默认安全限制。
-- **`msgpack.PackWithLimits`**: 创建带自定义安全限制的 packer，满足特定安全需求。
+- **`msgpack.Encoder`**: 借用 `*std.Io.Writer`；`write(payload)` 不需要分配器，也不隐式刷新。
+- **`msgpack.Decoder`**: 借用 `*std.Io.Reader`；`read(allocator)` 读取一个由调用方拥有的 payload，支持运行时 `.limits`，省略时各字段均采用默认值。
+- **`msgpack.PackerIO`**: 双向标准 I/O 编解码器；保留原有 `init(reader, writer)`、`write(payload)` 和 `read(allocator)` API。
+- **`msgpack.packIO`**: 等价于 `PackerIO.init` 的便捷构造函数。
+- **`msgpack.Pack`**: 基于泛型回调的编码器/解码器，使用默认解析限制。
+- **`msgpack.PackWithLimits`**: 基于泛型回调的编码器/解码器，在编译期接收解析限制。
 - **`msgpack.Payload`**: 表示任何 MessagePack 类型的联合体。提供创建和与不同数据类型交互的方法（例如 `mapPayload`、`strToPayload`、`mapGet`）。
-- **`msgpack.PackerIO`**: 用于处理 `std.Io.Reader` 和 `std.Io.Writer` 的便捷包装器。
-- **`msgpack.packIO`**: 创建 `PackerIO` 实例的便捷函数。
 - **`msgpack.ParseLimits`**: 解析器安全限制的配置结构体。
 - **常量结构体**: `FixLimits`、`IntBounds`、`FixExtLen`、`TimestampExt`、`MarkerBase` - 组织化的常量，提高代码清晰度。
 

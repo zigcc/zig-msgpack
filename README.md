@@ -64,100 +64,6 @@ For Zig `0.16.0` and `0.17.0-dev`, follow these steps:
 2.  **Configure your `build.zig`:**
     Add the `zig-msgpack` module to your executable.
 
-### Using std.Io.Reader and std.Io.Writer
-
-On supported Zig versions, you can use the convenient `PackerIO` API with standard I/O interfaces:
-
-```zig
-const std = @import("std");
-const msgpack = @import("msgpack");
-
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
-
-    var buffer: [1024]u8 = undefined;
-
-    // Create Reader and Writer
-    var writer = std.Io.Writer.fixed(&buffer);
-    var reader = std.Io.Reader.fixed(&buffer);
-
-    // Create packer using the convenient PackerIO
-    var packer = msgpack.PackerIO.init(&reader, &writer);
-
-    // Create and encode data
-    var map = msgpack.Payload.mapPayload(allocator);
-    defer map.free(allocator);
-    try map.mapPut("name", try msgpack.Payload.strToPayload("Alice", allocator));
-    try map.mapPut("age", msgpack.Payload.uintToPayload(30));
-    try packer.write(map);
-
-    // Decode
-    reader.seek = 0;
-    const decoded = try packer.read(allocator);
-    defer decoded.free(allocator);
-
-    const name = (try decoded.mapGet("name")).?.str.value();
-    const age = (try decoded.mapGet("age")).?.uint;
-    std.debug.print("Name: {s}, Age: {d}\n", .{ name, age });
-}
-```
-
-You can also use the convenience function:
-
-```zig
-var packer = msgpack.packIO(&reader, &writer);
-```
-
-### Working with Files
-
-```zig
-const std = @import("std");
-const msgpack = @import("msgpack");
-
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
-
-    // Open file for reading and writing
-    var file = try std.fs.cwd().createFile("data.msgpack", .{ .read = true });
-    defer file.close();
-
-    // Create reader and writer with buffers
-    var reader_buf: [4096]u8 = undefined;
-    var reader = file.reader(&reader_buf);
-    var writer_buf: [4096]u8 = undefined;
-    var writer = file.writer(&writer_buf);
-
-    var packer = msgpack.PackerIO.init(&reader, &writer);
-
-    // Serialize data
-    var payload = msgpack.Payload.mapPayload(allocator);
-    defer payload.free(allocator);
-    try payload.mapPut("message", try msgpack.Payload.strToPayload("Hello, MessagePack!", allocator));
-    try packer.write(payload);
-
-    // Flush and seek back to start
-    try writer.flush();
-    try file.seekTo(0);
-    reader.seek = 0;
-    reader.end = 0;
-
-    // Deserialize
-    const decoded = try packer.read(allocator);
-    defer decoded.free(allocator);
-
-    const message = (try decoded.mapGet("message")).?.str.value();
-    std.debug.print("Message: {s}\n", .{message});
-}
-```
-
-### Basic Usage (Zig 0.16 and 0.17 Development)
-
-For custom reader and writer callbacks, use the generic `Pack` API:
-
     ```zig
     const std = @import("std");
 
@@ -167,9 +73,11 @@ For custom reader and writer callbacks, use the generic `Pack` API:
 
         const exe = b.addExecutable(.{
             .name = "my-app",
-            .root_source_file = .{ .path = "src/main.zig" },
-            .target = target,
-            .optimize = optimize,
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("src/main.zig"),
+                .target = target,
+                .optimize = optimize,
+            }),
         });
 
         const msgpack_dep = b.dependency("zig_msgpack", .{
@@ -187,36 +95,35 @@ For custom reader and writer callbacks, use the generic `Pack` API:
 
 ### Using std.Io.Reader and std.Io.Writer
 
-On supported Zig versions, you can use the convenient `PackerIO` API with standard I/O interfaces:
+`PackerIO` and `packIO()` remain supported with their existing signatures and
+behavior. `Encoder` and `Decoder` are additional APIs; existing callers do not
+need to migrate.
+
+Use independent `Encoder` and `Decoder` values: an encoder needs only a writer,
+and a decoder needs only a reader. They borrow interface pointers, do not own the
+I/O objects or buffers, and do not flush. Keep the concrete I/O objects and their
+buffers alive and in place while using them.
 
 ```zig
 const std = @import("std");
 const msgpack = @import("msgpack");
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
-
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
     var buffer: [1024]u8 = undefined;
-
-    // Create Reader and Writer
     var writer = std.Io.Writer.fixed(&buffer);
-    var reader = std.Io.Reader.fixed(&buffer);
+    const encoder: msgpack.Encoder = .{ .writer = &writer };
 
-    // Create packer using the convenient PackerIO
-    var packer = msgpack.PackerIO.init(&reader, &writer);
-
-    // Create and encode data
     var map = msgpack.Payload.mapPayload(allocator);
     defer map.free(allocator);
     try map.mapPut("name", try msgpack.Payload.strToPayload("Alice", allocator));
     try map.mapPut("age", msgpack.Payload.uintToPayload(30));
-    try packer.write(map);
+    try encoder.write(map); // Encoding itself takes no allocator.
 
-    // Decode
-    reader.seek = 0;
-    const decoded = try packer.read(allocator);
+    // Expose only encoded bytes, not the uninitialized buffer capacity.
+    var reader = std.Io.Reader.fixed(writer.buffered());
+    const decoder: msgpack.Decoder = .{ .reader = &reader };
+    const decoded = try decoder.read(allocator);
     defer decoded.free(allocator);
 
     const name = (try decoded.mapGet("name")).?.str.value();
@@ -225,10 +132,39 @@ pub fn main() !void {
 }
 ```
 
-You can also use the convenience function:
+Each `Decoder.read(allocator)` reads exactly one payload and returns owned data
+that must be freed with `Payload.free(allocator)`. It does not require end-of-stream:
+call it again to read the next payload. Default parsing limits apply when `.limits`
+is omitted. Limits can also be supplied at runtime:
 
 ```zig
-var packer = msgpack.packIO(&reader, &writer);
+fn readLimited(
+    reader: *std.Io.Reader,
+    allocator: std.mem.Allocator,
+    limits: msgpack.ParseLimits,
+) !msgpack.Payload {
+    const decoder: msgpack.Decoder = .{ .reader = reader, .limits = limits };
+    return decoder.read(allocator);
+}
+```
+
+### Combined Reader/Writer API
+
+Existing code can continue to use `PackerIO.init(reader, writer)`, or the equivalent
+`packIO(reader, writer)`. Both use the default parsing limits, borrow the I/O
+objects, and leave flushing to the caller.
+
+```zig
+var buffer: [128]u8 = undefined;
+var writer = std.Io.Writer.fixed(&buffer);
+var reader = std.Io.Reader.fixed(&.{});
+var packer = msgpack.PackerIO.init(&reader, &writer);
+// Alternatively: var packer = msgpack.packIO(&reader, &writer);
+
+try packer.write(msgpack.Payload.uintToPayload(42));
+reader = std.Io.Reader.fixed(writer.buffered());
+const decoded = try packer.read(allocator);
+defer decoded.free(allocator);
 ```
 
 ### Working with Files
@@ -237,37 +173,35 @@ var packer = msgpack.packIO(&reader, &writer);
 const std = @import("std");
 const msgpack = @import("msgpack");
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
+    const io = init.io;
 
     // Open file for reading and writing
-    var file = try std.fs.cwd().createFile("data.msgpack", .{ .read = true });
-    defer file.close();
+    const file = try std.Io.Dir.cwd().createFile(io, "data.msgpack", .{ .read = true });
+    defer file.close(io);
 
     // Create reader and writer with buffers
     var reader_buf: [4096]u8 = undefined;
-    var reader = file.reader(&reader_buf);
+    var reader = file.reader(io, &reader_buf);
     var writer_buf: [4096]u8 = undefined;
-    var writer = file.writer(&writer_buf);
+    var writer = file.writer(io, &writer_buf);
 
-    var packer = msgpack.PackerIO.init(&reader, &writer);
+    const encoder: msgpack.Encoder = .{ .writer = &writer.interface };
+    const decoder: msgpack.Decoder = .{ .reader = &reader.interface };
 
     // Serialize data
     var payload = msgpack.Payload.mapPayload(allocator);
     defer payload.free(allocator);
     try payload.mapPut("message", try msgpack.Payload.strToPayload("Hello, MessagePack!", allocator));
-    try packer.write(payload);
+    try encoder.write(payload);
 
     // Flush and seek back to start
-    try writer.flush();
-    try file.seekTo(0);
-    reader.seek = 0;
-    reader.end = 0;
+    try writer.interface.flush();
+    try reader.seekTo(0);
 
     // Deserialize
-    const decoded = try packer.read(allocator);
+    const decoded = try decoder.read(allocator);
     defer decoded.free(allocator);
 
     const message = (try decoded.mapGet("message")).?.str.value();
@@ -275,9 +209,19 @@ pub fn main() !void {
 }
 ```
 
-### Basic Usage (Zig 0.16 and 0.17 Development)
+`Encoder.write` can succeed while output is still buffered. The application owns
+the final `writer.interface.flush()`, which can fail independently of encoding.
+The interfaces propagate `error.WriteFailed`, `error.ReadFailed`, and
+`error.EndOfStream`; for detailed file read/write failures, inspect the concrete
+`reader.err` / `writer.err` fields. These fields belong to `std.Io.File.Reader` /
+`std.Io.File.Writer`, not their `.interface` values.
 
-For custom reader and writer callbacks, use the generic `Pack` API:
+### Custom Callback I/O
+
+`Pack` and `PackWithLimits` remain supported, distinct generic APIs for custom
+read/write callbacks. `Pack` uses default parsing limits; `PackWithLimits` takes
+limits at compile time. Each callback must complete the requested field in one
+call or return an error; short transfers are not retried.
 
 ```zig
 const std = @import("std");
@@ -290,7 +234,7 @@ pub fn main() !void {
     // Use the in-memory stream adapter for the callback-based Pack API
     const compat = msgpack.compat;
     var write_buffer = compat.fixedBufferStream(&buffer);
-    var read_buffer = compat.fixedBufferStream(&buffer);
+    var read_buffer = compat.fixedBufferStream(buffer[0..0]);
 
     const BufferType = compat.BufferStream;
     var packer = msgpack.Pack(
@@ -307,7 +251,7 @@ pub fn main() !void {
     try packer.write(map);
 
     // Decode
-    read_buffer.pos = 0;
+    read_buffer = compat.fixedBufferStream(buffer[0..write_buffer.pos]);
     const decoded = try packer.read(allocator);
     defer decoded.free(allocator);
 
@@ -434,29 +378,29 @@ The library includes configurable safety limits to protect against malicious or 
 
 ```zig
 // Default limits (recommended for most use cases)
-const Packer = msgpack.Pack(
-    *Writer, *Reader,
-    Writer.Error, Reader.Error,
-    Writer.write, Reader.read,
-);
+const decoder: msgpack.Decoder = .{ .reader = &reader };
 // Automatically protected against:
 // - Deep nesting attacks (max 1000 layers)
 // - Large array/map attacks (max 1M elements)
 // - Memory exhaustion (max 100MB strings)
 
-// Custom limits for specific environments
-const StrictPacker = msgpack.PackWithLimits(
-    *Writer, *Reader,
-    Writer.Error, Reader.Error,
-    Writer.write, Reader.read,
-    .{
+// Runtime decoder options for a stricter environment.
+const limits: msgpack.ParseLimits = .{
         .max_depth = 50,              // Limit nesting to 50 layers
         .max_array_length = 10_000,   // Max 10K array elements
         .max_map_size = 10_000,       // Max 10K map pairs
         .max_string_length = 1024 * 1024,  // Max 1MB strings
         .max_bin_length = 1024 * 1024,     // Max 1MB binary blobs
         .max_ext_length = 512 * 1024,      // Max 512KB extension data
-    },
+};
+const strict_decoder: msgpack.Decoder = .{ .reader = &reader, .limits = limits };
+
+// Custom callbacks instead accept their limits at compile time.
+const StrictPacker = msgpack.PackWithLimits(
+    *Writer, *Reader,
+    Writer.Error, Reader.Error,
+    Writer.write, Reader.read,
+    limits,
 );
 ```
 
@@ -480,11 +424,13 @@ msgpack.MsgPackError.ExtDataTooLarge     // Extension payload too large
 
 ## API Overview
 
-- **`msgpack.Pack`**: The main struct for packing and unpacking MessagePack data with default safety limits.
-- **`msgpack.PackWithLimits`**: Create a packer with custom safety limits for specific security requirements.
+- **`msgpack.Encoder`**: Borrows a `*std.Io.Writer`; `write(payload)` encodes without an allocator or implicit flush.
+- **`msgpack.Decoder`**: Borrows a `*std.Io.Reader`; `read(allocator)` decodes one owned payload with runtime `.limits`; omitted limits use the defaults.
+- **`msgpack.PackerIO`**: Combined standard-I/O codec; existing `init(reader, writer)`, `write(payload)`, and `read(allocator)` APIs remain supported.
+- **`msgpack.packIO`**: Convenience constructor equivalent to `PackerIO.init`.
+- **`msgpack.Pack`**: Generic callback-based encoder/decoder with default parsing limits.
+- **`msgpack.PackWithLimits`**: Generic callback-based encoder/decoder with compile-time parsing limits.
 - **`msgpack.Payload`**: A union that represents any MessagePack type. It provides methods for creating and interacting with different data types (e.g., `mapPayload`, `strToPayload`, `mapGet`).
-- **`msgpack.PackerIO`**: Convenient wrapper for working with `std.Io.Reader` and `std.Io.Writer`.
-- **`msgpack.packIO`**: Convenience function to create a `PackerIO` instance.
 - **`msgpack.ParseLimits`**: Configuration struct for parser safety limits.
 - **Constant Structures**: `FixLimits`, `IntBounds`, `FixExtLen`, `TimestampExt`, `MarkerBase` - organized constants for better code clarity.
 

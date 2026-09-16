@@ -1538,30 +1538,16 @@ pub const MsgPackError = error{
     ExtDataTooLarge, // Extension data exceeds length limit
 };
 
-/// Create an instance of msgpack_pack with custom limits
-pub fn PackWithLimits(
+// Encoding is shared by the standard-I/O and callback entry points.
+fn EncoderCore(
     comptime WriteContext: type,
-    comptime ReadContext: type,
     comptime WriteError: type,
-    comptime ReadError: type,
     comptime writeFn: fn (context: WriteContext, bytes: []const u8) WriteError!usize,
-    comptime readFn: fn (context: ReadContext, arr: []u8) ReadError!usize,
-    comptime limits: ParseLimits,
 ) type {
     return struct {
         write_context: WriteContext,
-        read_context: ReadContext,
 
         const Self = @This();
-        const parse_limits = limits;
-
-        /// init
-        pub fn init(writeContext: WriteContext, readContext: ReadContext) Self {
-            return Self{
-                .write_context = writeContext,
-                .read_context = readContext,
-            };
-        }
 
         /// wrap for writeFn
         fn writeTo(self: Self, bytes: []const u8) !usize {
@@ -2105,6 +2091,20 @@ pub fn PackWithLimits(
                 },
             }
         }
+    };
+}
+
+// Decoding has its own context and runtime limits; it never requires a writer.
+fn DecoderCore(
+    comptime ReadContext: type,
+    comptime ReadError: type,
+    comptime readFn: fn (context: ReadContext, bytes: []u8) ReadError!usize,
+) type {
+    return struct {
+        read_context: ReadContext,
+        parse_limits: ParseLimits,
+
+        const Self = @This();
 
         fn readFrom(self: Self, bytes: []u8) !usize {
             return readFn(self.read_context, bytes);
@@ -2428,15 +2428,15 @@ pub fn PackWithLimits(
             }
         }
 
-        inline fn validateStrLength(len: usize) !void {
-            if (len > parse_limits.max_string_length) {
+        inline fn validateStrLength(self: Self, len: usize) !void {
+            if (len > self.parse_limits.max_string_length) {
                 return MsgPackError.StringTooLong;
             }
         }
 
         fn readFixStrValue(self: Self, allocator: Allocator, marker_u8: u8) ![]const u8 {
             const len: u8 = marker_u8 - @intFromEnum(Markers.FIXSTR);
-            try validateStrLength(len);
+            try self.validateStrLength(len);
             const str = try self.readData(allocator, len);
 
             return str;
@@ -2446,7 +2446,7 @@ pub fn PackWithLimits(
         /// Reduces code duplication for STR8/16/32
         inline fn readStrValueGeneric(self: Self, comptime LenType: type, allocator: Allocator) ![]const u8 {
             const len = try self.readTypedInt(LenType);
-            try validateStrLength(len);
+            try self.validateStrLength(len);
             return try self.readData(allocator, len);
         }
 
@@ -2482,9 +2482,9 @@ pub fn PackWithLimits(
             }
         }
 
-        inline fn validateBinLength(len: usize) !void {
+        inline fn validateBinLength(self: Self, len: usize) !void {
             // Inline validation for hot path
-            if (len > parse_limits.max_bin_length) {
+            if (len > self.parse_limits.max_bin_length) {
                 return MsgPackError.BinDataLengthTooLong;
             }
         }
@@ -2493,7 +2493,7 @@ pub fn PackWithLimits(
         /// Reduces code duplication for BIN8/16/32
         inline fn readBinValueGeneric(self: Self, comptime LenType: type, allocator: Allocator) ![]u8 {
             const len = try self.readTypedInt(LenType);
-            try validateBinLength(len);
+            try self.validateBinLength(len);
             return try self.readData(allocator, len);
         }
 
@@ -2524,15 +2524,15 @@ pub fn PackWithLimits(
             }
         }
 
-        inline fn validateExtLength(len: usize) !void {
+        inline fn validateExtLength(self: Self, len: usize) !void {
             // Inline validation for hot path
-            if (len > parse_limits.max_ext_length) {
+            if (len > self.parse_limits.max_ext_length) {
                 return MsgPackError.ExtDataTooLarge;
             }
         }
 
         inline fn readExtData(self: Self, allocator: Allocator, len: usize) !EXT {
-            try validateExtLength(len);
+            try self.validateExtLength(len);
             const ext_type = try self.readI8Value();
             const data = try self.readData(allocator, len);
             return EXT{
@@ -2569,7 +2569,7 @@ pub fn PackWithLimits(
 
         /// Read non-timestamp EXT data
         inline fn readRegularExt(self: Self, ext_type: i8, len: usize, allocator: Allocator) !Payload {
-            try validateExtLength(len);
+            try self.validateExtLength(len);
             const ext_data = try allocator.alloc(u8, len);
             errdefer allocator.free(ext_data);
             _ = try self.readFrom(ext_data);
@@ -2606,7 +2606,7 @@ pub fn PackWithLimits(
                 .EXT8 => TIMESTAMP96_DATA_LEN,
                 else => unreachable,
             };
-            try validateExtLength(required_len);
+            try self.validateExtLength(required_len);
             const timestamp: Timestamp = switch (marker) {
                 .FIXEXT4 => try self.readTimestamp32(),
                 .FIXEXT8 => try self.readTimestamp64(),
@@ -2841,7 +2841,7 @@ pub fn PackWithLimits(
             var is_first = true;
             while (true) {
                 // Check depth limit
-                if (parse_stack.items.len >= parse_limits.max_depth) {
+                if (parse_stack.items.len >= self.parse_limits.max_depth) {
                     return MsgPackError.MaxDepthExceeded;
                 }
 
@@ -2886,7 +2886,7 @@ pub fn PackWithLimits(
                         const val = try self.readBinValue(marker, allocator);
 
                         // Validate binary length
-                        if (val.len > parse_limits.max_bin_length) {
+                        if (val.len > self.parse_limits.max_bin_length) {
                             allocator.free(val);
                             return MsgPackError.BinDataLengthTooLong;
                         }
@@ -2899,7 +2899,7 @@ pub fn PackWithLimits(
                         const len = try self.readArrayLength(marker, marker_u8);
 
                         // Validate array length
-                        if (len > parse_limits.max_array_length) {
+                        if (len > self.parse_limits.max_array_length) {
                             return MsgPackError.ArrayTooLarge;
                         }
 
@@ -2931,7 +2931,7 @@ pub fn PackWithLimits(
                         const len = try self.readMapLength(marker, marker_u8);
 
                         // Validate map size
-                        if (len > parse_limits.max_map_size) {
+                        if (len > self.parse_limits.max_map_size) {
                             return MsgPackError.MapTooLarge;
                         }
 
@@ -3065,7 +3065,57 @@ pub fn PackWithLimits(
     };
 }
 
-/// Create an instance of msgpack_pack with default limits (backward compatible)
+/// A callback codec with compile-time parse limits.
+///
+/// Each callback must complete the requested slice in one call. Short transfers
+/// are not retried; callback errors propagate to the caller.
+pub fn PackWithLimits(
+    comptime WriteContext: type,
+    comptime ReadContext: type,
+    comptime WriteError: type,
+    comptime ReadError: type,
+    comptime writeFn: fn (context: WriteContext, bytes: []const u8) WriteError!usize,
+    comptime readFn: fn (context: ReadContext, arr: []u8) ReadError!usize,
+    comptime limits: ParseLimits,
+) type {
+    return struct {
+        write_context: WriteContext,
+        read_context: ReadContext,
+
+        const Self = @This();
+
+        pub fn init(writeContext: WriteContext, readContext: ReadContext) Self {
+            return .{
+                .write_context = writeContext,
+                .read_context = readContext,
+            };
+        }
+
+        /// Encode one payload without allocating or taking ownership of it.
+        /// An error can leave a partial payload written; this operation cannot
+        /// be resumed within that payload.
+        pub fn write(self: Self, payload: Payload) !void {
+            const encoder = EncoderCore(WriteContext, WriteError, writeFn){
+                .write_context = self.write_context,
+            };
+            return encoder.write(payload);
+        }
+
+        /// Decode one payload; trailing input is left for subsequent reads.
+        /// The caller owns the result and must call `payload.free(allocator)`.
+        /// An error can consume part of a payload; this operation cannot be
+        /// resumed within that payload.
+        pub fn read(self: Self, allocator: Allocator) !Payload {
+            const decoder = DecoderCore(ReadContext, ReadError, readFn){
+                .read_context = self.read_context,
+                .parse_limits = limits,
+            };
+            return decoder.read(allocator);
+        }
+    };
+}
+
+/// A callback codec with default parse limits.
 pub fn Pack(
     comptime WriteContext: type,
     comptime ReadContext: type,
@@ -3089,27 +3139,96 @@ pub fn Pack(
 // std.Io.Reader and std.Io.Writer Support
 // ============================================================================
 
-/// Wrapper context for std.Io.Writer
-const IoWriterContext = struct {
+/// Encodes payloads to a borrowed standard-I/O writer.
+///
+/// The writer and its backing storage must remain valid during each call.
+/// The encoder neither owns nor flushes the writer; the caller must explicitly
+/// flush buffered output when needed. Writing does not transfer payload ownership.
+/// The encoder itself does not allocate; the writer may allocate output storage.
+///
+/// Example:
+/// ```zig
+/// var buffer: [4096]u8 = undefined;
+/// var writer = std.Io.Writer.fixed(&buffer);
+/// const encoder = msgpack.Encoder{ .writer = &writer };
+/// try encoder.write(.{ .uint = 42 });
+/// try writer.flush();
+/// ```
+pub const Encoder = struct {
     writer: *std.Io.Writer,
 
-    fn write(self: IoWriterContext, bytes: []const u8) !usize {
-        try self.writer.writeAll(bytes);
+    /// Write exactly one payload using `std.Io.Writer.writeAll`.
+    /// `WriteFailed` propagates; concrete writers retain detailed I/O errors.
+    /// Errors can leave a partial payload written and are not resumable within it.
+    pub fn write(self: Encoder, payload: Payload) !void {
+        const encoder = EncoderCore(*std.Io.Writer, std.Io.Writer.Error, writeAll){
+            .write_context = self.writer,
+        };
+        return encoder.write(payload);
+    }
+
+    fn writeAll(writer: *std.Io.Writer, bytes: []const u8) std.Io.Writer.Error!usize {
+        try writer.writeAll(bytes);
         return bytes.len;
     }
 };
 
-/// Wrapper context for std.Io.Reader
-const IoReaderContext = struct {
+/// Decodes owned payloads from a borrowed standard-I/O reader.
+///
+/// The reader and its backing storage must remain valid during each call.
+/// Limits are runtime options checked before the corresponding body allocation
+/// or read. Decoded data is allocated with the supplied allocator, not borrowed
+/// from the reader, and must be released with `payload.free(allocator)`.
+///
+/// Example:
+/// ```zig
+/// var reader = std.Io.Reader.fixed(input);
+/// const decoder = msgpack.Decoder{
+///     .reader = &reader,
+///     .limits = .{ .max_string_length = 1024 },
+/// };
+/// const payload = try decoder.read(allocator);
+/// defer payload.free(allocator);
+/// ```
+pub const Decoder = struct {
     reader: *std.Io.Reader,
+    limits: ParseLimits = .{},
 
-    fn read(self: IoReaderContext, buf: []u8) !usize {
-        try self.reader.readSliceAll(buf);
-        return buf.len;
+    /// Read exactly one payload using `std.Io.Reader.readSliceAll`.
+    /// Trailing input is left for subsequent reads; EOF is not required.
+    /// `EndOfStream` and `ReadFailed` propagate; concrete readers retain detailed
+    /// I/O errors. Failed reads clean up partial allocations, but can consume
+    /// input and cannot be resumed within the partially consumed payload.
+    pub fn read(self: Decoder, allocator: Allocator) !Payload {
+        const decoder = DecoderCore(*std.Io.Reader, std.Io.Reader.Error, readAll){
+            .read_context = self.reader,
+            .parse_limits = self.limits,
+        };
+        return decoder.read(allocator);
+    }
+
+    fn readAll(reader: *std.Io.Reader, bytes: []u8) std.Io.Reader.Error!usize {
+        try reader.readSliceAll(bytes);
+        return bytes.len;
     }
 };
 
-/// Type alias for the Pack type used with std.Io.Reader/Writer
+const IoWriterContext = struct {
+    writer: *std.Io.Writer,
+
+    fn write(self: IoWriterContext, bytes: []const u8) !usize {
+        return Encoder.writeAll(self.writer, bytes);
+    }
+};
+
+const IoReaderContext = struct {
+    reader: *std.Io.Reader,
+
+    fn read(self: IoReaderContext, bytes: []u8) !usize {
+        return Decoder.readAll(self.reader, bytes);
+    }
+};
+
 const IoPackType = Pack(
     IoWriterContext,
     IoReaderContext,
@@ -3119,58 +3238,20 @@ const IoPackType = Pack(
     IoReaderContext.read,
 );
 
-/// Packer that works with std.Io.Reader and std.Io.Writer interfaces
+/// Combined standard-I/O codec with default parse limits.
 ///
-/// This provides a convenient wrapper around the generic Pack type for working
-/// with Zig's standard I/O interfaces.
-///
-/// Example:
-/// ```zig
-/// const std = @import("std");
-/// const msgpack = @import("msgpack");
-///
-/// pub fn main() !void {
-///     var gpa: std.heap.DebugAllocator(.{}) = .init;
-///     defer _ = gpa.deinit();
-///     const allocator = gpa.allocator();
-///
-///     // Create buffered I/O interfaces
-///     var buffer: [4096]u8 = undefined;
-///     var writer = std.Io.Writer.fixed(&buffer);
-///     var reader = std.Io.Reader.fixed(&.{});
-///
-///     // Create packer
-///     var packer = msgpack.PackerIO.init(&reader, &writer);
-///
-///     // Serialize
-///     var payload = msgpack.Payload.mapPayload(allocator);
-///     defer payload.free(allocator);
-///     try payload.mapPut("name", try msgpack.Payload.strToPayload("Alice", allocator));
-///     try packer.write(payload);
-///
-///     // Read back the serialized bytes
-///     reader = std.Io.Reader.fixed(writer.buffered());
-///
-///     // Deserialize
-///     const decoded = try packer.read(allocator);
-///     defer decoded.free(allocator);
-/// }
-/// ```
+/// Existing PackerIO callers remain supported. Encoder and Decoder are
+/// independent alternatives when only one direction or runtime limits are needed.
+/// The reader, writer, and their backing storage are borrowed and must remain
+/// valid for the lifetime of this value. The caller owns flushing and closing.
 pub const PackerIO = struct {
     packer: IoPackType,
     write_ctx: IoWriterContext,
     read_ctx: IoReaderContext,
 
-    /// Initialize a PackerIO with std.Io.Reader and std.Io.Writer
-    ///
-    /// The Reader and Writer must remain valid for the lifetime of this PackerIO.
-    pub fn init(
-        reader: *std.Io.Reader,
-        writer: *std.Io.Writer,
-    ) PackerIO {
+    pub fn init(reader: *std.Io.Reader, writer: *std.Io.Writer) PackerIO {
         const write_ctx = IoWriterContext{ .writer = writer };
         const read_ctx = IoReaderContext{ .reader = reader };
-
         return .{
             .packer = IoPackType.init(write_ctx, read_ctx),
             .write_ctx = write_ctx,
@@ -3178,37 +3259,19 @@ pub const PackerIO = struct {
         };
     }
 
-    /// Write a Payload to the writer
-    ///
-    /// The payload must be freed by the caller after writing.
+    /// Encode one payload without taking ownership or implicitly flushing.
     pub fn write(self: *PackerIO, payload: Payload) !void {
         return self.packer.write(payload);
     }
 
-    /// Read a Payload from the reader
-    ///
-    /// The returned payload must be freed by the caller using `payload.free(allocator)`.
-    /// Note: The read method uses an iterative parser that is safe for deeply nested data.
+    /// Decode one owned payload; release it with `payload.free(allocator)`.
     pub fn read(self: *PackerIO, allocator: Allocator) !Payload {
         return self.packer.read(allocator);
     }
 };
 
-/// Convenience function to create a PackerIO from std.Io.Reader and std.Io.Writer
-///
-/// This is a shorthand for `PackerIO.init(reader, writer)`.
-///
-/// Example:
-/// ```zig
-/// var reader = std.Io.Reader.fixed(input);
-/// var writer_buf: [4096]u8 = undefined;
-/// var writer = std.Io.Writer.fixed(&writer_buf);
-/// var packer = msgpack.packIO(&reader, &writer);
-/// ```
-pub fn packIO(
-    reader: *std.Io.Reader,
-    writer: *std.Io.Writer,
-) PackerIO {
+/// Construct a combined codec; equivalent to `PackerIO.init(reader, writer)`.
+pub fn packIO(reader: *std.Io.Reader, writer: *std.Io.Writer) PackerIO {
     return PackerIO.init(reader, writer);
 }
 

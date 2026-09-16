@@ -10,40 +10,26 @@ fn u8eql(a: []const u8, b: []const u8) bool {
 }
 
 // ============================================================================
-// PackerIO: Error Handling Tests
+// native IO: Error Handling Tests
 // ============================================================================
 
-test "PackerIO: truncated data error" {
+test "native IO: truncated data error" {
     // Test reading truncated integer data (simpler case without allocations)
     var full_buffer: [100]u8 = undefined;
     var write_writer = std.Io.Writer.fixed(&full_buffer);
-    var write_reader = std.Io.Reader.fixed(&full_buffer);
 
-    var write_packer = msgpack.PackerIO.init(&write_reader, &write_writer);
+    const encoder = msgpack.Encoder{ .writer = &write_writer };
 
     // Write a uint32 that needs 5 bytes (marker + 4 bytes value)
     const payload = msgpack.Payload.uintToPayload(0xFFFFFFFF);
-    try write_packer.write(payload);
+    try encoder.write(payload);
 
     // Now try to read with truncated buffer (only first 3 bytes, not enough for uint32)
     var truncated_buffer = full_buffer[0..3].*;
     var read_reader = std.Io.Reader.fixed(&truncated_buffer);
-    var read_writer = std.Io.Writer.fixed(&truncated_buffer);
-    var read_packer = msgpack.PackerIO.init(&read_reader, &read_writer);
+    const decoder = msgpack.Decoder{ .reader = &read_reader };
 
-    // Should return error when trying to read incomplete data
-    const result = read_packer.read(allocator);
-    if (result) |decoded| {
-        decoded.free(allocator);
-        try expect(false); // Should not succeed with truncated data
-    } else |err| {
-        // Expected error - truncated data cannot be fully read
-        // std.Io.Reader returns EndOfStream, which gets wrapped as LengthReading or DataReading
-        try expect(err == msgpack.MsgPackError.LengthReading or
-            err == msgpack.MsgPackError.TypeMarkerReading or
-            err == msgpack.MsgPackError.DataReading or
-            err == error.EndOfStream);
-    }
+    try std.testing.expectError(error.EndOfStream, decoder.read(allocator));
 }
 
 test "MessagePack spec: reserved marker is rejected at every value position" {
@@ -60,11 +46,9 @@ test "MessagePack spec: reserved marker is rejected at every value position" {
         &.{ 0x92, 0x91, 0xa1, 'x', 0x81, 0xa1, 'k', 0x91, 0xc1 }, // Mixed nesting.
     };
     for (inputs) |input| {
-        var output: [0]u8 = .{};
-        var writer = std.Io.Writer.fixed(&output);
         var reader = std.Io.Reader.fixed(input);
-        var packer = msgpack.PackerIO.init(&reader, &writer);
-        const result = packer.read(allocator);
+        const decoder = msgpack.Decoder{ .reader = &reader };
+        const result = decoder.read(allocator);
         // Free unexpected successes too, so pre-fix failures do not leak.
         if (result) |payload| payload.free(allocator) else |_| {}
         try std.testing.expectError(msgpack.MsgPackError.TypeMarkerReading, result);
@@ -99,12 +83,13 @@ test "MessagePack spec: scalar wire vectors" {
         var output: [16]u8 = undefined;
         var reader = std.Io.Reader.fixed(vector.bytes);
         var writer = std.Io.Writer.fixed(&output);
-        var packer = msgpack.PackerIO.init(&reader, &writer);
-        const decoded = try packer.read(allocator);
+        const encoder = msgpack.Encoder{ .writer = &writer };
+        const decoder = msgpack.Decoder{ .reader = &reader };
+        const decoded = try decoder.read(allocator);
         defer decoded.free(allocator);
         try std.testing.expectEqualDeep(vector.value, decoded);
         // Check encoding against the spec bytes too, not just a round trip.
-        try packer.write(vector.value);
+        try encoder.write(vector.value);
         try std.testing.expectEqualSlices(u8, vector.bytes, writer.buffered());
     }
 }
@@ -122,11 +107,9 @@ test "MessagePack spec: non-minimal integer formats remain valid" {
         "\xd3\x00\x00\x00\x00\x00\x00\x00\x01",
     };
     for (inputs) |input| {
-        var output: [0]u8 = .{};
         var reader = std.Io.Reader.fixed(input);
-        var writer = std.Io.Writer.fixed(&output);
-        var packer = msgpack.PackerIO.init(&reader, &writer);
-        const decoded = try packer.read(allocator);
+        const decoder = msgpack.Decoder{ .reader = &reader };
+        const decoded = try decoder.read(allocator);
         defer decoded.free(allocator);
         try std.testing.expectEqual(@as(u64, 1), try decoded.getUint());
     }
@@ -151,11 +134,9 @@ test "MessagePack spec: reserved byte is allowed in raw data and extension type"
         .{ .bytes = "\xc9\x00\x00\x00\x01\xc1\xc1", .kind = .ext },
     };
     for (vectors) |vector| {
-        var output: [0]u8 = .{};
         var reader = std.Io.Reader.fixed(vector.bytes);
-        var writer = std.Io.Writer.fixed(&output);
-        var packer = msgpack.PackerIO.init(&reader, &writer);
-        const decoded = try packer.read(allocator);
+        const decoder = msgpack.Decoder{ .reader = &reader };
+        const decoded = try decoder.read(allocator);
         defer decoded.free(allocator);
         switch (vector.kind) {
             .str => try std.testing.expectEqualSlices(u8, "\xc1", try decoded.asStr()),
@@ -175,11 +156,12 @@ test "MessagePack spec: reserved byte is allowed in raw data and extension type"
     var output: [195]u8 = undefined;
     var reader = std.Io.Reader.fixed(&input);
     var writer = std.Io.Writer.fixed(&output);
-    var packer = msgpack.PackerIO.init(&reader, &writer);
-    const decoded = try packer.read(allocator);
+    const encoder = msgpack.Encoder{ .writer = &writer };
+    const decoder = msgpack.Decoder{ .reader = &reader };
+    const decoded = try decoder.read(allocator);
     defer decoded.free(allocator);
     try std.testing.expectEqualSlices(u8, input[2..], try decoded.asBin());
-    try packer.write(decoded);
+    try encoder.write(decoded);
     try std.testing.expectEqualSlices(u8, &input, writer.buffered());
 }
 
@@ -190,11 +172,9 @@ test "MessagePack spec: array and map wire formats accept nil" {
         "\xdd\x00\x00\x00\x01\xc0",
     };
     for (arrays) |input| {
-        var output: [0]u8 = .{};
         var reader = std.Io.Reader.fixed(input);
-        var writer = std.Io.Writer.fixed(&output);
-        var packer = msgpack.PackerIO.init(&reader, &writer);
-        const decoded = try packer.read(allocator);
+        const decoder = msgpack.Decoder{ .reader = &reader };
+        const decoded = try decoder.read(allocator);
         defer decoded.free(allocator);
         try std.testing.expectEqual(@as(usize, 1), try decoded.getArrLen());
         try expect((try decoded.getArrElement(0)) == .nil);
@@ -205,11 +185,9 @@ test "MessagePack spec: array and map wire formats accept nil" {
         "\xdf\x00\x00\x00\x01\xc0\xc0",
     };
     for (maps) |input| {
-        var output: [0]u8 = .{};
         var reader = std.Io.Reader.fixed(input);
-        var writer = std.Io.Writer.fixed(&output);
-        var packer = msgpack.PackerIO.init(&reader, &writer);
-        const decoded = try packer.read(allocator);
+        const decoder = msgpack.Decoder{ .reader = &reader };
+        const decoded = try decoder.read(allocator);
         defer decoded.free(allocator);
         try expect(decoded == .map);
         try std.testing.expectEqual(@as(usize, 1), decoded.map.count());
@@ -232,12 +210,13 @@ test "MessagePack spec: timestamp wire vectors" {
         var output: [15]u8 = undefined;
         var reader = std.Io.Reader.fixed(vector.bytes);
         var writer = std.Io.Writer.fixed(&output);
-        var packer = msgpack.PackerIO.init(&reader, &writer);
-        const decoded = try packer.read(allocator);
+        const encoder = msgpack.Encoder{ .writer = &writer };
+        const decoder = msgpack.Decoder{ .reader = &reader };
+        const decoded = try decoder.read(allocator);
         defer decoded.free(allocator);
         const expected = Payload.timestampToPayload(vector.seconds, vector.nanoseconds);
         try std.testing.expectEqualDeep(expected, decoded);
-        try packer.write(expected);
+        try encoder.write(expected);
         try std.testing.expectEqualSlices(u8, vector.bytes, writer.buffered());
     }
 }
@@ -264,7 +243,7 @@ test "MessagePack spec: reserved marker cleanup under allocation failure" {
     try std.testing.checkAllAllocationFailures(allocator, Scenario.run, .{&input});
 }
 
-test "PackerIO: corrupted length field" {
+test "native IO: corrupted length field" {
     var buffer: [100]u8 = undefined;
     var input = std.ArrayList(u8).empty;
     defer input.deinit(allocator);
@@ -284,25 +263,14 @@ test "PackerIO: corrupted length field" {
 
     @memcpy(buffer[0..input.items.len], input.items);
 
-    var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(buffer[0..input.items.len]);
 
-    var packer = msgpack.PackerIO.init(&reader, &writer);
+    const decoder = msgpack.Decoder{ .reader = &reader };
 
-    // Should fail due to length mismatch
-    const result = packer.read(allocator);
-    if (result) |payload| {
-        payload.free(allocator);
-        try expect(false); // Should not succeed
-    } else |err| {
-        // Expected error
-        try expect(err == msgpack.MsgPackError.LengthReading or
-            err == msgpack.MsgPackError.DataReading or
-            err == error.EndOfStream);
-    }
+    try std.testing.expectError(error.EndOfStream, decoder.read(allocator));
 }
 
-test "PackerIO: truncated array cleanup" {
+test "native IO: truncated array cleanup" {
     // Test that truncated array data is properly cleaned up on error
     // This demonstrates the benefit of errdefer cleanupParseStack
     var buffer: [50]u8 = undefined;
@@ -317,107 +285,91 @@ test "PackerIO: truncated array cleanup" {
 
     @memcpy(buffer[0..input.items.len], input.items);
 
-    var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(buffer[0..input.items.len]);
 
-    var packer = msgpack.PackerIO.init(&reader, &writer);
+    const decoder = msgpack.Decoder{ .reader = &reader };
 
-    // Should fail due to truncated data (missing third element)
-    const result = packer.read(allocator);
-    if (result) |payload| {
-        payload.free(allocator);
-        try expect(false); // Should not succeed with truncated array
-    } else |err| {
-        // Expected error - truncated array cannot be fully read
-        try expect(err == msgpack.MsgPackError.TypeMarkerReading or
-            err == msgpack.MsgPackError.DataReading or
-            err == error.EndOfStream);
-    }
+    try std.testing.expectError(error.EndOfStream, decoder.read(allocator));
 }
 
-test "PackerIO: multiple payloads with error recovery" {
+test "native IO: sequential messages stop at the written boundary" {
     var buffer: [4096]u8 = std.mem.zeroes([4096]u8);
     var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(&buffer);
 
-    var packer = msgpack.PackerIO.init(&reader, &writer);
+    const encoder = msgpack.Encoder{ .writer = &writer };
+    const decoder = msgpack.Decoder{ .reader = &reader };
 
     // Write valid data
-    try packer.write(msgpack.Payload.uintToPayload(1));
-    try packer.write(msgpack.Payload.uintToPayload(2));
-    try packer.write(msgpack.Payload.uintToPayload(3));
+    try encoder.write(msgpack.Payload.uintToPayload(1));
+    try encoder.write(msgpack.Payload.uintToPayload(2));
+    try encoder.write(msgpack.Payload.uintToPayload(3));
 
     reader.seek = 0;
+    reader.end = writer.end;
 
     // Read first two successfully
-    const result1 = try packer.read(allocator);
+    const result1 = try decoder.read(allocator);
     defer result1.free(allocator);
     try expect(result1.uint == 1);
 
-    const result2 = try packer.read(allocator);
+    const result2 = try decoder.read(allocator);
     defer result2.free(allocator);
     try expect(result2.uint == 2);
 
     // Third should also succeed
-    const result3 = try packer.read(allocator);
+    const result3 = try decoder.read(allocator);
     defer result3.free(allocator);
     try expect(result3.uint == 3);
 
-    // Fourth read should fail (no more data) or return garbage
-    // After writing 3 payloads, there's no valid 4th payload
-    // The reader should hit end of valid data
-    const result4 = packer.read(allocator);
-    if (result4) |payload| {
-        payload.free(allocator);
-    } else |_| {
-        // Expected - should fail when no more valid data
-    }
+    try std.testing.expectError(error.EndOfStream, decoder.read(allocator));
 }
 
 // ============================================================================
-// PackerIO: Different Reader/Writer Implementations
+// native IO: Different Reader/Writer Implementations
 // ============================================================================
 
-test "PackerIO: sequential writes and reads with fixed buffer" {
+test "native IO: sequential writes and reads with fixed buffer" {
     var buffer: [4096]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(&buffer);
 
-    var packer = msgpack.PackerIO.init(&reader, &writer);
+    const encoder = msgpack.Encoder{ .writer = &writer };
+    const decoder = msgpack.Decoder{ .reader = &reader };
 
     // Write multiple different types
-    try packer.write(msgpack.Payload.nilToPayload());
-    try packer.write(msgpack.Payload.boolToPayload(true));
-    try packer.write(msgpack.Payload.intToPayload(-42));
+    try encoder.write(msgpack.Payload.nilToPayload());
+    try encoder.write(msgpack.Payload.boolToPayload(true));
+    try encoder.write(msgpack.Payload.intToPayload(-42));
     const str_payload = try msgpack.Payload.strToPayload("test", allocator);
     defer str_payload.free(allocator);
-    try packer.write(str_payload);
+    try encoder.write(str_payload);
 
     reader.seek = 0;
 
     // Read them back in order
-    const r1 = try packer.read(allocator);
+    const r1 = try decoder.read(allocator);
     defer r1.free(allocator);
     try expect(r1 == .nil);
 
-    const r2 = try packer.read(allocator);
+    const r2 = try decoder.read(allocator);
     defer r2.free(allocator);
     try expect(r2.bool == true);
 
-    const r3 = try packer.read(allocator);
+    const r3 = try decoder.read(allocator);
     defer r3.free(allocator);
     try expect(r3.int == -42);
 
-    const r4 = try packer.read(allocator);
+    const r4 = try decoder.read(allocator);
     defer r4.free(allocator);
     try expect(u8eql(r4.str.value(), "test"));
 }
 
 // ============================================================================
-// PackerIO: Large Data and Limits
+// native IO: Large Data and Limits
 // ============================================================================
 
-test "PackerIO: large string near limit" {
+test "native IO: large string near limit" {
     const allocator_heap = std.heap.page_allocator;
 
     // Create 1MB string (well within 100MB limit)
@@ -431,17 +383,18 @@ test "PackerIO: large string near limit" {
 
     var writer = std.Io.Writer.fixed(buffer);
     var reader = std.Io.Reader.fixed(buffer);
-    var packer = msgpack.PackerIO.init(&reader, &writer);
+    const encoder = msgpack.Encoder{ .writer = &writer };
+    const decoder = msgpack.Decoder{ .reader = &reader };
 
     const payload = try msgpack.Payload.strToPayload(large_str, allocator_heap);
     defer payload.free(allocator_heap);
 
-    try packer.write(payload);
+    try encoder.write(payload);
 
     reader.seek = 0;
     reader.end = writer.end;
 
-    const result = try packer.read(allocator_heap);
+    const result = try decoder.read(allocator_heap);
     defer result.free(allocator_heap);
 
     try expect(result == .str);
@@ -452,7 +405,7 @@ test "PackerIO: large string near limit" {
     try expect(result.str.value()[large_size - 1] == 'X');
 }
 
-test "PackerIO: large binary data" {
+test "native IO: large binary data" {
     const allocator_heap = std.heap.page_allocator;
 
     // Create 512KB binary data
@@ -470,17 +423,18 @@ test "PackerIO: large binary data" {
 
     var writer = std.Io.Writer.fixed(buffer);
     var reader = std.Io.Reader.fixed(buffer);
-    var packer = msgpack.PackerIO.init(&reader, &writer);
+    const encoder = msgpack.Encoder{ .writer = &writer };
+    const decoder = msgpack.Decoder{ .reader = &reader };
 
     const payload = try msgpack.Payload.binToPayload(large_bin, allocator_heap);
     defer payload.free(allocator_heap);
 
-    try packer.write(payload);
+    try encoder.write(payload);
 
     reader.seek = 0;
     reader.end = writer.end;
 
-    const result = try packer.read(allocator_heap);
+    const result = try decoder.read(allocator_heap);
     defer result.free(allocator_heap);
 
     try expect(result == .bin);
@@ -492,7 +446,7 @@ test "PackerIO: large binary data" {
     }
 }
 
-test "PackerIO: large array (1000 elements)" {
+test "native IO: large array (1000 elements)" {
     const allocator_heap = std.heap.page_allocator;
 
     const buffer = try allocator_heap.alloc(u8, 100_000);
@@ -500,7 +454,8 @@ test "PackerIO: large array (1000 elements)" {
 
     var writer = std.Io.Writer.fixed(buffer);
     var reader = std.Io.Reader.fixed(buffer);
-    var packer = msgpack.PackerIO.init(&reader, &writer);
+    const encoder = msgpack.Encoder{ .writer = &writer };
+    const decoder = msgpack.Decoder{ .reader = &reader };
 
     const count = 1000;
     var payload = try msgpack.Payload.arrPayload(count, allocator_heap);
@@ -510,12 +465,12 @@ test "PackerIO: large array (1000 elements)" {
         try payload.setArrElement(i, msgpack.Payload.uintToPayload(@as(u64, i)));
     }
 
-    try packer.write(payload);
+    try encoder.write(payload);
 
     reader.seek = 0;
     reader.end = writer.end;
 
-    const result = try packer.read(allocator_heap);
+    const result = try decoder.read(allocator_heap);
     defer result.free(allocator_heap);
 
     try expect(try result.getArrLen() == count);
@@ -526,7 +481,7 @@ test "PackerIO: large array (1000 elements)" {
     try expect((try result.getArrElement(999)).uint == 999);
 }
 
-test "PackerIO: large map (500 entries)" {
+test "native IO: large map (500 entries)" {
     const allocator_heap = std.heap.page_allocator;
 
     const buffer = try allocator_heap.alloc(u8, 200_000);
@@ -534,7 +489,8 @@ test "PackerIO: large map (500 entries)" {
 
     var writer = std.Io.Writer.fixed(buffer);
     var reader = std.Io.Reader.fixed(buffer);
-    var packer = msgpack.PackerIO.init(&reader, &writer);
+    const encoder = msgpack.Encoder{ .writer = &writer };
+    const decoder = msgpack.Decoder{ .reader = &reader };
 
     var payload = msgpack.Payload.mapPayload(allocator_heap);
     defer payload.free(allocator_heap);
@@ -546,12 +502,12 @@ test "PackerIO: large map (500 entries)" {
         try payload.mapPut(key, msgpack.Payload.uintToPayload(@as(u64, i)));
     }
 
-    try packer.write(payload);
+    try encoder.write(payload);
 
     reader.seek = 0;
     reader.end = writer.end;
 
-    const result = try packer.read(allocator_heap);
+    const result = try decoder.read(allocator_heap);
     defer result.free(allocator_heap);
 
     try expect(result.map.count() == count);
@@ -571,135 +527,122 @@ test "PackerIO: large map (500 entries)" {
 }
 
 // ============================================================================
-// PackerIO: Boundary Cases
+// native IO: Boundary Cases
 // ============================================================================
 
-test "PackerIO: empty buffer write error" {
+test "native IO: empty buffer write error" {
     var buffer: [0]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
-    var reader = std.Io.Reader.fixed(&buffer);
 
-    var packer = msgpack.PackerIO.init(&reader, &writer);
+    const encoder = msgpack.Encoder{ .writer = &writer };
 
-    // Writing to empty buffer should fail
-    const result = packer.write(msgpack.Payload.nilToPayload());
-    // std.Io.Writer.fixed returns error.WriteFailed
-    if (result) |_| {
-        try expect(false); // Should have failed
-    } else |err| {
-        // Either NoSpaceLeft or WriteFailed is acceptable
-        try expect(err == error.NoSpaceLeft or err == error.WriteFailed);
-    }
+    try std.testing.expectError(error.WriteFailed, encoder.write(msgpack.Payload.nilToPayload()));
 }
 
-test "PackerIO: minimal buffer size" {
+test "native IO: minimal buffer size" {
     // Test with exactly 1 byte buffer (enough for nil marker)
     var buffer: [1]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(&buffer);
 
-    var packer = msgpack.PackerIO.init(&reader, &writer);
+    const encoder = msgpack.Encoder{ .writer = &writer };
+    const decoder = msgpack.Decoder{ .reader = &reader };
 
     // Nil marker is 1 byte, should succeed
-    try packer.write(msgpack.Payload.nilToPayload());
+    try encoder.write(msgpack.Payload.nilToPayload());
 
     reader.seek = 0;
-    const result = try packer.read(allocator);
+    const result = try decoder.read(allocator);
     defer result.free(allocator);
 
     try expect(result == .nil);
 }
 
-test "PackerIO: exact buffer size for small payload" {
+test "native IO: exact buffer size for small payload" {
     // positive fixint uses exactly 1 byte
     var buffer: [1]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(&buffer);
 
-    var packer = msgpack.PackerIO.init(&reader, &writer);
+    const encoder = msgpack.Encoder{ .writer = &writer };
+    const decoder = msgpack.Decoder{ .reader = &reader };
 
-    try packer.write(msgpack.Payload.uintToPayload(42)); // 42 is fixint
+    try encoder.write(msgpack.Payload.uintToPayload(42)); // 42 is fixint
 
     reader.seek = 0;
-    const result = try packer.read(allocator);
+    const result = try decoder.read(allocator);
     defer result.free(allocator);
 
     try expect(result.uint == 42);
 }
 
-test "PackerIO: off-by-one buffer size" {
+test "native IO: off-by-one buffer size" {
     // uint8 needs 2 bytes (marker + value), provide only 1
     var buffer: [1]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
-    var reader = std.Io.Reader.fixed(&buffer);
 
-    var packer = msgpack.PackerIO.init(&reader, &writer);
+    const encoder = msgpack.Encoder{ .writer = &writer };
 
-    // 128 requires uint8 format (2 bytes), buffer is too small
-    const result = packer.write(msgpack.Payload.uintToPayload(128));
-    // std.Io.Writer.fixed returns error.WriteFailed
-    if (result) |_| {
-        try expect(false); // Should have failed
-    } else |err| {
-        // Either NoSpaceLeft or WriteFailed is acceptable
-        try expect(err == error.NoSpaceLeft or err == error.WriteFailed);
-    }
+    try std.testing.expectError(error.WriteFailed, encoder.write(msgpack.Payload.uintToPayload(128)));
 }
 
-test "PackerIO: empty string edge case" {
+test "native IO: empty string edge case" {
     var buffer: [10]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(&buffer);
 
-    var packer = msgpack.PackerIO.init(&reader, &writer);
+    const encoder = msgpack.Encoder{ .writer = &writer };
+    const decoder = msgpack.Decoder{ .reader = &reader };
 
     const payload = try msgpack.Payload.strToPayload("", allocator);
     defer payload.free(allocator);
 
-    try packer.write(payload);
+    try encoder.write(payload);
 
     reader.seek = 0;
-    const result = try packer.read(allocator);
+    const result = try decoder.read(allocator);
     defer result.free(allocator);
 
     try expect(result == .str);
     try expect(result.str.value().len == 0);
 }
 
-test "PackerIO: empty array edge case" {
+test "native IO: empty array edge case" {
     var buffer: [10]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(&buffer);
 
-    var packer = msgpack.PackerIO.init(&reader, &writer);
+    const encoder = msgpack.Encoder{ .writer = &writer };
+    const decoder = msgpack.Decoder{ .reader = &reader };
 
     const payload = try msgpack.Payload.arrPayload(0, allocator);
     defer payload.free(allocator);
 
-    try packer.write(payload);
+    try encoder.write(payload);
 
     reader.seek = 0;
-    const result = try packer.read(allocator);
+    const result = try decoder.read(allocator);
     defer result.free(allocator);
 
     try expect(result == .arr);
     try expect(try result.getArrLen() == 0);
 }
 
-test "PackerIO: empty map edge case" {
+test "native IO: empty map edge case" {
     var buffer: [10]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(&buffer);
 
-    var packer = msgpack.PackerIO.init(&reader, &writer);
+    const encoder = msgpack.Encoder{ .writer = &writer };
+    const decoder = msgpack.Decoder{ .reader = &reader };
 
     const payload = msgpack.Payload.mapPayload(allocator);
     defer payload.free(allocator);
 
-    try packer.write(payload);
+    try encoder.write(payload);
 
     reader.seek = 0;
-    const result = try packer.read(allocator);
+    const result = try decoder.read(allocator);
     defer result.free(allocator);
 
     try expect(result == .map);
@@ -5050,59 +4993,62 @@ test "memory alignment: large integer array serialization" {
 // std.Io.Reader and std.Io.Writer Tests
 // ============================================================================
 
-test "PackerIO: basic write and read with fixed Reader/Writer" {
+test "native IO: basic write and read with fixed Reader/Writer" {
     var buffer: [1024]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(&buffer);
 
-    var packer = msgpack.PackerIO.init(&reader, &writer);
+    const encoder = msgpack.Encoder{ .writer = &writer };
+    const decoder = msgpack.Decoder{ .reader = &reader };
 
     // Write a simple payload
     const payload = msgpack.Payload.uintToPayload(42);
-    try packer.write(payload);
+    try encoder.write(payload);
 
     // Reset reader position
     reader.seek = 0;
 
     // Read it back
-    const result = try packer.read(allocator);
+    const result = try decoder.read(allocator);
     defer result.free(allocator);
 
     try expect(result == .uint);
     try expect(result.uint == 42);
 }
 
-test "PackerIO: nil type" {
+test "native IO: nil type" {
     var buffer: [1024]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(&buffer);
 
-    var packer = msgpack.PackerIO.init(&reader, &writer);
+    const encoder = msgpack.Encoder{ .writer = &writer };
+    const decoder = msgpack.Decoder{ .reader = &reader };
 
     const payload = msgpack.Payload.nilToPayload();
-    try packer.write(payload);
+    try encoder.write(payload);
 
     reader.seek = 0;
-    const result = try packer.read(allocator);
+    const result = try decoder.read(allocator);
     defer result.free(allocator);
 
     try expect(result == .nil);
 }
 
-test "PackerIO: bool type" {
+test "native IO: bool type" {
     var buffer: [1024]u8 = undefined;
 
     // Test true
     {
         var writer = std.Io.Writer.fixed(&buffer);
         var reader = std.Io.Reader.fixed(&buffer);
-        var packer = msgpack.PackerIO.init(&reader, &writer);
+        const encoder = msgpack.Encoder{ .writer = &writer };
+        const decoder = msgpack.Decoder{ .reader = &reader };
 
         const payload = msgpack.Payload.boolToPayload(true);
-        try packer.write(payload);
+        try encoder.write(payload);
 
         reader.seek = 0;
-        const result = try packer.read(allocator);
+        const result = try decoder.read(allocator);
         defer result.free(allocator);
 
         try expect(result == .bool);
@@ -5113,13 +5059,14 @@ test "PackerIO: bool type" {
     {
         var writer = std.Io.Writer.fixed(&buffer);
         var reader = std.Io.Reader.fixed(&buffer);
-        var packer = msgpack.PackerIO.init(&reader, &writer);
+        const encoder = msgpack.Encoder{ .writer = &writer };
+        const decoder = msgpack.Decoder{ .reader = &reader };
 
         const payload = msgpack.Payload.boolToPayload(false);
-        try packer.write(payload);
+        try encoder.write(payload);
 
         reader.seek = 0;
-        const result = try packer.read(allocator);
+        const result = try decoder.read(allocator);
         defer result.free(allocator);
 
         try expect(result == .bool);
@@ -5127,7 +5074,7 @@ test "PackerIO: bool type" {
     }
 }
 
-test "PackerIO: signed integers" {
+test "native IO: signed integers" {
     var buffer: [1024]u8 = undefined;
 
     const test_cases = [_]i64{ -1, -32, -33, -128, -32768, -2147483648 };
@@ -5135,13 +5082,14 @@ test "PackerIO: signed integers" {
     for (test_cases) |val| {
         var writer = std.Io.Writer.fixed(&buffer);
         var reader = std.Io.Reader.fixed(&buffer);
-        var packer = msgpack.PackerIO.init(&reader, &writer);
+        const encoder = msgpack.Encoder{ .writer = &writer };
+        const decoder = msgpack.Decoder{ .reader = &reader };
 
         const payload = msgpack.Payload.intToPayload(val);
-        try packer.write(payload);
+        try encoder.write(payload);
 
         reader.seek = 0;
-        const result = try packer.read(allocator);
+        const result = try decoder.read(allocator);
         defer result.free(allocator);
 
         // Verify the result is an integer type
@@ -5153,7 +5101,7 @@ test "PackerIO: signed integers" {
     }
 }
 
-test "PackerIO: unsigned integers" {
+test "native IO: unsigned integers" {
     var buffer: [1024]u8 = undefined;
 
     const test_cases = [_]u64{ 0, 1, 127, 128, 255, 256, 65535, 65536, 4294967295, 4294967296 };
@@ -5161,13 +5109,14 @@ test "PackerIO: unsigned integers" {
     for (test_cases) |val| {
         var writer = std.Io.Writer.fixed(&buffer);
         var reader = std.Io.Reader.fixed(&buffer);
-        var packer = msgpack.PackerIO.init(&reader, &writer);
+        const encoder = msgpack.Encoder{ .writer = &writer };
+        const decoder = msgpack.Decoder{ .reader = &reader };
 
         const payload = msgpack.Payload.uintToPayload(val);
-        try packer.write(payload);
+        try encoder.write(payload);
 
         reader.seek = 0;
-        const result = try packer.read(allocator);
+        const result = try decoder.read(allocator);
         defer result.free(allocator);
 
         try expect(result == .uint);
@@ -5175,7 +5124,7 @@ test "PackerIO: unsigned integers" {
     }
 }
 
-test "PackerIO: float type" {
+test "native IO: float type" {
     var buffer: [1024]u8 = undefined;
 
     // Use non-integer values to ensure they stay as floats
@@ -5184,13 +5133,14 @@ test "PackerIO: float type" {
     for (test_cases) |val| {
         var writer = std.Io.Writer.fixed(&buffer);
         var reader = std.Io.Reader.fixed(&buffer);
-        var packer = msgpack.PackerIO.init(&reader, &writer);
+        const encoder = msgpack.Encoder{ .writer = &writer };
+        const decoder = msgpack.Decoder{ .reader = &reader };
 
         const payload = msgpack.Payload.floatToPayload(val);
-        try packer.write(payload);
+        try encoder.write(payload);
 
         reader.seek = 0;
-        const result = try packer.read(allocator);
+        const result = try decoder.read(allocator);
         defer result.free(allocator);
 
         if (result != .float) {
@@ -5212,7 +5162,7 @@ test "PackerIO: float type" {
     }
 }
 
-test "PackerIO: string type" {
+test "native IO: string type" {
     var buffer: [1024]u8 = undefined;
 
     const a_str: [100]u8 = @splat('a');
@@ -5229,14 +5179,15 @@ test "PackerIO: string type" {
     for (test_strings) |str| {
         var writer = std.Io.Writer.fixed(&buffer);
         var reader = std.Io.Reader.fixed(&buffer);
-        var packer = msgpack.PackerIO.init(&reader, &writer);
+        const encoder = msgpack.Encoder{ .writer = &writer };
+        const decoder = msgpack.Decoder{ .reader = &reader };
 
         const payload = try msgpack.Payload.strToPayload(str, allocator);
         defer payload.free(allocator);
-        try packer.write(payload);
+        try encoder.write(payload);
 
         reader.seek = 0;
-        const result = try packer.read(allocator);
+        const result = try decoder.read(allocator);
         defer result.free(allocator);
 
         try expect(result == .str);
@@ -5244,32 +5195,34 @@ test "PackerIO: string type" {
     }
 }
 
-test "PackerIO: binary type" {
+test "native IO: binary type" {
     var buffer: [1024]u8 = undefined;
 
     const test_data = [_]u8{ 0x00, 0x01, 0x02, 0xFF, 0xAB, 0xCD };
 
     var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(&buffer);
-    var packer = msgpack.PackerIO.init(&reader, &writer);
+    const encoder = msgpack.Encoder{ .writer = &writer };
+    const decoder = msgpack.Decoder{ .reader = &reader };
 
     const payload = try msgpack.Payload.binToPayload(&test_data, allocator);
     defer payload.free(allocator);
-    try packer.write(payload);
+    try encoder.write(payload);
 
     reader.seek = 0;
-    const result = try packer.read(allocator);
+    const result = try decoder.read(allocator);
     defer result.free(allocator);
 
     try expect(result == .bin);
     try expect(u8eql(result.bin.value(), &test_data));
 }
 
-test "PackerIO: array type" {
+test "native IO: array type" {
     var buffer: [1024]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(&buffer);
-    var packer = msgpack.PackerIO.init(&reader, &writer);
+    const encoder = msgpack.Encoder{ .writer = &writer };
+    const decoder = msgpack.Decoder{ .reader = &reader };
 
     // Create an array with different types
     var payload = try msgpack.Payload.arrPayload(4, allocator);
@@ -5279,10 +5232,10 @@ test "PackerIO: array type" {
     try payload.setArrElement(2, msgpack.Payload.boolToPayload(true));
     try payload.setArrElement(3, msgpack.Payload.nilToPayload());
 
-    try packer.write(payload);
+    try encoder.write(payload);
 
     reader.seek = 0;
-    const result = try packer.read(allocator);
+    const result = try decoder.read(allocator);
     defer result.free(allocator);
 
     try expect(result == .arr);
@@ -5309,11 +5262,12 @@ test "PackerIO: array type" {
     try expect(elem3 == .nil);
 }
 
-test "PackerIO: map type" {
+test "native IO: map type" {
     var buffer: [2048]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(&buffer);
-    var packer = msgpack.PackerIO.init(&reader, &writer);
+    const encoder = msgpack.Encoder{ .writer = &writer };
+    const decoder = msgpack.Decoder{ .reader = &reader };
 
     // Create a map
     var payload = msgpack.Payload.mapPayload(allocator);
@@ -5322,10 +5276,10 @@ test "PackerIO: map type" {
     try payload.mapPut("age", msgpack.Payload.uintToPayload(30));
     try payload.mapPut("active", msgpack.Payload.boolToPayload(true));
 
-    try packer.write(payload);
+    try encoder.write(payload);
 
     reader.seek = 0;
-    const result = try packer.read(allocator);
+    const result = try decoder.read(allocator);
     defer result.free(allocator);
 
     try expect(result == .map);
@@ -5340,11 +5294,12 @@ test "PackerIO: map type" {
     try expect(active.bool == true);
 }
 
-test "PackerIO: nested structures" {
+test "native IO: nested structures" {
     var buffer: [4096]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(&buffer);
-    var packer = msgpack.PackerIO.init(&reader, &writer);
+    const encoder = msgpack.Encoder{ .writer = &writer };
+    const decoder = msgpack.Decoder{ .reader = &reader };
 
     // Create nested structure: map with array values
     var payload = msgpack.Payload.mapPayload(allocator);
@@ -5358,10 +5313,10 @@ test "PackerIO: nested structures" {
     try payload.mapPut("numbers", arr);
     try payload.mapPut("name", try msgpack.Payload.strToPayload("test", allocator));
 
-    try packer.write(payload);
+    try encoder.write(payload);
 
     reader.seek = 0;
-    const result = try packer.read(allocator);
+    const result = try decoder.read(allocator);
     defer result.free(allocator);
 
     try expect(result == .map);
@@ -5374,7 +5329,7 @@ test "PackerIO: nested structures" {
     try expect(elem0.uint == 1);
 }
 
-test "PackerIO: timestamp extension type" {
+test "native IO: timestamp extension type" {
     var buffer: [1024]u8 = undefined;
 
     const test_cases = [_]struct { seconds: i64, nanoseconds: u32 }{
@@ -5387,13 +5342,14 @@ test "PackerIO: timestamp extension type" {
     for (test_cases) |tc| {
         var writer = std.Io.Writer.fixed(&buffer);
         var reader = std.Io.Reader.fixed(&buffer);
-        var packer = msgpack.PackerIO.init(&reader, &writer);
+        const encoder = msgpack.Encoder{ .writer = &writer };
+        const decoder = msgpack.Decoder{ .reader = &reader };
 
         const payload = msgpack.Payload.timestampToPayload(tc.seconds, tc.nanoseconds);
-        try packer.write(payload);
+        try encoder.write(payload);
 
         reader.seek = 0;
-        const result = try packer.read(allocator);
+        const result = try decoder.read(allocator);
         defer result.free(allocator);
 
         try expect(result == .timestamp);
@@ -5402,21 +5358,22 @@ test "PackerIO: timestamp extension type" {
     }
 }
 
-test "PackerIO: extension type" {
+test "native IO: extension type" {
     var buffer: [1024]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(&buffer);
-    var packer = msgpack.PackerIO.init(&reader, &writer);
+    const encoder = msgpack.Encoder{ .writer = &writer };
+    const decoder = msgpack.Decoder{ .reader = &reader };
 
     const ext_data = [_]u8{ 0xAA, 0xBB, 0xCC };
     const ext_type: i8 = 42;
 
     const payload = try msgpack.Payload.extToPayload(ext_type, &ext_data, allocator);
     defer payload.free(allocator);
-    try packer.write(payload);
+    try encoder.write(payload);
 
     reader.seek = 0;
-    const result = try packer.read(allocator);
+    const result = try decoder.read(allocator);
     defer result.free(allocator);
 
     try expect(result == .ext);
@@ -5424,11 +5381,12 @@ test "PackerIO: extension type" {
     try expect(u8eql(result.ext.data, &ext_data));
 }
 
-test "PackerIO: deeply nested structures" {
+test "native IO: deeply nested structures" {
     var buffer: [4096]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(&buffer);
-    var packer = msgpack.PackerIO.init(&reader, &writer);
+    const encoder = msgpack.Encoder{ .writer = &writer };
+    const decoder = msgpack.Decoder{ .reader = &reader };
 
     // Create a deeply nested structure
     var payload = msgpack.Payload.mapPayload(allocator);
@@ -5443,11 +5401,11 @@ test "PackerIO: deeply nested structures" {
 
     try payload.mapPut("nested", outer_arr);
 
-    try packer.write(payload);
+    try encoder.write(payload);
 
     reader.seek = 0;
     // The read method uses an iterative parser by default
-    const result = try packer.read(allocator);
+    const result = try decoder.read(allocator);
     defer result.free(allocator);
 
     try expect(result == .map);
@@ -5455,38 +5413,40 @@ test "PackerIO: deeply nested structures" {
     try expect(nested == .arr);
 }
 
-test "PackerIO: multiple writes and reads" {
+test "native IO: multiple writes and reads" {
     var buffer: [4096]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(&buffer);
-    var packer = msgpack.PackerIO.init(&reader, &writer);
+    const encoder = msgpack.Encoder{ .writer = &writer };
+    const decoder = msgpack.Decoder{ .reader = &reader };
 
     // Write multiple payloads
-    try packer.write(msgpack.Payload.uintToPayload(1));
-    try packer.write(msgpack.Payload.uintToPayload(2));
-    try packer.write(msgpack.Payload.uintToPayload(3));
+    try encoder.write(msgpack.Payload.uintToPayload(1));
+    try encoder.write(msgpack.Payload.uintToPayload(2));
+    try encoder.write(msgpack.Payload.uintToPayload(3));
 
     reader.seek = 0;
 
     // Read them back
-    const result1 = try packer.read(allocator);
+    const result1 = try decoder.read(allocator);
     defer result1.free(allocator);
     try expect(result1.uint == 1);
 
-    const result2 = try packer.read(allocator);
+    const result2 = try decoder.read(allocator);
     defer result2.free(allocator);
     try expect(result2.uint == 2);
 
-    const result3 = try packer.read(allocator);
+    const result3 = try decoder.read(allocator);
     defer result3.free(allocator);
     try expect(result3.uint == 3);
 }
 
-test "PackerIO: large array" {
+test "native IO: large array" {
     var buffer: [16384]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(&buffer);
-    var packer = msgpack.PackerIO.init(&reader, &writer);
+    const encoder = msgpack.Encoder{ .writer = &writer };
+    const decoder = msgpack.Decoder{ .reader = &reader };
 
     const count = 100;
     var payload = try msgpack.Payload.arrPayload(count, allocator);
@@ -5496,10 +5456,10 @@ test "PackerIO: large array" {
         try payload.setArrElement(i, msgpack.Payload.uintToPayload(@as(u64, i)));
     }
 
-    try packer.write(payload);
+    try encoder.write(payload);
 
     reader.seek = 0;
-    const result = try packer.read(allocator);
+    const result = try decoder.read(allocator);
     defer result.free(allocator);
 
     try expect(try result.getArrLen() == count);
@@ -5510,22 +5470,223 @@ test "PackerIO: large array" {
     }
 }
 
-test "PackerIO: packIO convenience function" {
-    var buffer: [1024]u8 = undefined;
-    var writer = std.Io.Writer.fixed(&buffer);
-    var reader = std.Io.Reader.fixed(&buffer);
+test "native IO: allocating writer emits independent wire bytes" {
+    var output = std.Io.Writer.Allocating.init(allocator);
+    defer output.deinit();
+    const encoder = msgpack.Encoder{ .writer = &output.writer };
 
-    // Use convenience function
-    var packer = msgpack.packIO(&reader, &writer);
+    const text = try Payload.strToPayload("stream", allocator);
+    defer text.free(allocator);
+    try encoder.write(Payload.uintToPayload(0x12345678));
+    try encoder.write(text);
 
-    const payload = msgpack.Payload.uintToPayload(12345);
-    try packer.write(payload);
+    try std.testing.expectEqualSlices(u8, "\xce\x12\x34\x56\x78\xa6stream", output.written());
+}
 
-    reader.seek = 0;
-    const result = try packer.read(allocator);
-    defer result.free(allocator);
+test "native IO: buffered encoding leaves flush and its errors to the caller" {
+    var buffer: [8]u8 = undefined;
+    var writer = std.Io.Writer.failing;
+    writer.buffer = &buffer;
+    const encoder = msgpack.Encoder{ .writer = &writer };
+    try encoder.write(Payload.uintToPayload(193));
+    try std.testing.expectEqualSlices(u8, "\xcc\xc1", writer.buffered());
+    try std.testing.expectError(error.WriteFailed, writer.flush());
+}
 
-    try expect(result.uint == 12345);
+// Unbuffered interfaces force the codec through the std.Io vtables rather than
+// letting a fixed buffer satisfy every request. Each call makes short progress.
+const ChunkedReader = struct {
+    interface: std.Io.Reader = .{
+        .vtable = &.{ .stream = stream },
+        .buffer = &.{},
+        .seek = 0,
+        .end = 0,
+    },
+    bytes: []const u8,
+    position: usize = 0,
+    fail_at: usize = std.math.maxInt(usize),
+
+    fn stream(r: *std.Io.Reader, w: *std.Io.Writer, limit: std.Io.Limit) std.Io.Reader.StreamError!usize {
+        const self: *ChunkedReader = @fieldParentPtr("interface", r);
+        if (self.position == self.fail_at) return error.ReadFailed;
+        if (self.position == self.bytes.len) return error.EndOfStream;
+        const available = @min(self.bytes.len - self.position, self.fail_at - self.position, 2);
+        const n = try w.write(limit.sliceConst(self.bytes[self.position..][0..available]));
+        self.position += n;
+        return n;
+    }
+};
+
+const ChunkedWriter = struct {
+    interface: std.Io.Writer = .{
+        .vtable = &.{ .drain = drain },
+        .buffer = &.{},
+    },
+    bytes: []u8,
+    position: usize = 0,
+
+    fn drain(w: *std.Io.Writer, data: []const []const u8, splat: usize) std.Io.Writer.Error!usize {
+        const self: *ChunkedWriter = @fieldParentPtr("interface", w);
+        for (data, 0..) |bytes, i| {
+            if (i == data.len - 1 and splat == 0) break;
+            if (bytes.len == 0) continue;
+            if (self.position == self.bytes.len) return error.WriteFailed;
+            const n = @min(bytes.len, self.bytes.len - self.position, 2);
+            @memcpy(self.bytes[self.position..][0..n], bytes[0..n]);
+            self.position += n;
+            return n;
+        }
+        return 0;
+    }
+};
+
+test "PackerIO: existing constructors preserve streaming and error behavior" {
+    const wire = "\xa3old\xcc\xc1";
+    inline for (.{ msgpack.PackerIO.init, msgpack.packIO }) |init| {
+        var output: [wire.len]u8 = undefined;
+        var sink = ChunkedWriter{ .bytes = &output };
+        var source = ChunkedReader{ .bytes = wire ++ "\xc1" };
+        var packer = init(&source.interface, &sink.interface);
+
+        try packer.write(.{ .str = msgpack.wrapStr("old") });
+        try packer.write(Payload.uintToPayload(193));
+        try std.testing.expectEqualSlices(u8, wire, &output);
+        try std.testing.expectError(error.WriteFailed, packer.write(Payload.nilToPayload()));
+
+        const text = try packer.read(allocator);
+        defer text.free(allocator);
+        try std.testing.expectEqualStrings("old", try text.asStr());
+        const number = try packer.read(allocator);
+        defer number.free(allocator);
+        try std.testing.expectEqual(@as(u64, 193), try number.getUint());
+        try std.testing.expectError(error.TypeMarkerReading, packer.read(allocator));
+        try std.testing.expectError(error.EndOfStream, packer.read(allocator));
+    }
+}
+
+test "native IO: short chunks complete fields and preserve message boundaries" {
+    var payload = try Payload.arrPayload(3, allocator);
+    defer payload.free(allocator);
+    try payload.setArrElement(0, Payload.uintToPayload(0x12345678));
+    try payload.setArrElement(1, try Payload.strToPayload("stream", allocator));
+    try payload.setArrElement(2, try Payload.extToPayload(42, "\x01\x02\x03", allocator));
+
+    var output: [64]u8 = undefined;
+    var sink = ChunkedWriter{ .bytes = &output };
+    const encoder = msgpack.Encoder{ .writer = &sink.interface };
+    try encoder.write(payload);
+    try encoder.write(Payload.boolToPayload(true));
+    const wire = "\x93\xce\x12\x34\x56\x78\xa6stream\xc7\x03\x2a\x01\x02\x03\xc3";
+    try std.testing.expectEqualSlices(u8, wire, output[0..sink.position]);
+
+    var source = ChunkedReader{ .bytes = wire };
+    const decoder = msgpack.Decoder{ .reader = &source.interface };
+    const first = try decoder.read(allocator);
+    defer first.free(allocator);
+    try std.testing.expectEqual(@as(usize, wire.len - 1), source.position);
+    const second = try decoder.read(allocator);
+    defer second.free(allocator);
+    try std.testing.expectEqualDeep(Payload.boolToPayload(true), second);
+    // The first result owns its data and remains valid after another read.
+    try std.testing.expectEqualDeep(payload, first);
+    try std.testing.expectError(error.EndOfStream, decoder.read(allocator));
+}
+
+test "native IO: mid-payload failures preserve standard errors and free partial trees" {
+    // Completed string, active map, pending allocated key, and partial binary
+    // body exercise distinct cleanup states as the failure moves through input.
+    const wire = "\x92\xa2ok\x81\xa1k\xc4\x03\x01\x02\x03";
+    for (1..wire.len) |cut| {
+        var failed = ChunkedReader{ .bytes = wire, .fail_at = cut };
+        const failing_decoder = msgpack.Decoder{ .reader = &failed.interface };
+        try std.testing.expectError(error.ReadFailed, failing_decoder.read(allocator));
+
+        var truncated = ChunkedReader{ .bytes = wire[0..cut] };
+        const truncated_decoder = msgpack.Decoder{ .reader = &truncated.interface };
+        try std.testing.expectError(error.EndOfStream, truncated_decoder.read(allocator));
+    }
+
+    var output: [4]u8 = undefined;
+    var sink = ChunkedWriter{ .bytes = &output };
+    const encoder = msgpack.Encoder{ .writer = &sink.interface };
+    const text = try Payload.strToPayload("stream", allocator);
+    defer text.free(allocator);
+    try std.testing.expectError(error.WriteFailed, encoder.write(text));
+    try std.testing.expectEqualSlices(u8, "\xa6str", &output);
+}
+
+test "native IO: runtime length limits reject before allocation and body reads" {
+    const cases = [_]struct {
+        wire: []const u8,
+        header_len: usize,
+        err: anyerror,
+    }{
+        .{ .wire = "\xda\x00\x03abc", .header_len = 3, .err = error.StringTooLong },
+        .{ .wire = "\xc6\x00\x00\x00\x03abc", .header_len = 5, .err = error.BinDataLengthTooLong },
+        .{ .wire = "\xc8\x00\x03\x2aabc", .header_len = 3, .err = error.ExtDataTooLarge },
+        .{ .wire = "\xdc\x00\x03\xc0\x01\xc3", .header_len = 3, .err = error.ArrayTooLarge },
+        .{ .wire = "\xdf\x00\x00\x00\x03\xc0\xc0\x00\xc2\x01\xc3", .header_len = 5, .err = error.MapTooLarge },
+    };
+    for ([_]usize{ 2, 3 }) |length_limit| {
+        const limits = msgpack.ParseLimits{
+            .max_string_length = length_limit,
+            .max_bin_length = length_limit,
+            .max_ext_length = length_limit,
+            .max_array_length = length_limit,
+            .max_map_size = length_limit,
+        };
+        for (cases) |case| {
+            var source = ChunkedReader{ .bytes = case.wire };
+            const decoder = msgpack.Decoder{ .reader = &source.interface, .limits = limits };
+            if (length_limit == 2) {
+                var failing = std.testing.FailingAllocator.init(allocator, .{ .fail_index = 0 });
+                try std.testing.expectError(case.err, decoder.read(failing.allocator()));
+                try expect(!failing.has_induced_failure);
+                try std.testing.expectEqual(case.header_len, source.position);
+            } else {
+                const payload = try decoder.read(allocator);
+                defer payload.free(allocator);
+                switch (payload) {
+                    .str => |str| try std.testing.expectEqualSlices(u8, "abc", str.value()),
+                    .bin => |bin| try std.testing.expectEqualSlices(u8, "abc", bin.value()),
+                    .ext => |ext| {
+                        try std.testing.expectEqual(@as(i8, 42), ext.type);
+                        try std.testing.expectEqualSlices(u8, "abc", ext.data);
+                    },
+                    .arr => |arr| {
+                        try std.testing.expectEqual(@as(usize, 3), arr.len);
+                        try expect(arr[0] == .nil);
+                        try std.testing.expectEqualDeep(Payload.uintToPayload(1), arr[1]);
+                        try std.testing.expectEqualDeep(Payload.boolToPayload(true), arr[2]);
+                    },
+                    .map => |map| try std.testing.expectEqual(@as(usize, 3), map.count()),
+                    else => return error.TestUnexpectedResult,
+                }
+                try std.testing.expectEqual(case.wire.len, source.position);
+            }
+        }
+    }
+}
+
+test "native IO: runtime depth limit stops before the nested body" {
+    const wire = "\x91\x91\xa3abc";
+    for ([_]usize{ 2, 3 }) |depth_limit| {
+        var source = ChunkedReader{ .bytes = wire };
+        const decoder = msgpack.Decoder{
+            .reader = &source.interface,
+            .limits = .{ .max_depth = depth_limit },
+        };
+        if (depth_limit == 2) {
+            try std.testing.expectError(error.MaxDepthExceeded, decoder.read(allocator));
+            try std.testing.expectEqual(@as(usize, 2), source.position);
+        } else {
+            const payload = try decoder.read(allocator);
+            defer payload.free(allocator);
+            const inner = try payload.getArrElement(0);
+            const text = try inner.getArrElement(0);
+            try std.testing.expectEqualSlices(u8, "abc", try text.asStr());
+        }
+    }
 }
 
 // ============================================================================
