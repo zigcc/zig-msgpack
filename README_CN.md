@@ -303,6 +303,10 @@ std.debug.print("浮点数形式: {d}\n", .{ decoded_ts.timestamp.toFloat() });
 
 ### 错误处理
 
+解码时，保留标记 `0xc1` 会返回 `MsgPackError.TypeMarkerReading`，包括数组元素和
+map 的键、值位置。只有 `0xc0` 表示 `nil`。此限制仅针对类型标记，不影响数据内容
+或长度字段中的同值字节。
+
 ```zig
 // 类型转换与错误处理
 const int_payload = msgpack.Payload.intToPayload(-42);

@@ -395,6 +395,10 @@ std.debug.print("As float: {d}\n", .{ decoded_ts.timestamp.toFloat() });
 
 ### Error Handling
 
+Decoding rejects the reserved marker `0xc1` with `MsgPackError.TypeMarkerReading`,
+including in array elements and map keys/values. Only `0xc0` encodes `nil`.
+This restriction applies to type markers, not bytes inside data or length fields.
+
 ```zig
 // Type conversion with error handling
 const int_payload = msgpack.Payload.intToPayload(-42);

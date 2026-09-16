@@ -2176,6 +2176,8 @@ pub fn PackWithLimits(
 
         fn readTypeMarkerU8(self: Self) !u8 {
             const val = try self.readByte();
+            // The reserved byte is invalid only as a marker, not inside data.
+            if (val == 0xc1) return MsgPackError.TypeMarkerReading;
             return val;
         }
 
@@ -2192,7 +2194,7 @@ pub fn PackWithLimits(
                     0x90...0x9f => .FIXARRAY,
                     0xa0...0xbf => .FIXSTR,
                     0xc0 => .NIL,
-                    0xc1 => .NIL, // Reserved byte, treat as NIL
+                    0xc1 => undefined, // Rejected by readTypeMarkerU8 before lookup.
                     0xc2 => .FALSE,
                     0xc3 => .TRUE,
                     0xc4 => .BIN8,
