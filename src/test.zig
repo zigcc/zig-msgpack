@@ -51,24 +51,234 @@ test "PackerIO: truncated data error" {
     }
 }
 
-test "PackerIO: invalid msgpack marker" {
+test "MessagePack spec: reserved marker is rejected at every value position" {
     if (!has_new_io) return error.SkipZigTest;
 
-    // 0xc1 is a reserved/invalid marker byte in MessagePack
-    var buffer: [10]u8 = [_]u8{ 0xc1, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-    var writer = std.Io.Writer.fixed(&buffer);
-    var reader = std.Io.Reader.fixed(&buffer);
-
-    var packer = msgpack.PackerIO.init(&reader, &writer);
-
-    // Should handle invalid marker gracefully (no crash)
-    const result = packer.read(allocator);
-    if (result) |payload| {
-        payload.free(allocator);
-        // If it succeeds, that's fine (marker might be treated as NIL or other)
-    } else |_| {
-        // Expected - invalid marker should cause error
+    // https://github.com/msgpack/msgpack/blob/master/spec.md#overview
+    // 0xc1 is "never used", not an alternative encoding of nil (0xc0).
+    const inputs = [_][]const u8{
+        &.{0xc1},
+        &.{ 0x91, 0xc1 }, // Array element.
+        &.{ 0x81, 0xc1, 0x01 }, // Map key.
+        &.{ 0x81, 0x01, 0xc1 }, // Map value.
+        &.{ 0x92, 0xa1, 'x', 0xc1 }, // Previously allocated array element.
+        &.{ 0x82, 0xa1, 'k', 0xa1, 'v', 0xc1, 0x00 }, // Completed map entry.
+        &.{ 0x81, 0xa1, 'k', 0xc1 }, // Allocated key waiting for its value.
+        &.{ 0x92, 0x91, 0xa1, 'x', 0x81, 0xa1, 'k', 0x91, 0xc1 }, // Mixed nesting.
+    };
+    for (inputs) |input| {
+        var output: [0]u8 = .{};
+        var writer = std.Io.Writer.fixed(&output);
+        var reader = std.Io.Reader.fixed(input);
+        var packer = msgpack.PackerIO.init(&reader, &writer);
+        const result = packer.read(allocator);
+        // Free unexpected successes too, so pre-fix failures do not leak.
+        if (result) |payload| payload.free(allocator) else |_| {}
+        try std.testing.expectError(msgpack.MsgPackError.TypeMarkerReading, result);
     }
+}
+
+test "MessagePack spec: scalar wire vectors" {
+    if (!has_new_io) return error.SkipZigTest;
+
+    // Fixed wire vectors, independent of this library's encoder.
+    // https://github.com/msgpack/msgpack/blob/master/spec.md#formats
+    const Vector = struct { bytes: []const u8, value: Payload };
+    const vectors = [_]Vector{
+        .{ .bytes = "\xc0", .value = .{ .nil = {} } },
+        .{ .bytes = "\xc2", .value = .{ .bool = false } },
+        .{ .bytes = "\xc3", .value = .{ .bool = true } },
+        .{ .bytes = "\x00", .value = .{ .uint = 0 } },
+        .{ .bytes = "\x7f", .value = .{ .uint = 127 } },
+        .{ .bytes = "\xcc\x80", .value = .{ .uint = 128 } },
+        .{ .bytes = "\xcc\xc1", .value = .{ .uint = 193 } },
+        .{ .bytes = "\xcd\x01\x00", .value = .{ .uint = 256 } },
+        .{ .bytes = "\xce\x00\x01\x00\x00", .value = .{ .uint = 65536 } },
+        .{ .bytes = "\xcf\xff\xff\xff\xff\xff\xff\xff\xff", .value = .{ .uint = std.math.maxInt(u64) } },
+        .{ .bytes = "\xff", .value = .{ .int = -1 } },
+        .{ .bytes = "\xe0", .value = .{ .int = -32 } },
+        .{ .bytes = "\xd0\xdf", .value = .{ .int = -33 } },
+        .{ .bytes = "\xd1\xff\x7f", .value = .{ .int = -129 } },
+        .{ .bytes = "\xd2\xff\xff\x7f\xff", .value = .{ .int = -32769 } },
+        .{ .bytes = "\xd3\x80\x00\x00\x00\x00\x00\x00\x00", .value = .{ .int = std.math.minInt(i64) } },
+        .{ .bytes = "\xca\xc1\x20\x00\x00", .value = .{ .float = -10.0 } },
+        .{ .bytes = "\xcb\x3f\xf0\x00\x00\x00\x00\x00\x01", .value = .{ .float = 1.0000000000000002 } },
+    };
+    for (vectors) |vector| {
+        var output: [16]u8 = undefined;
+        var reader = std.Io.Reader.fixed(vector.bytes);
+        var writer = std.Io.Writer.fixed(&output);
+        var packer = msgpack.PackerIO.init(&reader, &writer);
+        const decoded = try packer.read(allocator);
+        defer decoded.free(allocator);
+        try std.testing.expectEqualDeep(vector.value, decoded);
+        // Check encoding against the spec bytes too, not just a round trip.
+        try packer.write(vector.value);
+        try std.testing.expectEqualSlices(u8, vector.bytes, writer.buffered());
+    }
+}
+
+test "MessagePack spec: non-minimal integer formats remain valid" {
+    if (!has_new_io) return error.SkipZigTest;
+
+    // Minimal encoding is a serializer SHOULD, not a decoder restriction.
+    const inputs = [_][]const u8{
+        "\xcc\x01",
+        "\xcd\x00\x01",
+        "\xce\x00\x00\x00\x01",
+        "\xcf\x00\x00\x00\x00\x00\x00\x00\x01",
+        "\xd0\x01",
+        "\xd1\x00\x01",
+        "\xd2\x00\x00\x00\x01",
+        "\xd3\x00\x00\x00\x00\x00\x00\x00\x01",
+    };
+    for (inputs) |input| {
+        var output: [0]u8 = .{};
+        var reader = std.Io.Reader.fixed(input);
+        var writer = std.Io.Writer.fixed(&output);
+        var packer = msgpack.PackerIO.init(&reader, &writer);
+        const decoded = try packer.read(allocator);
+        defer decoded.free(allocator);
+        try std.testing.expectEqual(@as(u64, 1), try decoded.getUint());
+    }
+}
+
+test "MessagePack spec: reserved byte is allowed in raw data and extension type" {
+    if (!has_new_io) return error.SkipZigTest;
+
+    // String invalid-byte handling is implementation-defined; this library
+    // preserves the original bytes. Binary/extension bodies are arbitrary bytes.
+    // https://github.com/msgpack/msgpack/blob/master/spec.md#limitation
+    const Vector = struct { bytes: []const u8, kind: enum { str, bin, ext } };
+    const vectors = [_]Vector{
+        .{ .bytes = "\xa1\xc1", .kind = .str },
+        .{ .bytes = "\xd9\x01\xc1", .kind = .str },
+        .{ .bytes = "\xda\x00\x01\xc1", .kind = .str },
+        .{ .bytes = "\xdb\x00\x00\x00\x01\xc1", .kind = .str },
+        .{ .bytes = "\xc4\x01\xc1", .kind = .bin },
+        .{ .bytes = "\xc5\x00\x01\xc1", .kind = .bin },
+        .{ .bytes = "\xc6\x00\x00\x00\x01\xc1", .kind = .bin },
+        .{ .bytes = "\xd4\xc1\xc1", .kind = .ext },
+        .{ .bytes = "\xc7\x01\xc1\xc1", .kind = .ext },
+        .{ .bytes = "\xc8\x00\x01\xc1\xc1", .kind = .ext },
+        .{ .bytes = "\xc9\x00\x00\x00\x01\xc1\xc1", .kind = .ext },
+    };
+    for (vectors) |vector| {
+        var output: [0]u8 = .{};
+        var reader = std.Io.Reader.fixed(vector.bytes);
+        var writer = std.Io.Writer.fixed(&output);
+        var packer = msgpack.PackerIO.init(&reader, &writer);
+        const decoded = try packer.read(allocator);
+        defer decoded.free(allocator);
+        switch (vector.kind) {
+            .str => try std.testing.expectEqualSlices(u8, "\xc1", try decoded.asStr()),
+            .bin => try std.testing.expectEqualSlices(u8, "\xc1", try decoded.asBin()),
+            .ext => {
+                try expect(decoded == .ext);
+                try std.testing.expectEqual(@as(i8, -63), decoded.ext.type);
+                try std.testing.expectEqualSlices(u8, "\xc1", decoded.ext.data);
+            },
+        }
+    }
+
+    // 0xc1 may also occur in a length field, rather than in a body.
+    var input: [195]u8 = undefined;
+    @memcpy(input[0..2], "\xc4\xc1");
+    @memset(input[2..], 0x42);
+    var output: [195]u8 = undefined;
+    var reader = std.Io.Reader.fixed(&input);
+    var writer = std.Io.Writer.fixed(&output);
+    var packer = msgpack.PackerIO.init(&reader, &writer);
+    const decoded = try packer.read(allocator);
+    defer decoded.free(allocator);
+    try std.testing.expectEqualSlices(u8, input[2..], try decoded.asBin());
+    try packer.write(decoded);
+    try std.testing.expectEqualSlices(u8, &input, writer.buffered());
+}
+
+test "MessagePack spec: array and map wire formats accept nil" {
+    if (!has_new_io) return error.SkipZigTest;
+
+    const arrays = [_][]const u8{
+        "\x91\xc0",
+        "\xdc\x00\x01\xc0",
+        "\xdd\x00\x00\x00\x01\xc0",
+    };
+    for (arrays) |input| {
+        var output: [0]u8 = .{};
+        var reader = std.Io.Reader.fixed(input);
+        var writer = std.Io.Writer.fixed(&output);
+        var packer = msgpack.PackerIO.init(&reader, &writer);
+        const decoded = try packer.read(allocator);
+        defer decoded.free(allocator);
+        try std.testing.expectEqual(@as(usize, 1), try decoded.getArrLen());
+        try expect((try decoded.getArrElement(0)) == .nil);
+    }
+    const maps = [_][]const u8{
+        "\x81\xc0\xc0",
+        "\xde\x00\x01\xc0\xc0",
+        "\xdf\x00\x00\x00\x01\xc0\xc0",
+    };
+    for (maps) |input| {
+        var output: [0]u8 = .{};
+        var reader = std.Io.Reader.fixed(input);
+        var writer = std.Io.Writer.fixed(&output);
+        var packer = msgpack.PackerIO.init(&reader, &writer);
+        const decoded = try packer.read(allocator);
+        defer decoded.free(allocator);
+        try expect(decoded == .map);
+        try std.testing.expectEqual(@as(usize, 1), decoded.map.count());
+        var entries = decoded.map.map.iterator();
+        const entry = entries.next().?;
+        try expect(entry.key_ptr.* == .nil);
+        try expect(entry.value_ptr.* == .nil);
+    }
+}
+
+test "MessagePack spec: timestamp wire vectors" {
+    if (!has_new_io) return error.SkipZigTest;
+
+    // https://github.com/msgpack/msgpack/blob/master/spec.md#timestamp-extension-type
+    const Vector = struct { bytes: []const u8, seconds: i64, nanoseconds: u32 };
+    const vectors = [_]Vector{
+        .{ .bytes = "\xd6\xff\xff\xff\xff\xff", .seconds = 4294967295, .nanoseconds = 0 },
+        .{ .bytes = "\xd7\xff\xee\x6b\x27\xff\xff\xff\xff\xff", .seconds = 17179869183, .nanoseconds = 999999999 },
+        .{ .bytes = "\xc7\x0c\xff\x3b\x9a\xc9\xff\xff\xff\xff\xff\xff\xff\xff\xff", .seconds = -1, .nanoseconds = 999999999 },
+    };
+    for (vectors) |vector| {
+        var output: [15]u8 = undefined;
+        var reader = std.Io.Reader.fixed(vector.bytes);
+        var writer = std.Io.Writer.fixed(&output);
+        var packer = msgpack.PackerIO.init(&reader, &writer);
+        const decoded = try packer.read(allocator);
+        defer decoded.free(allocator);
+        const expected = Payload.timestampToPayload(vector.seconds, vector.nanoseconds);
+        try std.testing.expectEqualDeep(expected, decoded);
+        try packer.write(expected);
+        try std.testing.expectEqualSlices(u8, vector.bytes, writer.buffered());
+    }
+}
+
+test "MessagePack spec: reserved marker cleanup under allocation failure" {
+    // Completed children, a pending map key, and an active nested container must
+    // all be reclaimed whether allocation fails first or 0xc1 is reached.
+    var input = [_]u8{ 0x92, 0x91, 0xa1, 'x', 0x82, 0xa1, 'a', 0xa1, 'b', 0xa1, 'k', 0x91, 0xc1 };
+    const Scenario = struct {
+        fn run(alloc: std.mem.Allocator, bytes: []u8) !void {
+            var output: [0]u8 = .{};
+            var write_buffer = fixedBufferStream(&output);
+            var read_buffer = fixedBufferStream(bytes);
+            var p = pack.init(&write_buffer, &read_buffer);
+            const payload = p.read(alloc) catch |err| {
+                if (err == error.OutOfMemory) return err;
+                try std.testing.expectEqual(error.TypeMarkerReading, err);
+                return;
+            };
+            defer payload.free(alloc);
+            return error.TestUnexpectedResult;
+        }
+    };
+    try std.testing.checkAllAllocationFailures(allocator, Scenario.run, .{&input});
 }
 
 test "PackerIO: corrupted length field" {
