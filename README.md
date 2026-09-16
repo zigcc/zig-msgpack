@@ -45,12 +45,12 @@ This library is tested and optimized for all major platforms and architectures:
 | Zig Version          | Library Version | Status                                |
 | -------------------- | --------------- | ------------------------------------- |
 | 0.15.x and older     | 0.0.17          | Legacy support                        |
-| 0.16.0               | Current         | Supported with compatibility layer    |
+| 0.16.0               | Current         | Supported                             |
 | 0.17.0-dev           | Current         | Initial support; CI tracks `master`   |
 
 > **Note:** For Zig 0.15.x and older versions, please use version `0.0.17` of this library.
 > **Note:** The current library requires Zig `0.16.0` or later. Zig `0.17.0-dev` is unreleased; compatibility may change as development continues.
-> **Note:** Zig 0.16+ removes `std.io.FixedBufferStream`, but this library provides a compatibility layer to maintain the same API across all supported versions.
+> **Note:** Both supported versions use `std.Io.Reader` / `std.Io.Writer`. The `msgpack.compat.BufferStream` adapter remains available for the callback-based `Pack` API.
 
 For Zig `0.16.0` and `0.17.0-dev`, follow these steps:
 
@@ -154,9 +154,9 @@ pub fn main() !void {
 }
 ```
 
-### Basic Usage (All Zig Versions)
+### Basic Usage (Zig 0.16 and 0.17 Development)
 
-For maximum compatibility or when you need more control, use the generic `Pack` API:
+For custom reader and writer callbacks, use the generic `Pack` API:
 
     ```zig
     const std = @import("std");
@@ -275,9 +275,9 @@ pub fn main() !void {
 }
 ```
 
-### Basic Usage (All Zig Versions)
+### Basic Usage (Zig 0.16 and 0.17 Development)
 
-For maximum compatibility or when you need more control, use the generic `Pack` API:
+For custom reader and writer callbacks, use the generic `Pack` API:
 
 ```zig
 const std = @import("std");
@@ -287,7 +287,7 @@ pub fn main() !void {
     const allocator = std.heap.page_allocator;
     var buffer: [1024]u8 = undefined;
 
-    // Use the compatibility layer for cross-version support
+    // Use the in-memory stream adapter for the callback-based Pack API
     const compat = msgpack.compat;
     var write_buffer = compat.fixedBufferStream(&buffer);
     var read_buffer = compat.fixedBufferStream(&buffer);
@@ -537,13 +537,16 @@ This library uses an **iterative parser** (not recursive) to provide strong secu
 
 ### Zig 0.16 and 0.17 Development Compatibility
 
-Starting from Zig 0.16, the standard library underwent significant changes to the I/O subsystem. The `std.io.FixedBufferStream` was removed as part of a broader redesign. This library includes a compatibility layer (`src/compat.zig`) that:
+Both supported versions use `std.Io.Reader` / `std.Io.Writer` and allocator-taking
+`std.ArrayList` methods directly. Compatibility branches for older compilers have
+been removed.
 
-- Provides a `BufferStream` implementation for Zig 0.16+ that mimics the behavior of the old `FixedBufferStream`
-- Keeps the same buffer-stream API on Zig 0.16 and 0.17 development builds
-- Is exercised by CI on Zig `0.16.0` and the latest `master` development build
+The `src/compat.zig` module retains `BufferStream` and `fixedBufferStream` as
+in-memory stream adapters for the callback-based `Pack` API. They have the same
+implementation on Zig 0.16 and 0.17 development builds; they do not enable support
+for older compilers.
 
-The current minimum supported Zig version is `0.16.0`; older compatibility branches in the source do not imply support for older compilers. Code formatting is checked with Zig `0.16.0`, since development compiler formatters may introduce syntax migrations.
+The minimum supported Zig version remains `0.16.0`. CI tests Zig `0.16.0` and the latest `master` development build. Code formatting is checked with Zig `0.16.0`, since development compiler formatters may introduce syntax migrations.
 
 ## Testing
 

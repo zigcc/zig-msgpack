@@ -4,7 +4,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-const current_zig = builtin.zig_version;
 const Allocator = std.mem.Allocator;
 const comptimePrint = std.fmt.comptimePrint;
 const native_endian = builtin.cpu.arch.endian();
@@ -2774,15 +2773,6 @@ pub fn PackWithLimits(
             return self.readContainerLength(marker, marker_u8, .FIXMAP, .MAP16, .MAP32, FIXMAP_BASE);
         }
 
-        /// Helper to append to parse stack (handles Zig version differences)
-        inline fn appendToStack(stack: *std.ArrayList(ParseState), allocator: Allocator, item: ParseState) !void {
-            if (current_zig.minor == 14) {
-                try stack.append(item);
-            } else {
-                try stack.append(allocator, item);
-            }
-        }
-
         // ========== End of State Machine Helpers ==========
 
         /// Fast path for simple types that don't require heap allocation or complex state management
@@ -2835,11 +2825,8 @@ pub fn PackWithLimits(
         /// Internal iterative parser for complex types (arrays, maps, strings, etc.)
         fn readComplex(self: Self, allocator: Allocator, first_marker: Markers, first_marker_u8: u8) !Payload {
             // Explicit stack for iterative parsing (on heap)
-            var parse_stack = if (current_zig.minor == 14)
-                std.ArrayList(ParseState).init(allocator)
-            else
-                std.ArrayList(ParseState).empty;
-            defer if (current_zig.minor == 14) parse_stack.deinit() else parse_stack.deinit(allocator);
+            var parse_stack = std.ArrayList(ParseState).empty;
+            defer parse_stack.deinit(allocator);
             errdefer cleanupParseStack(&parse_stack, allocator);
 
             // Root payload to return
@@ -2926,7 +2913,7 @@ pub fn PackWithLimits(
                             errdefer allocator.free(arr);
 
                             // Push to stack
-                            try appendToStack(&parse_stack, allocator, .{
+                            try parse_stack.append(allocator, .{
                                 .container_type = .array,
                                 .data = .{ .array = .{
                                     .items = arr,
@@ -2963,7 +2950,7 @@ pub fn PackWithLimits(
                             try map.ensureTotalCapacity(capacity);
 
                             // Push to stack
-                            try appendToStack(&parse_stack, allocator, .{
+                            try parse_stack.append(allocator, .{
                                 .container_type = .map_key,
                                 .data = .{ .map = .{
                                     .map = map,
@@ -3099,45 +3086,40 @@ pub fn Pack(
 }
 
 // ============================================================================
-// std.io.Reader and std.io.Writer Support (Zig 0.15+)
+// std.Io.Reader and std.Io.Writer Support
 // ============================================================================
 
-/// Check if we're using Zig 0.15 or later with the new I/O system
-const has_new_io = current_zig.minor >= 15;
-
-/// Wrapper context for std.io.Writer (Zig 0.15+)
+/// Wrapper context for std.Io.Writer
 const IoWriterContext = struct {
-    writer: if (has_new_io) *std.Io.Writer else void,
+    writer: *std.Io.Writer,
 
     fn write(self: IoWriterContext, bytes: []const u8) !usize {
-        if (!has_new_io) @compileError("std.Io.Writer requires Zig 0.15 or later");
         try self.writer.writeAll(bytes);
         return bytes.len;
     }
 };
 
-/// Wrapper context for std.io.Reader (Zig 0.15+)
+/// Wrapper context for std.Io.Reader
 const IoReaderContext = struct {
-    reader: if (has_new_io) *std.Io.Reader else void,
+    reader: *std.Io.Reader,
 
     fn read(self: IoReaderContext, buf: []u8) !usize {
-        if (!has_new_io) @compileError("std.Io.Reader requires Zig 0.15 or later");
         try self.reader.readSliceAll(buf);
         return buf.len;
     }
 };
 
-/// Type alias for the Pack type used with std.io.Reader/Writer
-const IoPackType = if (has_new_io) Pack(
+/// Type alias for the Pack type used with std.Io.Reader/Writer
+const IoPackType = Pack(
     IoWriterContext,
     IoReaderContext,
     std.Io.Writer.Error,
     std.Io.Reader.Error,
     IoWriterContext.write,
     IoReaderContext.read,
-) else void;
+);
 
-/// Packer that works with std.io.Reader and std.io.Writer interfaces (Zig 0.15+)
+/// Packer that works with std.Io.Reader and std.Io.Writer interfaces
 ///
 /// This provides a convenient wrapper around the generic Pack type for working
 /// with Zig's standard I/O interfaces.
@@ -3148,22 +3130,17 @@ const IoPackType = if (has_new_io) Pack(
 /// const msgpack = @import("msgpack");
 ///
 /// pub fn main() !void {
-///     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+///     var gpa: std.heap.DebugAllocator(.{}) = .init;
 ///     defer _ = gpa.deinit();
 ///     const allocator = gpa.allocator();
 ///
-///     // Create file for I/O
-///     var file = try std.fs.cwd().createFile("data.msgpack", .{ .read = true });
-///     defer file.close();
-///
-///     // Create reader and writer with buffers
-///     var reader_buf: [4096]u8 = undefined;
-///     var reader = file.reader(&reader_buf);
-///     var writer_buf: [4096]u8 = undefined;
-///     var writer = file.writer(&writer_buf);
+///     // Create buffered I/O interfaces
+///     var buffer: [4096]u8 = undefined;
+///     var writer = std.Io.Writer.fixed(&buffer);
+///     var reader = std.Io.Reader.fixed(&.{});
 ///
 ///     // Create packer
-///     var packer = try msgpack.PackerIO.init(&reader, &writer);
+///     var packer = msgpack.PackerIO.init(&reader, &writer);
 ///
 ///     // Serialize
 ///     var payload = msgpack.Payload.mapPayload(allocator);
@@ -3171,23 +3148,20 @@ const IoPackType = if (has_new_io) Pack(
 ///     try payload.mapPut("name", try msgpack.Payload.strToPayload("Alice", allocator));
 ///     try packer.write(payload);
 ///
-///     // Flush and reset for reading
-///     try writer.flush();
-///     try file.seekTo(0);
-///     reader.seek = 0;
-///     reader.end = 0;
+///     // Read back the serialized bytes
+///     reader = std.Io.Reader.fixed(writer.buffered());
 ///
 ///     // Deserialize
 ///     const decoded = try packer.read(allocator);
 ///     defer decoded.free(allocator);
 /// }
 /// ```
-pub const PackerIO = if (has_new_io) struct {
+pub const PackerIO = struct {
     packer: IoPackType,
     write_ctx: IoWriterContext,
     read_ctx: IoReaderContext,
 
-    /// Initialize a PackerIO with std.io.Reader and std.io.Writer
+    /// Initialize a PackerIO with std.Io.Reader and std.Io.Writer
     ///
     /// The Reader and Writer must remain valid for the lifetime of this PackerIO.
     pub fn init(
@@ -3218,31 +3192,25 @@ pub const PackerIO = if (has_new_io) struct {
     pub fn read(self: *PackerIO, allocator: Allocator) !Payload {
         return self.packer.read(allocator);
     }
-} else struct {
-    pub fn init(_: anytype, _: anytype) @This() {
-        @compileError("PackerIO requires Zig 0.15 or later");
-    }
 };
 
-/// Convenience function to create a PackerIO from std.io.Reader and std.io.Writer
+/// Convenience function to create a PackerIO from std.Io.Reader and std.Io.Writer
 ///
 /// This is a shorthand for `PackerIO.init(reader, writer)`.
 ///
 /// Example:
 /// ```zig
-/// var reader_buf: [4096]u8 = undefined;
-/// var reader = file.reader(&reader_buf);
+/// var reader = std.Io.Reader.fixed(input);
 /// var writer_buf: [4096]u8 = undefined;
-/// var writer = file.writer(&writer_buf);
+/// var writer = std.Io.Writer.fixed(&writer_buf);
 /// var packer = msgpack.packIO(&reader, &writer);
 /// ```
 pub fn packIO(
-    reader: if (has_new_io) *std.Io.Reader else void,
-    writer: if (has_new_io) *std.Io.Writer else void,
-) if (has_new_io) PackerIO else void {
-    if (!has_new_io) @compileError("packIO requires Zig 0.15 or later");
+    reader: *std.Io.Reader,
+    writer: *std.Io.Writer,
+) PackerIO {
     return PackerIO.init(reader, writer);
 }
 
-// Export compatibility layer for cross-version support
+// Export buffer stream compatibility helpers
 pub const compat = @import("compat.zig");

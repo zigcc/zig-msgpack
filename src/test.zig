@@ -1,12 +1,9 @@
 const std = @import("std");
-const builtin = @import("builtin");
 const msgpack = @import("msgpack");
 const compat = msgpack.compat;
 const allocator = std.testing.allocator;
 const expect = std.testing.expect;
 const Payload = msgpack.Payload;
-
-const has_new_io = builtin.zig_version.minor >= 15;
 
 fn u8eql(a: []const u8, b: []const u8) bool {
     return std.mem.eql(u8, a, b);
@@ -17,8 +14,6 @@ fn u8eql(a: []const u8, b: []const u8) bool {
 // ============================================================================
 
 test "PackerIO: truncated data error" {
-    if (!has_new_io) return error.SkipZigTest;
-
     // Test reading truncated integer data (simpler case without allocations)
     var full_buffer: [100]u8 = undefined;
     var write_writer = std.Io.Writer.fixed(&full_buffer);
@@ -52,8 +47,6 @@ test "PackerIO: truncated data error" {
 }
 
 test "MessagePack spec: reserved marker is rejected at every value position" {
-    if (!has_new_io) return error.SkipZigTest;
-
     // https://github.com/msgpack/msgpack/blob/master/spec.md#overview
     // 0xc1 is "never used", not an alternative encoding of nil (0xc0).
     const inputs = [_][]const u8{
@@ -79,8 +72,6 @@ test "MessagePack spec: reserved marker is rejected at every value position" {
 }
 
 test "MessagePack spec: scalar wire vectors" {
-    if (!has_new_io) return error.SkipZigTest;
-
     // Fixed wire vectors, independent of this library's encoder.
     // https://github.com/msgpack/msgpack/blob/master/spec.md#formats
     const Vector = struct { bytes: []const u8, value: Payload };
@@ -119,8 +110,6 @@ test "MessagePack spec: scalar wire vectors" {
 }
 
 test "MessagePack spec: non-minimal integer formats remain valid" {
-    if (!has_new_io) return error.SkipZigTest;
-
     // Minimal encoding is a serializer SHOULD, not a decoder restriction.
     const inputs = [_][]const u8{
         "\xcc\x01",
@@ -144,8 +133,6 @@ test "MessagePack spec: non-minimal integer formats remain valid" {
 }
 
 test "MessagePack spec: reserved byte is allowed in raw data and extension type" {
-    if (!has_new_io) return error.SkipZigTest;
-
     // String invalid-byte handling is implementation-defined; this library
     // preserves the original bytes. Binary/extension bodies are arbitrary bytes.
     // https://github.com/msgpack/msgpack/blob/master/spec.md#limitation
@@ -197,8 +184,6 @@ test "MessagePack spec: reserved byte is allowed in raw data and extension type"
 }
 
 test "MessagePack spec: array and map wire formats accept nil" {
-    if (!has_new_io) return error.SkipZigTest;
-
     const arrays = [_][]const u8{
         "\x91\xc0",
         "\xdc\x00\x01\xc0",
@@ -236,8 +221,6 @@ test "MessagePack spec: array and map wire formats accept nil" {
 }
 
 test "MessagePack spec: timestamp wire vectors" {
-    if (!has_new_io) return error.SkipZigTest;
-
     // https://github.com/msgpack/msgpack/blob/master/spec.md#timestamp-extension-type
     const Vector = struct { bytes: []const u8, seconds: i64, nanoseconds: u32 };
     const vectors = [_]Vector{
@@ -282,40 +265,22 @@ test "MessagePack spec: reserved marker cleanup under allocation failure" {
 }
 
 test "PackerIO: corrupted length field" {
-    if (!has_new_io) return error.SkipZigTest;
-
     var buffer: [100]u8 = undefined;
-    var input = if (builtin.zig_version.minor == 14)
-        std.ArrayList(u8).init(allocator)
-    else
-        std.ArrayList(u8).empty;
-    defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
+    var input = std.ArrayList(u8).empty;
+    defer input.deinit(allocator);
 
     // str32 claiming 1MB but only providing a few bytes
-    if (builtin.zig_version.minor == 14) {
-        try input.append(0xdb); // str32
-        try input.append(0x00); // 1MB = 0x00100000
-        try input.append(0x10);
-        try input.append(0x00);
-        try input.append(0x00);
-        // Only provide 5 bytes of actual data
-        try input.append('a');
-        try input.append('b');
-        try input.append('c');
-        try input.append('d');
-        try input.append('e');
-    } else {
-        try input.append(allocator, 0xdb);
-        try input.append(allocator, 0x00);
-        try input.append(allocator, 0x10);
-        try input.append(allocator, 0x00);
-        try input.append(allocator, 0x00);
-        try input.append(allocator, 'a');
-        try input.append(allocator, 'b');
-        try input.append(allocator, 'c');
-        try input.append(allocator, 'd');
-        try input.append(allocator, 'e');
-    }
+    try input.append(allocator, 0xdb); // str32
+    try input.append(allocator, 0x00); // 1MB = 0x00100000
+    try input.append(allocator, 0x10);
+    try input.append(allocator, 0x00);
+    try input.append(allocator, 0x00);
+    // Only provide 5 bytes of actual data
+    try input.append(allocator, 'a');
+    try input.append(allocator, 'b');
+    try input.append(allocator, 'c');
+    try input.append(allocator, 'd');
+    try input.append(allocator, 'e');
 
     @memcpy(buffer[0..input.items.len], input.items);
 
@@ -338,28 +303,17 @@ test "PackerIO: corrupted length field" {
 }
 
 test "PackerIO: truncated array cleanup" {
-    if (!has_new_io) return error.SkipZigTest;
-
     // Test that truncated array data is properly cleaned up on error
     // This demonstrates the benefit of errdefer cleanupParseStack
     var buffer: [50]u8 = undefined;
-    var input = if (builtin.zig_version.minor == 14)
-        std.ArrayList(u8).init(allocator)
-    else
-        std.ArrayList(u8).empty;
-    defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
+    var input = std.ArrayList(u8).empty;
+    defer input.deinit(allocator);
 
     // Create array header for 3 elements (0x93)
-    if (builtin.zig_version.minor == 14) {
-        try input.append(0x93); // fixarray with 3 elements
-        try input.append(0x01); // first element: uint 1
-        try input.append(0x02); // second element: uint 2
-        // Missing third element - truncated!
-    } else {
-        try input.append(allocator, 0x93);
-        try input.append(allocator, 0x01);
-        try input.append(allocator, 0x02);
-    }
+    try input.append(allocator, 0x93); // fixarray with 3 elements
+    try input.append(allocator, 0x01); // first element: uint 1
+    try input.append(allocator, 0x02); // second element: uint 2
+    // Missing third element - truncated!
 
     @memcpy(buffer[0..input.items.len], input.items);
 
@@ -382,8 +336,6 @@ test "PackerIO: truncated array cleanup" {
 }
 
 test "PackerIO: multiple payloads with error recovery" {
-    if (!has_new_io) return error.SkipZigTest;
-
     var buffer: [4096]u8 = std.mem.zeroes([4096]u8);
     var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(&buffer);
@@ -427,8 +379,6 @@ test "PackerIO: multiple payloads with error recovery" {
 // ============================================================================
 
 test "PackerIO: sequential writes and reads with fixed buffer" {
-    if (!has_new_io) return error.SkipZigTest;
-
     var buffer: [4096]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(&buffer);
@@ -468,8 +418,6 @@ test "PackerIO: sequential writes and reads with fixed buffer" {
 // ============================================================================
 
 test "PackerIO: large string near limit" {
-    if (!has_new_io) return error.SkipZigTest;
-
     const allocator_heap = std.heap.page_allocator;
 
     // Create 1MB string (well within 100MB limit)
@@ -505,8 +453,6 @@ test "PackerIO: large string near limit" {
 }
 
 test "PackerIO: large binary data" {
-    if (!has_new_io) return error.SkipZigTest;
-
     const allocator_heap = std.heap.page_allocator;
 
     // Create 512KB binary data
@@ -547,8 +493,6 @@ test "PackerIO: large binary data" {
 }
 
 test "PackerIO: large array (1000 elements)" {
-    if (!has_new_io) return error.SkipZigTest;
-
     const allocator_heap = std.heap.page_allocator;
 
     const buffer = try allocator_heap.alloc(u8, 100_000);
@@ -583,8 +527,6 @@ test "PackerIO: large array (1000 elements)" {
 }
 
 test "PackerIO: large map (500 entries)" {
-    if (!has_new_io) return error.SkipZigTest;
-
     const allocator_heap = std.heap.page_allocator;
 
     const buffer = try allocator_heap.alloc(u8, 200_000);
@@ -633,8 +575,6 @@ test "PackerIO: large map (500 entries)" {
 // ============================================================================
 
 test "PackerIO: empty buffer write error" {
-    if (!has_new_io) return error.SkipZigTest;
-
     var buffer: [0]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(&buffer);
@@ -643,7 +583,7 @@ test "PackerIO: empty buffer write error" {
 
     // Writing to empty buffer should fail
     const result = packer.write(msgpack.Payload.nilToPayload());
-    // Zig 0.15+ std.Io.Writer.fixed returns error.WriteFailed
+    // std.Io.Writer.fixed returns error.WriteFailed
     if (result) |_| {
         try expect(false); // Should have failed
     } else |err| {
@@ -653,8 +593,6 @@ test "PackerIO: empty buffer write error" {
 }
 
 test "PackerIO: minimal buffer size" {
-    if (!has_new_io) return error.SkipZigTest;
-
     // Test with exactly 1 byte buffer (enough for nil marker)
     var buffer: [1]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
@@ -673,8 +611,6 @@ test "PackerIO: minimal buffer size" {
 }
 
 test "PackerIO: exact buffer size for small payload" {
-    if (!has_new_io) return error.SkipZigTest;
-
     // positive fixint uses exactly 1 byte
     var buffer: [1]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
@@ -692,8 +628,6 @@ test "PackerIO: exact buffer size for small payload" {
 }
 
 test "PackerIO: off-by-one buffer size" {
-    if (!has_new_io) return error.SkipZigTest;
-
     // uint8 needs 2 bytes (marker + value), provide only 1
     var buffer: [1]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
@@ -703,7 +637,7 @@ test "PackerIO: off-by-one buffer size" {
 
     // 128 requires uint8 format (2 bytes), buffer is too small
     const result = packer.write(msgpack.Payload.uintToPayload(128));
-    // Zig 0.15+ std.Io.Writer.fixed returns error.WriteFailed
+    // std.Io.Writer.fixed returns error.WriteFailed
     if (result) |_| {
         try expect(false); // Should have failed
     } else |err| {
@@ -713,8 +647,6 @@ test "PackerIO: off-by-one buffer size" {
 }
 
 test "PackerIO: empty string edge case" {
-    if (!has_new_io) return error.SkipZigTest;
-
     var buffer: [10]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(&buffer);
@@ -735,8 +667,6 @@ test "PackerIO: empty string edge case" {
 }
 
 test "PackerIO: empty array edge case" {
-    if (!has_new_io) return error.SkipZigTest;
-
     var buffer: [10]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(&buffer);
@@ -757,8 +687,6 @@ test "PackerIO: empty array edge case" {
 }
 
 test "PackerIO: empty map edge case" {
-    if (!has_new_io) return error.SkipZigTest;
-
     var buffer: [10]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(&buffer);
@@ -1633,21 +1561,18 @@ test "large maps" {
     defer large_map.free(allocator);
 
     // Store allocated keys to free them later
-    var keys = if (builtin.zig_version.minor == 14)
-        std.ArrayList([]u8).init(allocator)
-    else
-        std.ArrayList([]u8).empty;
+    var keys = std.ArrayList([]u8).empty;
     defer {
         for (keys.items) |key| {
             allocator.free(key);
         }
-        if (builtin.zig_version.minor == 14) keys.deinit() else keys.deinit(allocator);
+        keys.deinit(allocator);
     }
 
     // Create a map with 20 entries (more than fixmap limit of 15)
     for (0..20) |i| {
         const key = try std.fmt.allocPrint(allocator, "key{d}", .{i});
-        if (builtin.zig_version.minor == 14) try keys.append(key) else try keys.append(allocator, key);
+        try keys.append(allocator, key);
         try large_map.mapPut(key, Payload.intToPayload(@intCast(i)));
     }
 
@@ -2061,21 +1986,18 @@ test "actual map32 format" {
     defer large_map.free(allocator);
 
     // Store allocated keys to free them later
-    var keys = if (builtin.zig_version.minor == 14)
-        std.ArrayList([]u8).init(allocator)
-    else
-        std.ArrayList([]u8).empty;
+    var keys = std.ArrayList([]u8).empty;
     defer {
         for (keys.items) |key| {
             allocator.free(key);
         }
-        if (builtin.zig_version.minor == 14) keys.deinit() else keys.deinit(allocator);
+        keys.deinit(allocator);
     }
 
     // Create a map with 1000 entries (more than map16 threshold of 65535 would be too memory intensive)
     for (0..1000) |i| {
         const key = try std.fmt.allocPrint(allocator, "key{d:0>10}", .{i});
-        if (builtin.zig_version.minor == 14) try keys.append(key) else try keys.append(allocator, key);
+        try keys.append(allocator, key);
         try large_map.mapPut(key, Payload.intToPayload(@intCast(i)));
     }
 
@@ -2267,20 +2189,17 @@ test "format markers verification" {
     var test_map = Payload.mapPayload(allocator);
     defer test_map.free(allocator);
 
-    var test_keys = if (builtin.zig_version.minor == 14)
-        std.ArrayList([]u8).init(allocator)
-    else
-        std.ArrayList([]u8).empty;
+    var test_keys = std.ArrayList([]u8).empty;
     defer {
         for (test_keys.items) |key| {
             allocator.free(key);
         }
-        if (builtin.zig_version.minor == 14) test_keys.deinit() else test_keys.deinit(allocator);
+        test_keys.deinit(allocator);
     }
 
     for (0..16) |i| {
         const key = try std.fmt.allocPrint(allocator, "k{d}", .{i});
-        if (builtin.zig_version.minor == 14) try test_keys.append(key) else try test_keys.append(allocator, key);
+        try test_keys.append(allocator, key);
         try test_map.mapPut(key, Payload.nilToPayload());
     }
     try p.write(test_map);
@@ -3625,24 +3544,17 @@ test "fuzz: mixed payload sequence" {
 
     // Generate and write multiple random payloads
     const count = 50;
-    var payloads = if (builtin.zig_version.minor == 14)
-        std.ArrayList(Payload).init(allocator)
-    else
-        std.ArrayList(Payload).empty;
+    var payloads = std.ArrayList(Payload).empty;
     defer {
         for (payloads.items) |payload| {
             payload.free(allocator);
         }
-        if (builtin.zig_version.minor == 14) payloads.deinit() else payloads.deinit(allocator);
+        payloads.deinit(allocator);
     }
 
     for (0..count) |_| {
         const payload = try generateRandomPayload(random, allocator, 2);
-        if (builtin.zig_version.minor == 14) {
-            try payloads.append(payload);
-        } else {
-            try payloads.append(allocator, payload);
-        }
+        try payloads.append(allocator, payload);
         try p.write(payload);
     }
 
@@ -3665,26 +3577,15 @@ test "iterative parser: normal nested depth (100 layers)" {
     var read_buffer = fixedBufferStream(&arr);
 
     // Build 100-layer deep nested array manually
-    var input = if (builtin.zig_version.minor == 14)
-        std.ArrayList(u8).init(allocator)
-    else
-        std.ArrayList(u8).empty;
-    defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
+    var input = std.ArrayList(u8).empty;
+    defer input.deinit(allocator);
 
     const depth = 100;
     var i: usize = 0;
     while (i < depth) : (i += 1) {
-        if (builtin.zig_version.minor == 14) {
-            try input.append(0x91); // fixarray with 1 element
-        } else {
-            try input.append(allocator, 0x91);
-        }
+        try input.append(allocator, 0x91); // fixarray with 1 element
     }
-    if (builtin.zig_version.minor == 14) {
-        try input.append(0x00); // int 0
-    } else {
-        try input.append(allocator, 0x00);
-    }
+    try input.append(allocator, 0x00); // int 0
 
     // Write to buffer
     _ = try write_buffer.write(input.items);
@@ -3714,26 +3615,15 @@ test "iterative parser: max depth exceeded" {
     var read_buffer = fixedBufferStream(&arr);
 
     // Build 100-layer deep nested array (exceeds limit of 50)
-    var input = if (builtin.zig_version.minor == 14)
-        std.ArrayList(u8).init(allocator)
-    else
-        std.ArrayList(u8).empty;
-    defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
+    var input = std.ArrayList(u8).empty;
+    defer input.deinit(allocator);
 
     const depth = 100;
     var i: usize = 0;
     while (i < depth) : (i += 1) {
-        if (builtin.zig_version.minor == 14) {
-            try input.append(0x91);
-        } else {
-            try input.append(allocator, 0x91);
-        }
+        try input.append(allocator, 0x91);
     }
-    if (builtin.zig_version.minor == 14) {
-        try input.append(0x00);
-    } else {
-        try input.append(allocator, 0x00);
-    }
+    try input.append(allocator, 0x00);
 
     _ = try write_buffer.write(input.items);
 
@@ -3760,22 +3650,13 @@ test "iterative parser: array too large" {
     var read_buffer = fixedBufferStream(&arr);
 
     // Try to create array with 1000 elements (exceeds limit)
-    var input = if (builtin.zig_version.minor == 14)
-        std.ArrayList(u8).init(allocator)
-    else
-        std.ArrayList(u8).empty;
-    defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
+    var input = std.ArrayList(u8).empty;
+    defer input.deinit(allocator);
 
     // array16 marker + length
-    if (builtin.zig_version.minor == 14) {
-        try input.append(0xdc); // array16
-        try input.append(0x03); // high byte (1000 = 0x03E8)
-        try input.append(0xE8); // low byte
-    } else {
-        try input.append(allocator, 0xdc);
-        try input.append(allocator, 0x03);
-        try input.append(allocator, 0xE8);
-    }
+    try input.append(allocator, 0xdc); // array16
+    try input.append(allocator, 0x03); // high byte (1000 = 0x03E8)
+    try input.append(allocator, 0xE8); // low byte
 
     _ = try write_buffer.write(input.items);
 
@@ -3792,31 +3673,18 @@ test "iterative parser: deep nested maps" {
     var read_buffer = fixedBufferStream(&arr);
 
     // Build nested map structure: {"a": {"a": {"a": 42}}}
-    var input = if (builtin.zig_version.minor == 14)
-        std.ArrayList(u8).init(allocator)
-    else
-        std.ArrayList(u8).empty;
-    defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
+    var input = std.ArrayList(u8).empty;
+    defer input.deinit(allocator);
 
     const depth = 50;
     var i: usize = 0;
     while (i < depth) : (i += 1) {
-        if (builtin.zig_version.minor == 14) {
-            try input.append(0x81); // fixmap with 1 pair
-            try input.append(0xa1); // fixstr len 1
-            try input.append('a'); // key "a"
-        } else {
-            try input.append(allocator, 0x81);
-            try input.append(allocator, 0xa1);
-            try input.append(allocator, 'a');
-        }
+        try input.append(allocator, 0x81); // fixmap with 1 pair
+        try input.append(allocator, 0xa1); // fixstr len 1
+        try input.append(allocator, 'a'); // key "a"
     }
     // Final value
-    if (builtin.zig_version.minor == 14) {
-        try input.append(0x2a); // positive fixint 42
-    } else {
-        try input.append(allocator, 0x2a);
-    }
+    try input.append(allocator, 0x2a); // positive fixint 42
 
     _ = try write_buffer.write(input.items);
 
@@ -4065,36 +3933,19 @@ test "fuzz: deep mixed nesting" {
         var write_buffer = fixedBufferStream(&buffer);
         var read_buffer = fixedBufferStream(&buffer);
 
-        var input = if (builtin.zig_version.minor == 14)
-            std.ArrayList(u8).init(allocator)
-        else
-            std.ArrayList(u8).empty;
-        defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
+        var input = std.ArrayList(u8).empty;
+        defer input.deinit(allocator);
 
         for (0..depth) |_| {
             if (random.boolean()) {
-                if (builtin.zig_version.minor == 14) {
-                    try input.append(0x91);
-                } else {
-                    try input.append(allocator, 0x91);
-                }
+                try input.append(allocator, 0x91);
             } else {
-                if (builtin.zig_version.minor == 14) {
-                    try input.append(0x81);
-                    try input.append(0xa1);
-                    try input.append('x');
-                } else {
-                    try input.append(allocator, 0x81);
-                    try input.append(allocator, 0xa1);
-                    try input.append(allocator, 'x');
-                }
+                try input.append(allocator, 0x81);
+                try input.append(allocator, 0xa1);
+                try input.append(allocator, 'x');
             }
         }
-        if (builtin.zig_version.minor == 14) {
-            try input.append(0xc0); // nil
-        } else {
-            try input.append(allocator, 0xc0);
-        }
+        try input.append(allocator, 0xc0); // nil
 
         _ = try write_buffer.write(input.items);
 
@@ -4113,26 +3964,15 @@ test "malicious: array32 claims 4 billion elements" {
     var write_buffer = fixedBufferStream(&buffer);
     var read_buffer = fixedBufferStream(&buffer);
 
-    var input = if (builtin.zig_version.minor == 14)
-        std.ArrayList(u8).init(allocator)
-    else
-        std.ArrayList(u8).empty;
-    defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
+    var input = std.ArrayList(u8).empty;
+    defer input.deinit(allocator);
 
     // array32 claiming 0xFFFFFFFF (4 billion) elements
-    if (builtin.zig_version.minor == 14) {
-        try input.append(0xdd); // array32
-        try input.append(0xFF);
-        try input.append(0xFF);
-        try input.append(0xFF);
-        try input.append(0xFF);
-    } else {
-        try input.append(allocator, 0xdd);
-        try input.append(allocator, 0xFF);
-        try input.append(allocator, 0xFF);
-        try input.append(allocator, 0xFF);
-        try input.append(allocator, 0xFF);
-    }
+    try input.append(allocator, 0xdd); // array32
+    try input.append(allocator, 0xFF);
+    try input.append(allocator, 0xFF);
+    try input.append(allocator, 0xFF);
+    try input.append(allocator, 0xFF);
 
     _ = try write_buffer.write(input.items);
 
@@ -4148,26 +3988,15 @@ test "malicious: map32 claims 4 billion pairs" {
     var write_buffer = fixedBufferStream(&buffer);
     var read_buffer = fixedBufferStream(&buffer);
 
-    var input = if (builtin.zig_version.minor == 14)
-        std.ArrayList(u8).init(allocator)
-    else
-        std.ArrayList(u8).empty;
-    defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
+    var input = std.ArrayList(u8).empty;
+    defer input.deinit(allocator);
 
     // map32 claiming 0xFFFFFFFF pairs
-    if (builtin.zig_version.minor == 14) {
-        try input.append(0xdf); // map32
-        try input.append(0xFF);
-        try input.append(0xFF);
-        try input.append(0xFF);
-        try input.append(0xFF);
-    } else {
-        try input.append(allocator, 0xdf);
-        try input.append(allocator, 0xFF);
-        try input.append(allocator, 0xFF);
-        try input.append(allocator, 0xFF);
-        try input.append(allocator, 0xFF);
-    }
+    try input.append(allocator, 0xdf); // map32
+    try input.append(allocator, 0xFF);
+    try input.append(allocator, 0xFF);
+    try input.append(allocator, 0xFF);
+    try input.append(allocator, 0xFF);
 
     _ = try write_buffer.write(input.items);
 
@@ -4193,27 +4022,16 @@ test "malicious: extremely deep nesting (2000 layers)" {
     var write_buffer = fixedBufferStream(&buffer);
     var read_buffer = fixedBufferStream(&buffer);
 
-    var input = if (builtin.zig_version.minor == 14)
-        std.ArrayList(u8).init(allocator)
-    else
-        std.ArrayList(u8).empty;
-    defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
+    var input = std.ArrayList(u8).empty;
+    defer input.deinit(allocator);
 
     // 2000 layers of nesting (far exceeds limit of 100)
     const depth = 2000;
     var i: usize = 0;
     while (i < depth) : (i += 1) {
-        if (builtin.zig_version.minor == 14) {
-            try input.append(0x91);
-        } else {
-            try input.append(allocator, 0x91);
-        }
+        try input.append(allocator, 0x91);
     }
-    if (builtin.zig_version.minor == 14) {
-        try input.append(0x00);
-    } else {
-        try input.append(allocator, 0x00);
-    }
+    try input.append(allocator, 0x00);
 
     _ = try write_buffer.write(input.items);
 
@@ -4229,23 +4047,14 @@ test "corrupted: truncated array data" {
     var write_buffer = fixedBufferStream(&buffer);
     var read_buffer = fixedBufferStream(&buffer);
 
-    var input = if (builtin.zig_version.minor == 14)
-        std.ArrayList(u8).init(allocator)
-    else
-        std.ArrayList(u8).empty;
-    defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
+    var input = std.ArrayList(u8).empty;
+    defer input.deinit(allocator);
 
     // array claiming 10 elements but data is incomplete
-    if (builtin.zig_version.minor == 14) {
-        try input.append(0x9a); // fixarray with 10 elements
-        try input.append(0x00); // int 0
-        try input.append(0x01); // int 1
-        // Missing 8 more elements - truncated!
-    } else {
-        try input.append(allocator, 0x9a);
-        try input.append(allocator, 0x00);
-        try input.append(allocator, 0x01);
-    }
+    try input.append(allocator, 0x9a); // fixarray with 10 elements
+    try input.append(allocator, 0x00); // int 0
+    try input.append(allocator, 0x01); // int 1
+    // Missing 8 more elements - truncated!
 
     _ = try write_buffer.write(input.items);
 
@@ -4261,22 +4070,13 @@ test "map with non-string key (integer key)" {
     var write_buffer = fixedBufferStream(&buffer);
     var read_buffer = fixedBufferStream(&buffer);
 
-    var input = if (builtin.zig_version.minor == 14)
-        std.ArrayList(u8).init(allocator)
-    else
-        std.ArrayList(u8).empty;
-    defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
+    var input = std.ArrayList(u8).empty;
+    defer input.deinit(allocator);
 
     // map with integer key (now valid - keys can be any Payload type)
-    if (builtin.zig_version.minor == 14) {
-        try input.append(0x81); // fixmap with 1 pair
-        try input.append(0x2a); // int 42 as key
-        try input.append(0x00); // int 0 as value
-    } else {
-        try input.append(allocator, 0x81);
-        try input.append(allocator, 0x2a);
-        try input.append(allocator, 0x00);
-    }
+    try input.append(allocator, 0x81); // fixmap with 1 pair
+    try input.append(allocator, 0x2a); // int 42 as key
+    try input.append(allocator, 0x00); // int 0 as value
 
     _ = try write_buffer.write(input.items);
 
@@ -4313,26 +4113,15 @@ test "malicious: mixed depth and breadth attack" {
     var write_buffer = fixedBufferStream(&buffer);
     var read_buffer = fixedBufferStream(&buffer);
 
-    var input = if (builtin.zig_version.minor == 14)
-        std.ArrayList(u8).init(allocator)
-    else
-        std.ArrayList(u8).empty;
-    defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
+    var input = std.ArrayList(u8).empty;
+    defer input.deinit(allocator);
 
     // Build: [ [100 items], [100 items], ... ] nested 60 levels deep
     const depth = 60;
     for (0..depth) |_| {
-        if (builtin.zig_version.minor == 14) {
-            try input.append(0x91); // fixarray with 1 element
-        } else {
-            try input.append(allocator, 0x91);
-        }
+        try input.append(allocator, 0x91); // fixarray with 1 element
     }
-    if (builtin.zig_version.minor == 14) {
-        try input.append(0x00);
-    } else {
-        try input.append(allocator, 0x00);
-    }
+    try input.append(allocator, 0x00);
 
     _ = try write_buffer.write(input.items);
 
@@ -4349,28 +4138,17 @@ test "edge case: empty containers at various depths" {
     var read_buffer = fixedBufferStream(&buffer);
 
     // Test: [ [], [[]], [[[]]], ... ]
-    var input = if (builtin.zig_version.minor == 14)
-        std.ArrayList(u8).init(allocator)
-    else
-        std.ArrayList(u8).empty;
-    defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
+    var input = std.ArrayList(u8).empty;
+    defer input.deinit(allocator);
 
     const depths = [_]usize{ 0, 1, 5, 10, 20 };
     for (depths) |depth| {
         input.clearRetainingCapacity();
 
         for (0..depth) |_| {
-            if (builtin.zig_version.minor == 14) {
-                try input.append(0x91); // fixarray with 1 element
-            } else {
-                try input.append(allocator, 0x91);
-            }
+            try input.append(allocator, 0x91); // fixarray with 1 element
         }
-        if (builtin.zig_version.minor == 14) {
-            try input.append(0x90); // empty array
-        } else {
-            try input.append(allocator, 0x90);
-        }
+        try input.append(allocator, 0x90); // empty array
 
         @memset(&buffer, 0);
         write_buffer = fixedBufferStream(&buffer);
@@ -4423,27 +4201,16 @@ test "corrupted: nested arrays with mismatched counts" {
     var write_buffer = fixedBufferStream(&buffer);
     var read_buffer = fixedBufferStream(&buffer);
 
-    var input = if (builtin.zig_version.minor == 14)
-        std.ArrayList(u8).init(allocator)
-    else
-        std.ArrayList(u8).empty;
-    defer if (builtin.zig_version.minor == 14) input.deinit() else input.deinit(allocator);
+    var input = std.ArrayList(u8).empty;
+    defer input.deinit(allocator);
 
     // Outer array claims 3 elements, but we provide different structure
-    if (builtin.zig_version.minor == 14) {
-        try input.append(0x93); // fixarray with 3 elements
-        try input.append(0x92); // inner array with 2 elements
-        try input.append(0x00);
-        try input.append(0x01);
-        try input.append(0x91); // inner array with 1 element
-        // Missing data - truncated
-    } else {
-        try input.append(allocator, 0x93);
-        try input.append(allocator, 0x92);
-        try input.append(allocator, 0x00);
-        try input.append(allocator, 0x01);
-        try input.append(allocator, 0x91);
-    }
+    try input.append(allocator, 0x93); // fixarray with 3 elements
+    try input.append(allocator, 0x92); // inner array with 2 elements
+    try input.append(allocator, 0x00);
+    try input.append(allocator, 0x01);
+    try input.append(allocator, 0x91); // inner array with 1 element
+    // Missing data - truncated
 
     _ = try write_buffer.write(input.items);
 
@@ -5280,12 +5047,10 @@ test "memory alignment: large integer array serialization" {
 }
 
 // ============================================================================
-// std.io.Reader and std.io.Writer Tests (Zig 0.15+)
+// std.Io.Reader and std.Io.Writer Tests
 // ============================================================================
 
 test "PackerIO: basic write and read with fixed Reader/Writer" {
-    if (!has_new_io) return error.SkipZigTest;
-
     var buffer: [1024]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(&buffer);
@@ -5308,8 +5073,6 @@ test "PackerIO: basic write and read with fixed Reader/Writer" {
 }
 
 test "PackerIO: nil type" {
-    if (!has_new_io) return error.SkipZigTest;
-
     var buffer: [1024]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(&buffer);
@@ -5327,8 +5090,6 @@ test "PackerIO: nil type" {
 }
 
 test "PackerIO: bool type" {
-    if (!has_new_io) return error.SkipZigTest;
-
     var buffer: [1024]u8 = undefined;
 
     // Test true
@@ -5367,8 +5128,6 @@ test "PackerIO: bool type" {
 }
 
 test "PackerIO: signed integers" {
-    if (!has_new_io) return error.SkipZigTest;
-
     var buffer: [1024]u8 = undefined;
 
     const test_cases = [_]i64{ -1, -32, -33, -128, -32768, -2147483648 };
@@ -5395,8 +5154,6 @@ test "PackerIO: signed integers" {
 }
 
 test "PackerIO: unsigned integers" {
-    if (!has_new_io) return error.SkipZigTest;
-
     var buffer: [1024]u8 = undefined;
 
     const test_cases = [_]u64{ 0, 1, 127, 128, 255, 256, 65535, 65536, 4294967295, 4294967296 };
@@ -5419,8 +5176,6 @@ test "PackerIO: unsigned integers" {
 }
 
 test "PackerIO: float type" {
-    if (!has_new_io) return error.SkipZigTest;
-
     var buffer: [1024]u8 = undefined;
 
     // Use non-integer values to ensure they stay as floats
@@ -5458,8 +5213,6 @@ test "PackerIO: float type" {
 }
 
 test "PackerIO: string type" {
-    if (!has_new_io) return error.SkipZigTest;
-
     var buffer: [1024]u8 = undefined;
 
     const a_str: [100]u8 = @splat('a');
@@ -5492,8 +5245,6 @@ test "PackerIO: string type" {
 }
 
 test "PackerIO: binary type" {
-    if (!has_new_io) return error.SkipZigTest;
-
     var buffer: [1024]u8 = undefined;
 
     const test_data = [_]u8{ 0x00, 0x01, 0x02, 0xFF, 0xAB, 0xCD };
@@ -5515,8 +5266,6 @@ test "PackerIO: binary type" {
 }
 
 test "PackerIO: array type" {
-    if (!has_new_io) return error.SkipZigTest;
-
     var buffer: [1024]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(&buffer);
@@ -5561,8 +5310,6 @@ test "PackerIO: array type" {
 }
 
 test "PackerIO: map type" {
-    if (!has_new_io) return error.SkipZigTest;
-
     var buffer: [2048]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(&buffer);
@@ -5594,8 +5341,6 @@ test "PackerIO: map type" {
 }
 
 test "PackerIO: nested structures" {
-    if (!has_new_io) return error.SkipZigTest;
-
     var buffer: [4096]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(&buffer);
@@ -5630,8 +5375,6 @@ test "PackerIO: nested structures" {
 }
 
 test "PackerIO: timestamp extension type" {
-    if (!has_new_io) return error.SkipZigTest;
-
     var buffer: [1024]u8 = undefined;
 
     const test_cases = [_]struct { seconds: i64, nanoseconds: u32 }{
@@ -5660,8 +5403,6 @@ test "PackerIO: timestamp extension type" {
 }
 
 test "PackerIO: extension type" {
-    if (!has_new_io) return error.SkipZigTest;
-
     var buffer: [1024]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(&buffer);
@@ -5684,8 +5425,6 @@ test "PackerIO: extension type" {
 }
 
 test "PackerIO: deeply nested structures" {
-    if (!has_new_io) return error.SkipZigTest;
-
     var buffer: [4096]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(&buffer);
@@ -5717,8 +5456,6 @@ test "PackerIO: deeply nested structures" {
 }
 
 test "PackerIO: multiple writes and reads" {
-    if (!has_new_io) return error.SkipZigTest;
-
     var buffer: [4096]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(&buffer);
@@ -5746,8 +5483,6 @@ test "PackerIO: multiple writes and reads" {
 }
 
 test "PackerIO: large array" {
-    if (!has_new_io) return error.SkipZigTest;
-
     var buffer: [16384]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(&buffer);
@@ -5776,8 +5511,6 @@ test "PackerIO: large array" {
 }
 
 test "PackerIO: packIO convenience function" {
-    if (!has_new_io) return error.SkipZigTest;
-
     var buffer: [1024]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buffer);
     var reader = std.Io.Reader.fixed(&buffer);

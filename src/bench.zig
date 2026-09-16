@@ -1,5 +1,4 @@
 const std = @import("std");
-const builtin = @import("builtin");
 const msgpack = @import("msgpack");
 const compat = msgpack.compat;
 const Payload = msgpack.Payload;
@@ -16,19 +15,14 @@ const pack = msgpack.Pack(
     bufferType.read,
 );
 
-const is_zig_16 = builtin.zig_version.minor >= 16;
-const BenchRuntime = if (is_zig_16) struct {
+const BenchRuntime = struct {
     var io: ?std.Io = null;
-} else struct {};
+};
 
 /// Get monotonic time in nanoseconds on Zig 0.16+.
 fn getTimeNs() u64 {
-    if (is_zig_16) {
-        const io = BenchRuntime.io orelse @panic("benchmark runtime io is not initialized");
-        return @intCast(std.Io.Clock.awake.now(io).nanoseconds);
-    }
-
-    unreachable;
+    const io = BenchRuntime.io orelse @panic("benchmark runtime io is not initialized");
+    return @intCast(std.Io.Clock.awake.now(io).nanoseconds);
 }
 
 /// Benchmark timer helper
@@ -46,15 +40,13 @@ fn benchmark(
     }
 
     // Actual benchmark
-    var legacy_timer: if (is_zig_16) void else std.time.Timer = if (is_zig_16) {} else undefined;
-    if (!is_zig_16) legacy_timer = try std.time.Timer.start();
-    const start_ns = if (is_zig_16) getTimeNs() else 0;
+    const start_ns = getTimeNs();
 
     for (0..iterations) |_| {
         try func(allocator);
     }
 
-    const elapsed_ns = if (is_zig_16) getTimeNs() - start_ns else legacy_timer.read();
+    const elapsed_ns = getTimeNs() - start_ns;
 
     const avg_ns = elapsed_ns / iterations;
     const ops_per_sec = if (avg_ns > 0) (1_000_000_000 / avg_ns) else 0;
@@ -966,15 +958,7 @@ fn runBenchmarks() !void {
     std.debug.print(equal_str ++ "\n", .{});
 }
 
-const BenchEntry = if (is_zig_16) struct {
-    pub fn main(init: std.process.Init) !void {
-        BenchRuntime.io = init.io;
-        try runBenchmarks();
-    }
-} else struct {
-    pub fn main() !void {
-        try runBenchmarks();
-    }
-};
-
-pub const main = BenchEntry.main;
+pub fn main(init: std.process.Init) !void {
+    BenchRuntime.io = init.io;
+    try runBenchmarks();
+}

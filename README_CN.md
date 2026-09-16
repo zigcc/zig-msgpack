@@ -45,12 +45,12 @@ Zig 编程语言的 MessagePack 实现。此库提供了一种简单高效的方
 | Zig 版本             | 库版本   | 状态              |
 | -------------------- | -------- | ----------------- |
 | 0.15.x 及更早版本     | 0.0.17   | 旧版支持          |
-| 0.16.0               | 当前版本 | 通过兼容层支持 |
+| 0.16.0               | 当前版本 | 支持 |
 | 0.17.0-dev           | 当前版本 | 初步支持；CI 跟踪 `master` |
 
 > **注意**: 如需支持 Zig 0.15.x 及更早版本，请使用本库的 `0.0.17` 版本。
 > **注意**: 当前库要求 Zig `0.16.0` 或更高版本。Zig `0.17.0-dev` 尚未发布，兼容性可能随开发进展而变化。
-> **注意**: Zig 0.16+ 移除了 `std.io.FixedBufferStream`，但本库提供了兼容层以在所有支持的版本中维持相同的 API。
+> **注意**: 两个受支持版本均使用 `std.Io.Reader` / `std.Io.Writer`。基于回调的 `Pack` API 仍可使用 `msgpack.compat.BufferStream` 适配器。
 
 对于 Zig `0.16.0` 和 `0.17.0-dev` 版本，请按以下步骤操作：
 
@@ -154,9 +154,9 @@ pub fn main() !void {
 }
 ```
 
-### 基础用法（所有 Zig 版本）
+### 基础用法（Zig 0.16 和 0.17 开发版）
 
-为了最大兼容性或需要更多控制时，使用泛型 `Pack` API：
+需要自定义读写回调时，使用泛型 `Pack` API：
 
    ```zig
    const std = @import("std");
@@ -195,7 +195,7 @@ pub fn main() !void {
     const allocator = std.heap.page_allocator;
     var buffer: [1024]u8 = undefined;
 
-    // 使用兼容层实现跨版本支持
+    // 为基于回调的 Pack API 使用内存流适配器
     const compat = msgpack.compat;
     var write_buffer = compat.fixedBufferStream(&buffer);
     var read_buffer = compat.fixedBufferStream(&buffer);
@@ -445,13 +445,13 @@ msgpack.MsgPackError.ExtDataTooLarge     // 扩展类型数据过大
 
 ### Zig 0.16 和 0.17 开发版兼容性
 
-从 Zig 0.16 开始，标准库的 I/O 子系统经历了重大变更。作为更广泛重新设计的一部分，`std.io.FixedBufferStream` 被移除。本库包含一个兼容层（`src/compat.zig`），它：
+两个受支持版本均直接使用 `std.Io.Reader` / `std.Io.Writer`，以及显式传入分配器的
+`std.ArrayList` 方法。旧编译器的兼容分支已移除。
 
-- 为 Zig 0.16+ 提供了一个 `BufferStream` 实现，模拟旧版 `FixedBufferStream` 的行为
-- 在 Zig 0.16 和 0.17 开发版上保持相同的缓冲流 API
-- 通过 CI 在 Zig `0.16.0` 和最新的 `master` 开发版上进行验证
+`src/compat.zig` 仍保留 `BufferStream` 和 `fixedBufferStream`，作为基于回调的 `Pack`
+API 的内存流适配器。它们在 Zig 0.16 和 0.17 开发版上使用相同实现，不提供旧编译器支持。
 
-当前最低支持 Zig `0.16.0`；源码中保留的旧版兼容分支不代表仍支持旧编译器。代码格式检查固定使用 Zig `0.16.0`，因为开发版编译器的格式工具可能引入语法迁移。
+最低支持版本仍为 Zig `0.16.0`。CI 测试 Zig `0.16.0` 和最新的 `master` 开发版。代码格式检查固定使用 Zig `0.16.0`，因为开发版编译器的格式工具可能引入语法迁移。
 
 ## 测试
 

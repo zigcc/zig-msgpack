@@ -1,11 +1,5 @@
-// Compatibility layer for different Zig versions
-const std = @import("std");
-const builtin = @import("builtin");
-const current_zig = builtin.zig_version;
-
-// BufferStream implementation for Zig 0.16+
-// This mimics the behavior of the old FixedBufferStream
-pub const BufferStream = if (current_zig.minor >= 16) struct {
+// In-memory stream adapter for the callback-based Pack API on Zig 0.16+.
+pub const BufferStream = struct {
     buffer: []u8,
     pos: usize,
 
@@ -58,9 +52,6 @@ pub const BufferStream = if (current_zig.minor >= 16) struct {
     pub fn getEndPos(self: Self) usize {
         return self.buffer.len;
     }
-} else std.io.FixedBufferStream([]u8);
+};
 
-pub const fixedBufferStream = if (current_zig.minor >= 16)
-    BufferStream.init
-else
-    std.io.fixedBufferStream;
+pub const fixedBufferStream = BufferStream.init;
