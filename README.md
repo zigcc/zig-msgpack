@@ -46,13 +46,13 @@ This library is tested and optimized for all major platforms and architectures:
 | -------------------- | --------------- | ------------------------------------- |
 | 0.15.x and older     | 0.0.17          | Legacy support                        |
 | 0.16.0               | Current         | Supported                             |
-| 0.17.0-dev           | Current         | Initial support; CI tracks `master`   |
+| 0.17.0               | Current         | Supported                             |
 
 > **Note:** For Zig 0.15.x and older versions, please use version `0.0.17` of this library.
-> **Note:** The current library requires Zig `0.16.0` or later. Zig `0.17.0-dev` is unreleased; compatibility may change as development continues.
+> **Note:** The current library supports Zig `0.16.0` and `0.17.0`. The minimum required version remains `0.16.0`.
 > **Note:** Both supported versions use `std.Io.Reader` / `std.Io.Writer`. The `msgpack.compat.BufferStream` adapter remains available for the callback-based `Pack` API.
 
-For Zig `0.16.0` and `0.17.0-dev`, follow these steps:
+For Zig `0.16.0` and `0.17.0`, follow these steps:
 
 1.  **Add as a dependency:**
     Add the library to your `build.zig.zon` file. You can fetch a specific commit or branch.
@@ -481,7 +481,7 @@ This library uses an **iterative parser** (not recursive) to provide strong secu
 - Zero memory leaks verified by GPA (General Purpose Allocator) in tests
 - Safe to parse untrusted data from network, files, or user input
 
-### Zig 0.16 and 0.17 Development Compatibility
+### Zig 0.16 and 0.17 Compatibility
 
 Both supported versions use `std.Io.Reader` / `std.Io.Writer` and allocator-taking
 `std.ArrayList` methods directly. Compatibility branches for older compilers have
@@ -489,10 +489,10 @@ been removed.
 
 The `src/compat.zig` module retains `BufferStream` and `fixedBufferStream` as
 in-memory stream adapters for the callback-based `Pack` API. They have the same
-implementation on Zig 0.16 and 0.17 development builds; they do not enable support
+implementation on Zig 0.16.0 and 0.17.0; they do not enable support
 for older compilers.
 
-The minimum supported Zig version remains `0.16.0`. CI tests Zig `0.16.0` and the latest `master` development build. Code formatting is checked with Zig `0.16.0`, since development compiler formatters may introduce syntax migrations.
+The minimum supported Zig version remains `0.16.0`. CI tests the pinned stable versions Zig `0.16.0` and `0.17.0`. Code formatting remains checked with Zig `0.16.0` to preserve compatibility with the minimum supported compiler.
 
 ## Testing
 

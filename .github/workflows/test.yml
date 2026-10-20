@@ -16,7 +16,7 @@ jobs:
             matrix:
                 # 架构配置标识符
                 arch_config: [linux-x86_64, linux-aarch64, macos-arm64, windows-x86_64]
-                version: ["0.16.0", "master"]
+                version: ["0.16.0", "0.17.0"]
                 include:
                     # Linux x86_64
                     - arch_config: linux-x86_64
